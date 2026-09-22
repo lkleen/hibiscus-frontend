@@ -1,0 +1,80 @@
+// Design tokens for the Hibiscus frontend.
+//
+// Single, fixed light theme for v1 — no theme switching, no dark mode, no persistence (see
+// ../../../../CLAUDE.md / claude-config/frontend-theming.md for the general token-based theming
+// contract this follows; this app just doesn't need multiple themes yet). Components must
+// reference these custom properties exclusively — never hardcode colors, spacing units, or font
+// stacks in component styles.
+
+:root {
+  // Surfaces
+  --surface-ground: #f4f5f7;
+  --surface-section: #ffffff;
+  --surface-card: #ffffff;
+  --surface-overlay: #ffffff;
+  --surface-border: #d7dbe0;
+  --surface-hover: #eceef1;
+  --surface-subtle: #eceef1;
+  --radius-base: 6px;
+
+  // Text
+  --text-color: #1c2128;
+  --text-muted: #5b6472;
+  --text-on-accent: #ffffff;
+
+  // Accent
+  --color-accent: #2f6f4f;
+  --color-accent-hover: #255a40;
+  --color-accent-subtle: #e2efe8;
+
+  // Semantic
+  --color-danger: #b3261e;
+  --color-danger-subtle: #fbe9e8;
+
+  // Scrim & backdrop
+  --color-scrim: rgba(0, 0, 0, 0.45);
+  --blur-overlay: blur(4px);
+
+  // Depth & motion
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.16);
+  --card-hover-lift: -1px;
+  --transition-duration: 0.15s;
+
+  // Typography
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  --font-display: var(--font-sans);
+  --heading-letter-spacing: var(--tracking-tight);
+  --heading-text-transform: none;
+  --heading-weight: 700;
+
+  // Atmosphere
+  --surface-ambient: transparent;
+
+  // Type scale
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.125rem;
+  --text-4xl: 2.5rem;
+  --text-5xl: 3rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.04em;
+
+  --layout-max-width: 1120px;
+  --layout-prose-width: 72ch;
+  --layout-padding-x: 1.5rem;
+}

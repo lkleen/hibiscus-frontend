@@ -1,0 +1,38 @@
+:8080 {
+	# Caddy normally reorders directives by a fixed built-in precedence list, not by the order
+	# they're written — `forward_auth` sorts before `reverse_proxy` regardless of file order.
+	# Left implicit, that reordering means oauth2-proxy's own /oauth2/sign_in page would be
+	# gated by forward_auth too, redirecting to itself forever. Wrapping everything in an
+	# explicit `route` block disables that automatic sorting and runs these three directives
+	# in the exact order written, with each `reverse_proxy` terminating the chain for requests
+	# it handles — found by actually running this demo and hitting the loop, not assumed.
+	route {
+		# oauth2-proxy's own sign-in/callback routes must be reachable without going through
+		# forward_auth below, or logging in would loop against itself.
+		reverse_proxy /oauth2/* oauth2-proxy:4180
+
+		forward_auth oauth2-proxy:4180 {
+			uri /oauth2/auth
+			copy_headers X-Auth-Request-Email>X-Forwarded-User
+
+			@error status 401
+			handle_response @error {
+				redir * /oauth2/sign_in?rd={http.request.orig_uri} 302
+			}
+		}
+
+		# Reached only once oauth2-proxy has confirmed a Keycloak-authenticated session and
+		# Caddy has copied the asserted identity into X-Forwarded-User above. The shared secret
+		# is added here, not by oauth2-proxy — it's the second, independent half of the app's
+		# forward-auth contract (see docs/architecture.md#authentication): even if something
+		# else could reach the app container directly, it still couldn't forge this header.
+		# This is a DEMO secret; generate a real one for anything beyond trying the pattern out.
+		#
+		# `header_up` (inside reverse_proxy), not a bare top-level `header` — the latter sets
+		# *response* headers sent back to the browser, which would leak this secret to every
+		# client instead of only ever sending it upstream to `app`.
+		reverse_proxy app:3000 {
+			header_up X-Internal-Auth-Secret {$INTERNAL_PROXY_SECRET}
+		}
+	}
+}

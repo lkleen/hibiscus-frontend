@@ -1,0 +1,54 @@
+<h1>Categories</h1>
+
+<form class="new-category" (submit)="$event.preventDefault()">
+  <div class="new-category__field">
+    <label for="new-category-name">Name</label>
+    <input #nameInput id="new-category-name" type="text" placeholder="Category name" />
+  </div>
+  <div class="new-category__field">
+    <label for="new-category-color">Color</label>
+    <input #colorInput id="new-category-color" type="color" value="#2f6f4f" />
+  </div>
+  <div class="new-category__field">
+    <label for="new-category-parent">Parent</label>
+    <select #parentSelect id="new-category-parent" [value]="newCategoryParentValue()">
+      <option value="">No parent (root)</option>
+      @for (category of categories(); track category.id) {
+        <option [value]="category.id.toString()">{{ category.name }}</option>
+      }
+    </select>
+  </div>
+  <button
+    type="button"
+    class="new-category__submit"
+    (click)="onCreate(nameInput.value, colorInput.value, parentSelect.value); nameInput.value = ''"
+  >
+    Add category
+  </button>
+</form>
+
+@if (saveError()) {
+  <p class="status-text status-text--error">{{ saveError() }}</p>
+}
+
+@if (loading()) {
+  <p class="status-text">Loading categories…</p>
+} @else if (error()) {
+  <p class="status-text status-text--error">Could not load categories.</p>
+} @else if (tree().length === 0) {
+  <p class="status-text">No categories yet.</p>
+} @else {
+  <ul class="category-tree">
+    @for (node of tree(); track node.id) {
+      <li>
+        <app-category-tree-item
+          [node]="node"
+          [allCategories]="categories()"
+          (update)="onUpdate($event)"
+          (addChild)="onAddChild($event)"
+          (remove)="onRemove($event)"
+        />
+      </li>
+    }
+  </ul>
+}

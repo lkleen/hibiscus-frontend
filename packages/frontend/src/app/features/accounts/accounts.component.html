@@ -1,0 +1,31 @@
+<h1>Accounts</h1>
+
+@if (loading()) {
+  <p class="status-text">Loading accounts…</p>
+} @else if (error()) {
+  <p class="status-text status-text--error">Could not load accounts.</p>
+} @else if (accounts().length === 0) {
+  <p class="status-text">No accounts found.</p>
+} @else {
+  <ul class="account-list">
+    @for (account of accounts(); track account.id) {
+      <li class="account-card">
+        <div class="account-card__main">
+          <span class="account-card__name">{{ account.name }}</span>
+          @if (account.iban) {
+            <span class="account-card__iban">{{ account.iban }}</span>
+          }
+        </div>
+        <div class="account-card__balance">
+          @if (account.balance !== null) {
+            <span class="account-card__amount">
+              {{ account.balance | number: '1.2-2' }} {{ account.currency }}
+            </span>
+          } @else {
+            <span class="account-card__amount account-card__amount--unknown">—</span>
+          }
+        </div>
+      </li>
+    }
+  </ul>
+}

@@ -1,0 +1,38 @@
+<header class="header">
+  <div class="header__brand">
+    <span class="header__brand-name">Hibiscus</span>
+  </div>
+
+  <nav class="header__nav" aria-label="Main navigation">
+    <a class="header__nav-link" routerLink="/accounts" routerLinkActive="header__nav-link--active">
+      Accounts
+    </a>
+    <a
+      class="header__nav-link"
+      routerLink="/transactions"
+      routerLinkActive="header__nav-link--active"
+    >
+      Transactions
+    </a>
+    <a
+      class="header__nav-link"
+      routerLink="/categories"
+      routerLinkActive="header__nav-link--active"
+    >
+      Categories
+    </a>
+    <a class="header__nav-link" routerLink="/payees" routerLinkActive="header__nav-link--active">
+      Payees
+    </a>
+  </nav>
+
+  <div class="header__actions">
+    @if (user(); as u) {
+      <span class="header__identity">Logged in as {{ u }}</span>
+    } @else if (loadError()) {
+      <span class="header__identity header__identity--error">Could not load identity</span>
+    } @else {
+      <span class="header__identity header__identity--pending" aria-hidden="true"></span>
+    }
+  </div>
+</header>

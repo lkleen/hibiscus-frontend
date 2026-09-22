@@ -1,0 +1,25 @@
+{
+  "name": "hibiscus-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath \"$(git rev-parse --show-prefix).githooks\" || true",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format:fix": "turbo run format:fix",
+    "format:check": "turbo run format:check",
+    "start:local": "bash scripts/start-local.sh"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.4"
+  },
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}

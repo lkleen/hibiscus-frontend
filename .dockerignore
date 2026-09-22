@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/.angular
+.git
+.githooks
+docs
+*.md
+.env
+.env.*
+!.env.example
+*.sql
+*.sql.gz

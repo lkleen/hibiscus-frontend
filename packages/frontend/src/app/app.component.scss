@@ -1,0 +1,10 @@
+:host {
+  display: block;
+  min-height: 100%;
+}
+
+.app-main {
+  max-width: var(--layout-max-width);
+  margin-inline: auto;
+  padding: 1.5rem var(--layout-padding-x);
+}

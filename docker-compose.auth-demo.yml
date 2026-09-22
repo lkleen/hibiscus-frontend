@@ -1,0 +1,111 @@
+# Runnable demo of the forward-auth contract this app requires (see
+# docs/architecture.md#authentication). Keycloak + oauth2-proxy + Caddy here are a concrete,
+# fully open-source stand-in for whatever IdP/proxy you actually run in front of this app —
+# Authentik's own forward-auth outpost, Traefik forward-auth, etc. all satisfy the exact same
+# contract (an identity header + the shared secret), so swapping this demo's IdP for a
+# different one does not require changing the app.
+#
+# DEMO ONLY — the realm, client secret, and cookie secret baked into auth-demo/ are for trying
+# the pattern out locally, not for any real deployment. Generate your own before using any of
+# this for real.
+#
+# The one property that matters even in a demo: `app` publishes no host port. Only `caddy`
+# does. There is no way to reach the app except through Keycloak's login — see README.md for
+# how to prove that to yourself.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - PORT=3000
+      - AUTH_HEADER_USER=X-Forwarded-User
+      - ALLOWED_USERS=demo@example.com
+      - INTERNAL_PROXY_SECRET=${INTERNAL_PROXY_SECRET}
+    networks:
+      - internal
+    # No `ports:` — intentional, see the header comment above.
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    restart: unless-stopped
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_HEALTH_ENABLED=true
+      # Keycloak's discovery document otherwise advertises the address it was *reached* on
+      # (the internal `keycloak:8080` used by oauth2-proxy for backend calls), which a browser
+      # cannot resolve. KC_HOSTNAME fixes the browser-facing (frontend) endpoints — used for
+      # the login redirect — to the address a browser can actually reach.
+      # KC_HOSTNAME_BACKCHANNEL_DYNAMIC lets the *backchannel* endpoints (token exchange, JWKS
+      # — calls oauth2-proxy itself makes, container-to-container) keep mirroring whichever
+      # address the request actually arrived on, i.e. `keycloak:8080`, instead of also being
+      # pinned to the browser-facing address that oauth2-proxy's own container can't reach.
+      # Both were found necessary by actually running the login flow, not assumed: the first
+      # attempt without this had oauth2-proxy trying to reach `localhost:8090` for its own
+      # token exchange and hitting its own container's loopback instead of Keycloak.
+      - KC_HOSTNAME=http://localhost:8090
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
+    volumes:
+      - ./auth-demo/keycloak-realm.json:/opt/keycloak/data/import/hibiscus-demo-realm.json:ro
+    ports:
+      # The IdP itself must be browser-reachable for the login page — unlike `app`, this is
+      # expected and does not weaken the guarantee that matters (the app stays unpublished).
+      - '127.0.0.1:8090:8080'
+    networks:
+      - internal
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    restart: unless-stopped
+    depends_on:
+      - keycloak
+    command:
+      - --provider=oidc
+      - --oidc-issuer-url=http://keycloak:8080/realms/hibiscus-demo
+      # The issuer Keycloak reports in its discovery doc is the browser-facing hostname
+      # (KC_HOSTNAME, above) even on this internal request, which otherwise fails oidc-client's
+      # strict issuer==request-URL check. Safe here specifically because both URLs still point
+      # at the one real Keycloak instance in this demo network — found necessary by actually
+      # running the flow, not assumed.
+      - --insecure-oidc-skip-issuer-verification=true
+      - --client-id=oauth2-proxy
+      - --client-secret=oauth2-proxy-demo-secret
+      - --redirect-url=http://localhost:8080/oauth2/callback
+      - --email-domain=*
+      - --cookie-secret=Enh75xJj5hmTA/ayc5WJ9MMiIO4QR80g
+      - --cookie-secure=false
+      - --set-xauthrequest=true
+      - --upstream=static://202
+      - --http-address=0.0.0.0:4180
+      - --insecure-oidc-allow-unverified-email=true
+      - --skip-provider-button=true
+      - --silence-ping-logging=true
+    networks:
+      - internal
+    # Not published — Caddy talks to it over the internal network; the browser only ever
+    # reaches its /oauth2/* routes through Caddy's proxy at :8080.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - oauth2-proxy
+      - app
+    environment:
+      - INTERNAL_PROXY_SECRET=${INTERNAL_PROXY_SECRET}
+    volumes:
+      - ./auth-demo/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - '127.0.0.1:8080:8080'
+    networks:
+      - internal
+
+networks:
+  internal:
+    name: hibiscus_auth_demo_internal

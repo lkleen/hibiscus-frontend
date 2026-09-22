@@ -1,0 +1,102 @@
+<h1>Transactions</h1>
+
+<form class="filters" (submit)="$event.preventDefault()">
+  <div class="filters__field">
+    <label for="filter-account">Account</label>
+    <select id="filter-account" (change)="onAccountChange($event)">
+      <option value="">All accounts</option>
+      @for (account of accounts(); track account.id) {
+        <option [value]="account.id.toString()">{{ account.name }}</option>
+      }
+    </select>
+  </div>
+
+  <div class="filters__field">
+    <label for="filter-from">From</label>
+    <input id="filter-from" type="date" [value]="from()" (change)="onFromChange($event)" />
+  </div>
+
+  <div class="filters__field">
+    <label for="filter-to">To</label>
+    <input id="filter-to" type="date" [value]="to()" (change)="onToChange($event)" />
+  </div>
+
+  <div class="filters__field">
+    <label for="filter-category">Category</label>
+    <select id="filter-category" (change)="onCategoryFilterChange($event)">
+      <option value="">All categories</option>
+      @for (category of categories(); track category.id) {
+        <option [value]="category.id.toString()">{{ category.name }}</option>
+      }
+    </select>
+  </div>
+
+  <div class="filters__field filters__field--grow">
+    <label for="filter-search">Search</label>
+    <input
+      id="filter-search"
+      type="search"
+      placeholder="Purpose or counterparty…"
+      [value]="q()"
+      (input)="onSearchInput($event)"
+    />
+  </div>
+</form>
+
+@if (loading()) {
+  <p class="status-text">Loading transactions…</p>
+} @else if (error()) {
+  <p class="status-text status-text--error">Could not load transactions.</p>
+} @else if (items().length === 0) {
+  <p class="status-text">No transactions match these filters.</p>
+} @else {
+  <table class="transaction-table">
+    <thead>
+      <tr>
+        <th scope="col">Date</th>
+        <th scope="col">Account</th>
+        <th scope="col">Counterparty / purpose</th>
+        <th scope="col" class="transaction-table__amount-col">Amount</th>
+        <th scope="col">Category</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (transaction of items(); track transaction.id) {
+        <tr>
+          <td>{{ transaction.date | date: 'yyyy-MM-dd' }}</td>
+          <td>{{ accountsById().get(transaction.accountId)?.name ?? '—' }}</td>
+          <td>
+            <div class="transaction-table__counterparty">{{ transaction.counterparty ?? '—' }}</div>
+            @if (transaction.purpose) {
+              <div class="transaction-table__purpose">{{ transaction.purpose }}</div>
+            }
+          </td>
+          <td
+            class="transaction-table__amount-col"
+            [class.transaction-table__amount--negative]="transaction.amount < 0"
+          >
+            {{ transaction.amount | number: '1.2-2' }}
+          </td>
+          <td>
+            <app-category-picker
+              [categories]="categories()"
+              [selectedCategoryId]="transaction.categoryId"
+              (categoryChange)="onCategoryChange(transaction, $event)"
+            />
+            @if (categoryUpdateErrorId() === transaction.id) {
+              <span class="transaction-table__update-error">Could not save category</span>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    <button type="button" (click)="previousPage()" [disabled]="page() <= 1">Previous</button>
+    <span class="pagination__status">
+      Page {{ page() }} of {{ totalPages() }} ({{ total() }} total)
+    </span>
+    <button type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Next</button>
+  </div>
+}

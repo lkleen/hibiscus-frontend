@@ -1,0 +1,31 @@
+# Local development database only — matches production's MariaDB version so anything built
+# against this schema stays compatible. Adapted from a standalone extraction of the real
+# "hibiscus-db" service (see README.md for how to obtain and import your own data dump).
+#
+# No app or proxy service here: local development runs the app on the host via
+# `pnpm start:local` (see scripts/start-local.sh), never containerized — so there is nothing
+# here to accidentally publish beyond this single, localhost-only database port.
+services:
+  hibiscus-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    command: --character-set-server=utf8 --collation-server=utf8_general_ci
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - hibiscus_db_dev_volume:/var/lib/mysql
+    ports:
+      # Dev machine only.
+      - '127.0.0.1:3306:3306'
+
+volumes:
+  hibiscus_db_dev_volume:
+    name: hibiscus_db_dev_volume

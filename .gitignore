@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Angular CLI build cache
+.angular/
+
+# Environment secrets — never committed, not even example values with real data
+.env
+.env.*
+!.env.example
+
+# Real banking data — never committed under any name
+*.sql
+*.sql.gz
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*

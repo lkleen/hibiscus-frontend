@@ -1,0 +1,37 @@
+<h1>Payees</h1>
+
+<div class="payee-search">
+  <label class="visually-hidden" for="payee-search-input">Search payees</label>
+  <input
+    id="payee-search-input"
+    class="payee-search__input"
+    type="search"
+    placeholder="Search payees by name…"
+    [value]="searchTerm()"
+    (input)="onSearchInput($event)"
+  />
+</div>
+
+@if (loading()) {
+  <p class="status-text">Loading payees…</p>
+} @else if (error()) {
+  <p class="status-text status-text--error">Could not load payees.</p>
+} @else if (payees().length === 0) {
+  <p class="status-text">No payees found.</p>
+} @else {
+  <ul class="payee-list">
+    @for (payee of payees(); track payee.id) {
+      <li class="payee-card">
+        <span class="payee-card__name">{{ payee.name }}</span>
+        <span class="payee-card__meta">
+          @if (payee.iban) {
+            <span class="payee-card__iban">{{ payee.iban }}</span>
+          }
+          @if (payee.bank) {
+            <span class="payee-card__bank">{{ payee.bank }}</span>
+          }
+        </span>
+      </li>
+    }
+  </ul>
+}

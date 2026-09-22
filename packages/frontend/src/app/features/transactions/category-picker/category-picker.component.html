@@ -1,0 +1,54 @@
+<button
+  #trigger
+  type="button"
+  class="category-picker__trigger"
+  (click)="toggle()"
+  [attr.aria-expanded]="isOpen()"
+  aria-haspopup="listbox"
+>
+  <span
+    class="category-picker__swatch"
+    [style.background]="selectedCategory()?.color ?? 'transparent'"
+    aria-hidden="true"
+  ></span>
+  <span class="category-picker__label">{{ selectedCategory()?.name ?? 'Uncategorized' }}</span>
+</button>
+
+<ng-template #panelTemplate>
+  <div
+    class="category-picker__panel"
+    cdkTrapFocus
+    cdkTrapFocusAutoCapture
+    role="listbox"
+    aria-label="Choose category"
+  >
+    <button
+      type="button"
+      class="category-picker__option"
+      [class.category-picker__option--selected]="selectedCategoryId() === null"
+      role="option"
+      [attr.aria-selected]="selectedCategoryId() === null"
+      (click)="select(null)"
+    >
+      Uncategorized
+    </button>
+    @for (option of flatOptions(); track option.category.id) {
+      <button
+        type="button"
+        class="category-picker__option"
+        [class.category-picker__option--selected]="selectedCategoryId() === option.category.id"
+        [style.padding-inline-start.px]="12 + option.depth * 16"
+        role="option"
+        [attr.aria-selected]="selectedCategoryId() === option.category.id"
+        (click)="select(option.category.id)"
+      >
+        <span
+          class="category-picker__swatch"
+          [style.background]="option.category.color ?? 'var(--surface-border)'"
+          aria-hidden="true"
+        ></span>
+        {{ option.category.name }}
+      </button>
+    }
+  </div>
+</ng-template>

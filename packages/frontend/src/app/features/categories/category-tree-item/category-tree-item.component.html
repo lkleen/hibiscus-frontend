@@ -1,0 +1,62 @@
+<div class="tree-item__row" [style.padding-inline-start.px]="depth() * 20">
+  @if (editing()) {
+    <input #nameInput class="tree-item__name-input" type="text" [value]="node().name" />
+    <input
+      #colorInput
+      class="tree-item__color-input"
+      type="color"
+      [value]="node().color ?? '#94a3b8'"
+    />
+    <select #parentSelect class="tree-item__parent-select" [value]="parentSelectValue()">
+      <option value="">No parent (root)</option>
+      @for (candidate of selectableParents(); track candidate.id) {
+        <option [value]="candidate.id.toString()">{{ candidate.name }}</option>
+      }
+    </select>
+    <button
+      type="button"
+      class="tree-item__btn tree-item__btn--primary"
+      (click)="save(nameInput.value, colorInput.value, parentSelect.value)"
+    >
+      Save
+    </button>
+    <button type="button" class="tree-item__btn" (click)="cancelEdit()">Cancel</button>
+  } @else {
+    <span
+      class="tree-item__swatch"
+      [style.background]="node().color ?? 'var(--surface-border)'"
+      aria-hidden="true"
+    ></span>
+    <span class="tree-item__name">{{ node().name }}</span>
+    <div class="tree-item__actions">
+      <button type="button" class="tree-item__btn" (click)="startEdit()">Edit</button>
+      <button type="button" class="tree-item__btn" (click)="addChild.emit(node().id)">
+        Add subcategory
+      </button>
+      <button
+        type="button"
+        class="tree-item__btn tree-item__btn--danger"
+        (click)="remove.emit(node().id)"
+      >
+        Delete
+      </button>
+    </div>
+  }
+</div>
+
+@if (node().children.length > 0) {
+  <ul class="tree-item__children">
+    @for (child of node().children; track child.id) {
+      <li>
+        <app-category-tree-item
+          [node]="child"
+          [allCategories]="allCategories()"
+          [depth]="depth() + 1"
+          (update)="update.emit($event)"
+          (addChild)="addChild.emit($event)"
+          (remove)="remove.emit($event)"
+        />
+      </li>
+    }
+  </ul>
+}

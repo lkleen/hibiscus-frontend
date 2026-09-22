@@ -1,0 +1,29 @@
+{
+  "realm": "hibiscus-demo",
+  "enabled": true,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "oauth2-proxy",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "oauth2-proxy-demo-secret",
+      "redirectUris": ["http://localhost:8080/oauth2/callback"],
+      "webOrigins": ["+"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "demo",
+      "enabled": true,
+      "email": "demo@example.com",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "demo", "temporary": false }]
+    }
+  ]
+}

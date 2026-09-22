@@ -1,0 +1,64 @@
+.status-text {
+  color: var(--text-muted);
+
+  &--error {
+    color: var(--color-danger);
+  }
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0;
+  margin: 1rem 0 0;
+  list-style: none;
+}
+
+.account-card {
+  --account-card-bg: var(--surface-card);
+  --account-card-border-color: var(--surface-border);
+  --account-card-radius: var(--radius-base);
+
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--account-card-bg);
+  border: 1px solid var(--account-card-border-color);
+  border-radius: var(--account-card-radius);
+}
+
+.account-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.account-card__name {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.account-card__iban {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.account-card__balance {
+  margin-inline-start: auto;
+}
+
+.account-card__amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-color);
+
+  &--unknown {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+}
