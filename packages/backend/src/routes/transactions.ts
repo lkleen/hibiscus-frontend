@@ -1,17 +1,24 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import type {
+  TransactionListResponse,
+  TransactionsQuery,
+  UpdateTransactionCategory,
+} from '@hibiscus-frontend/shared/contracts/transactions';
 import { z } from 'zod';
 import { listTransactions, updateTransactionCategory } from '../repositories/umsatz';
 import { respondWithValidationError } from './zod-validation';
 
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
+// Upper bound for one response. The frontend loads the result in chunks of this order of magnitude
+// and lets its grid paginate within a chunk, so it must comfortably hold a few hundred rows.
+export const MAX_LIMIT = 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 // Pagination params are `limit`/`offset` rather than `page`/`pageSize`: they map 1:1 onto the
 // repository's TransactionFilter and let the frontend request an arbitrary window without
 // having to translate a page number back and forth.
-const TransactionsQuerySchema = z.object({
+export const TransactionsQuerySchema = z.object({
   accountId: z.coerce.number().int().positive().optional(),
   from: z.string().regex(DATE_PATTERN, 'from must be formatted as YYYY-MM-DD').optional(),
   to: z.string().regex(DATE_PATTERN, 'to must be formatted as YYYY-MM-DD').optional(),
@@ -39,8 +46,10 @@ export function createTransactionsRouter(): Router {
       return;
     }
 
-    listTransactions(parsed.data)
-      .then((result) => res.json(result))
+    // Typed against the shared contract so the schema can't drift from what the frontend sends.
+    const query: TransactionsQuery = parsed.data;
+    listTransactions(query)
+      .then((result: TransactionListResponse) => res.json(result))
       .catch(next);
   });
 
@@ -56,7 +65,8 @@ export function createTransactionsRouter(): Router {
       return;
     }
 
-    updateTransactionCategory(paramsResult.data.id, bodyResult.data.categoryId)
+    const body: UpdateTransactionCategory = bodyResult.data;
+    updateTransactionCategory(paramsResult.data.id, body.categoryId)
       .then(() => res.status(204).send())
       .catch(next);
   });

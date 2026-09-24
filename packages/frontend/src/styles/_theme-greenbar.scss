@@ -76,13 +76,14 @@
 }
 
 // Amount format: "signed" style (native minus, plus a leading "+" on positives) + zebra-striped
-// transaction rows. See transactions.component.scss / accounts.component.scss for the generic
-// *-signed / *-paren span definitions this theme is choosing between (it keeps the signed span).
+// transaction rows (the striping is `--base-table-row-alt-bg` of the shared table, see
+// base-table.component.scss). See amount-cell.component.scss / accounts.component.scss for the
+// generic *-signed / *-paren span definitions this theme is choosing between (it keeps the signed span).
 :root.theme-greenbar .transaction-table__amount--positive .transaction-table__amount-signed::before,
 :root.theme-greenbar .account-card__amount--positive .account-card__amount-signed::before {
   content: '+';
 }
 
-:root.theme-greenbar .transaction-table tbody tr:nth-child(even) td {
-  background: var(--surface-stripe);
+:root.theme-greenbar .base-table {
+  --base-table-row-alt-bg: var(--surface-stripe);
 }

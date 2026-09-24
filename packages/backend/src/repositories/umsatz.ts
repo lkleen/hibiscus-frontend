@@ -1,22 +1,9 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import type {
+  Transaction,
+  TransactionListResponse,
+} from '@hibiscus-frontend/shared/contracts/transactions';
 import { getPool } from '../db/pool';
-
-export interface Transaction {
-  id: number;
-  kontoId: number;
-  empfaengerKonto: string | null;
-  empfaengerBlz: string | null;
-  empfaengerName: string | null;
-  empfaengerName2: string | null;
-  betrag: number;
-  zweck: string | null;
-  zweck2: string | null;
-  zweck3: string | null;
-  datum: string;
-  valuta: string;
-  saldo: number | null;
-  umsatztypId: number | null;
-}
 
 export interface TransactionFilter {
   accountId?: number;
@@ -28,11 +15,6 @@ export interface TransactionFilter {
   q?: string;
   limit: number;
   offset: number;
-}
-
-export interface TransactionListResult {
-  items: Transaction[];
-  total: number;
 }
 
 interface TransactionRow extends RowDataPacket {
@@ -112,7 +94,9 @@ function buildWhereClause(filter: TransactionFilter): WhereClause {
   return { sql, params };
 }
 
-export async function listTransactions(filter: TransactionFilter): Promise<TransactionListResult> {
+export async function listTransactions(
+  filter: TransactionFilter,
+): Promise<TransactionListResponse> {
   const pool = getPool();
   const where = buildWhereClause(filter);
 

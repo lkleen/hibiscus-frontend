@@ -1,0 +1,24 @@
+{
+  "name": "@hibiscus-frontend/shared",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Types-only API contracts shared by backend and frontend (no runtime code, no build step).",
+  "exports": {
+    "./contracts/*": {
+      "types": "./src/contracts/*.d.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "format:fix": "prettier --write src",
+    "format:check": "prettier --check src"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "eslint": "^9.26.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.31.0"
+  }
+}

@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.26.0",
+    "@hibiscus-frontend/shared": "workspace:*",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.15.3",

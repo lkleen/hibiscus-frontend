@@ -10,6 +10,7 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml turbo.json pnpm-lock.yaml ./
 COPY packages/frontend/package.json packages/frontend/
 COPY packages/backend/package.json packages/backend/
+COPY packages/shared/package.json packages/shared/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store,sharing=locked \
     pnpm install --frozen-lockfile --store-dir=/pnpm-store
 
@@ -25,6 +26,9 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.15.1 --activate
 
 COPY packages/backend/package.json ./
+# devDependencies aren't installed here, but pnpm still has to resolve them — and the workspace-only
+# `@hibiscus-frontend/shared` (types, erased at compile time) can't be resolved outside the monorepo.
+RUN node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); delete p.devDependencies; fs.writeFileSync('package.json', JSON.stringify(p, null, 2));"
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store,sharing=locked \
     pnpm install --prod --store-dir=/pnpm-store
 

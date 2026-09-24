@@ -1,0 +1,24 @@
+:host {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+:host(.transaction-table__amount--negative) {
+  color: var(--color-danger);
+}
+
+:host(.transaction-table__amount--positive) {
+  color: var(--color-positive, var(--text-color));
+}
+
+.transaction-table__amount-paren {
+  display: none;
+}
+
+:host(.transaction-table__amount--negative) .transaction-table__amount-paren::before {
+  content: '(';
+}
+
+:host(.transaction-table__amount--negative) .transaction-table__amount-paren::after {
+  content: ')';
+}

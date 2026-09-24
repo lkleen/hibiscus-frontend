@@ -43,66 +43,31 @@
   </div>
 </form>
 
-@if (loading()) {
-  <p class="status-text">{{ i18n.t('transactions.loading') }}</p>
-} @else if (error()) {
-  <p class="status-text status-text--error">{{ i18n.t('transactions.error') }}</p>
-} @else if (items().length === 0) {
-  <p class="status-text">{{ i18n.t('transactions.empty') }}</p>
-} @else {
-  <table class="transaction-table">
-    <thead>
-      <tr>
-        <th scope="col">{{ i18n.t('transactions.colDate') }}</th>
-        <th scope="col">{{ i18n.t('transactions.colAccount') }}</th>
-        <th scope="col">{{ i18n.t('transactions.colCounterparty') }}</th>
-        <th scope="col" class="transaction-table__amount-col">
-          {{ i18n.t('transactions.colAmount') }}
-        </th>
-        <th scope="col">{{ i18n.t('transactions.colCategory') }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      @for (transaction of items(); track transaction.id) {
-        <tr>
-          <td>{{ transaction.date | date: 'yyyy-MM-dd' }}</td>
-          <td>{{ accountsById().get(transaction.accountId)?.name ?? '—' }}</td>
-          <td>
-            <div class="transaction-table__counterparty">{{ transaction.counterparty ?? '—' }}</div>
-            @if (transaction.purpose) {
-              <div class="transaction-table__purpose">{{ transaction.purpose }}</div>
-            }
-          </td>
-          <td
-            class="transaction-table__amount-col"
-            [class.transaction-table__amount--negative]="transaction.amount < 0"
-            [class.transaction-table__amount--positive]="transaction.amount > 0"
-          >
-            <span class="transaction-table__amount-signed">{{
-              transaction.amount | number: '1.2-2' : locale()
-            }}</span>
-            <span class="transaction-table__amount-paren">{{
-              (transaction.amount < 0 ? -transaction.amount : transaction.amount)
-                | number: '1.2-2' : locale()
-            }}</span>
-          </td>
-          <td>
-            <app-category-picker
-              [categories]="categories()"
-              [selectedCategoryId]="transaction.categoryId"
-              (categoryChange)="onCategoryChange(transaction, $event)"
-            />
-            @if (categoryUpdateErrorId() === transaction.id) {
-              <span class="transaction-table__update-error">{{
-                i18n.t('transactions.categoryUpdateError')
-              }}</span>
-            }
-          </td>
-        </tr>
-      }
-    </tbody>
-  </table>
+<app-base-table
+  class="transactions__grid"
+  [columnDefs]="columnDefs()"
+  [defaultColDef]="defaultColDef"
+  [rowData]="items()"
+  [getRowId]="getRowId"
+  [context]="gridContext"
+  [localeText]="localeText()"
+  [loading]="loading()"
+  [suppressNoRowsOverlay]="true"
+  [suppressColumnVirtualisation]="true"
+  [suppressRowVirtualisation]="true"
+  [pagination]="true"
+  [paginationPageSize]="pageSize"
+  [suppressPaginationPanel]="true"
+  domLayout="autoHeight"
+  (gridReady)="onGridReady($event)"
+  (rowDataUpdated)="onRowDataUpdated($event)"
+/>
 
+@if (error()) {
+  <p class="status-text status-text--error">{{ i18n.t('transactions.error') }}</p>
+} @else if (!loading() && items().length === 0) {
+  <p class="status-text">{{ i18n.t('transactions.empty') }}</p>
+} @else if (items().length > 0) {
   <div class="pagination">
     <button type="button" (click)="previousPage()" [disabled]="page() <= 1">
       {{ i18n.t('transactions.previous') }}

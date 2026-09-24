@@ -5,12 +5,11 @@ import { Account } from '../models/account.model';
 import { CreateCategory, Category, UpdateCategory } from '../models/category.model';
 import { Me } from '../models/me.model';
 import { Payee } from '../models/payee.model';
-import {
-  Transaction,
+import type {
+  TransactionListResponse,
   TransactionsQuery,
-  TransactionsResponse,
   UpdateTransactionCategory,
-} from '../models/transaction.model';
+} from '@hibiscus-frontend/shared/contracts/transactions';
 
 /**
  * Thin wrapper around HttpClient for every `/api/*` endpoint documented in
@@ -29,7 +28,7 @@ export class ApiService {
     return this.http.get<Account[]>('/api/accounts');
   }
 
-  getTransactions(query: TransactionsQuery): Observable<TransactionsResponse> {
+  getTransactions(query: TransactionsQuery): Observable<TransactionListResponse> {
     let params = new HttpParams();
     if (query.accountId !== undefined) {
       params = params.set('accountId', query.accountId);
@@ -46,17 +45,13 @@ export class ApiService {
     if (query.q) {
       params = params.set('q', query.q);
     }
-    if (query.page !== undefined) {
-      params = params.set('page', query.page);
-    }
-    if (query.pageSize !== undefined) {
-      params = params.set('pageSize', query.pageSize);
-    }
-    return this.http.get<TransactionsResponse>('/api/transactions', { params });
+    params = params.set('limit', query.limit).set('offset', query.offset);
+    return this.http.get<TransactionListResponse>('/api/transactions', { params });
   }
 
-  updateTransactionCategory(id: number, body: UpdateTransactionCategory): Observable<Transaction> {
-    return this.http.patch<Transaction>(`/api/transactions/${id}`, body);
+  /** The backend answers `204 No Content`; callers apply the change to their own copy of the row. */
+  updateTransactionCategory(id: number, body: UpdateTransactionCategory): Observable<void> {
+    return this.http.patch<void>(`/api/transactions/${id}`, body);
   }
 
   getCategories(): Observable<Category[]> {

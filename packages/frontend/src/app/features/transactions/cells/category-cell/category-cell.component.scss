@@ -1,0 +1,11 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.transaction-table__update-error {
+  display: block;
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  margin-top: 0.25rem;
+}

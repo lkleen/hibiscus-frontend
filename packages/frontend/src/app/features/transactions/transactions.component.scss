@@ -46,81 +46,15 @@
   }
 }
 
-.transaction-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-base);
-  overflow: hidden;
-
-  th,
-  td {
-    padding: 0.6rem 0.75rem;
-    text-align: start;
-    border-bottom: 1px solid var(--surface-border);
-    font-size: var(--text-sm);
-    vertical-align: middle;
-  }
-
-  th {
-    color: var(--text-muted);
-    font-weight: 600;
-    background: var(--surface-subtle);
-  }
-
-  tbody tr:last-child td {
-    border-bottom: none;
-  }
-}
-
-.transaction-table__amount-col {
-  text-align: end;
-  font-variant-numeric: tabular-nums;
-}
-
-.transaction-table__amount--negative {
-  color: var(--color-danger);
-}
-
-.transaction-table__amount--positive {
-  color: var(--color-positive, var(--text-color));
-}
-
-.transaction-table__amount-paren {
-  display: none;
-}
-
-.transaction-table__amount--negative .transaction-table__amount-paren::before {
-  content: '(';
-}
-
-.transaction-table__amount--negative .transaction-table__amount-paren::after {
-  content: ')';
-}
-
-.transaction-table__counterparty {
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.transaction-table__purpose {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.transaction-table__update-error {
-  display: block;
-  color: var(--color-danger);
-  font-size: var(--text-xs);
-  margin-top: 0.25rem;
+// Keeps the grid clear of the filter form above and the status text / pager below.
+.transactions__grid {
+  margin-block-end: 1rem;
 }
 
 .pagination {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-top: 1rem;
 
   button {
     padding: 0.4rem 0.9rem;

@@ -1,0 +1,20 @@
+// Structural rules + the token layer for the ag-Grid theme (see base-table.theme.ts). Each token
+// defaults to a global token, so a theme identity restyles every table by overriding only what it
+// needs, e.g. `:root.theme-foo .base-table { --base-table-row-alt-bg: var(--surface-stripe); }`.
+.base-table {
+  --base-table-bg: var(--surface-card);
+  --base-table-color: var(--text-color);
+  --base-table-border-color: var(--surface-border);
+  --base-table-accent: var(--color-accent);
+  --base-table-header-bg: var(--surface-subtle);
+  --base-table-header-color: var(--text-muted);
+  --base-table-row-alt-bg: transparent;
+  --base-table-row-hover-bg: var(--surface-hover);
+  --base-table-radius: var(--radius-base);
+  --base-table-font-family: var(--font-sans);
+  --base-table-font-size: var(--text-sm);
+  --base-table-cell-padding-x: 0.75rem;
+
+  display: block;
+  inline-size: 100%;
+}

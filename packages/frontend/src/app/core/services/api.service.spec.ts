@@ -36,14 +36,16 @@ describe('ApiService', () => {
   });
 
   it('builds transaction query params, omitting unset filters', () => {
-    service.getTransactions({ accountId: 3, q: 'rent', page: 2, pageSize: 25 }).subscribe();
+    service.getTransactions({ accountId: 3, q: 'rent', limit: 500, offset: 1000 }).subscribe();
 
     const req = httpMock.expectOne((r) => r.url === '/api/transactions');
     expect(req.request.method).toBe('GET');
     expect(req.request.params.get('accountId')).toBe('3');
     expect(req.request.params.get('q')).toBe('rent');
-    expect(req.request.params.get('page')).toBe('2');
-    expect(req.request.params.get('pageSize')).toBe('25');
+    expect(req.request.params.get('limit')).toBe('500');
+    expect(req.request.params.get('offset')).toBe('1000');
+    expect(req.request.params.has('page')).toBe(false);
+    expect(req.request.params.has('pageSize')).toBe(false);
     expect(req.request.params.has('from')).toBe(false);
     expect(req.request.params.has('to')).toBe(false);
     expect(req.request.params.has('categoryId')).toBe(false);
@@ -56,15 +58,7 @@ describe('ApiService', () => {
     const req = httpMock.expectOne('/api/transactions/42');
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ categoryId: 7 });
-    req.flush({
-      id: 42,
-      accountId: 1,
-      date: '2026-09-01',
-      amount: -12.5,
-      purpose: null,
-      counterparty: null,
-      categoryId: 7,
-    });
+    req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
   it('POSTs a new category', () => {

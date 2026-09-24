@@ -1,0 +1,10 @@
+<app-category-picker
+  [categories]="context().categories()"
+  [selectedCategoryId]="row().umsatztypId"
+  (categoryChange)="onCategoryChange($event)"
+/>
+@if (hasUpdateError()) {
+  <span class="transaction-table__update-error">{{
+    i18n.t('transactions.categoryUpdateError')
+  }}</span>
+}

@@ -6,6 +6,11 @@
   no ORM) and the forward-auth middleware. Serves the JSON API under `/api/*` and, in the
   production Docker image, the built frontend as static files.
 - `packages/frontend` — Angular (CDK only, no Material) single-page app that consumes the API.
+  Every table goes through `BaseTableComponent` (`core/components/base-table`), an ag-Grid
+  Community grid that carries the project theme; features use it like `<ag-grid-angular>` and
+  supply their own column definitions and cell renderers.
+- `packages/shared` — types-only API contracts, imported by both packages (see
+  [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
 ## Data model
 
@@ -40,13 +45,36 @@ itself requires authentication too — there is no unauthenticated route in this
 |----------------------------------------|---------------------------------------------|
 | `GET /api/me`                          | Echoes the authenticated identity           |
 | `GET /api/accounts`                    | List `konto` rows                          |
-| `GET /api/transactions`                | Paginated, filterable `umsatz` list (query params: `accountId`, `from`, `to`, `categoryId`, `q`) |
-| `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`      |
+| `GET /api/transactions`                | Filterable `umsatz` list, newest first (`datum DESC, id DESC`), returned as `{ items, total }` (query params: `accountId`, `from`, `to`, `categoryId`, `q`, `limit` ≤ 1000, `offset`) |
+| `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`; answers `204` |
 | `GET /api/categories`                  | `umsatztyp` tree                           |
 | `POST /api/categories`                 | Create a category                          |
 | `PATCH /api/categories/:id`            | Rename / re-parent / recolor a category    |
 | `DELETE /api/categories/:id`           | Delete a category                          |
 | `GET /api/payees`                      | List/search `empfaenger`                   |
+
+### Shared contracts
+
+`packages/shared` declares the transaction request/response types once
+(`@hibiscus-frontend/shared/contracts/transactions`); the backend route and repository and the
+frontend `ApiService` both import them, so the two sides cannot drift apart. They are authored
+as `.d.ts` files, which TypeScript type-checks but never emits, so the package needs no build step
+and the backend's `dist/` layout is unchanged.
+
+The field names of these types mirror the Hibiscus schema (`betrag`, `zweck`, `datum`,
+`umsatztypId`, …) because the DB layout is fixed for compatibility with the desktop client. They
+are an API detail: the UI never displays a field name — every visible label (column headers
+included) comes from the translations.
+
+### Transactions paging
+
+The result is loaded in **chunks**: the frontend requests `limit=500` rows at a time
+(`offset = chunk × 500`) and the ag-Grid client-side row model paginates inside the loaded chunk
+(20 rows per page). The pager shows global pages from `total`; paging past a chunk boundary
+fetches the next chunk, filter changes go back to the first chunk. The server caps `limit` at
+1000 and orders rows deterministically so chunk boundaries are stable. Because the desktop client
+can insert rows between two chunk fetches, a row may occasionally repeat or be skipped at a
+boundary; keyset paging would remove that if it ever matters.
 
 ## Authentication
 
