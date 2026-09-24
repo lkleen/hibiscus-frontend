@@ -80,8 +80,7 @@
               transaction.amount | number: '1.2-2'
             }}</span>
             <span class="transaction-table__amount-paren">{{
-              (transaction.amount < 0 ? -transaction.amount : transaction.amount)
-                | number: '1.2-2'
+              (transaction.amount < 0 ? -transaction.amount : transaction.amount) | number: '1.2-2'
             }}</span>
           </td>
           <td>
