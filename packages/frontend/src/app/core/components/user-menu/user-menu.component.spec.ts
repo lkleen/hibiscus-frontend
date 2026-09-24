@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ThemeService } from '../../services/theme.service';
 import { installLocalStorageMock } from '../../utils/testing/local-storage-mock';
+import { installMutationObserverMock } from '../../utils/testing/mutation-observer-mock';
 import { UserMenuComponent } from './user-menu.component';
 
 describe('UserMenuComponent', () => {
@@ -11,6 +12,7 @@ describe('UserMenuComponent', () => {
 
   beforeEach(() => {
     installLocalStorageMock();
+    installMutationObserverMock();
     document.documentElement.className = 'theme-default';
 
     TestBed.configureTestingModule({
@@ -28,6 +30,7 @@ describe('UserMenuComponent', () => {
   afterEach(() => {
     fixture.destroy();
     httpMock.verify();
+    vi.unstubAllGlobals();
     document.documentElement.className = '';
   });
 
@@ -38,55 +41,62 @@ describe('UserMenuComponent', () => {
     fixture.detectChanges();
   }
 
-  it('renders a theme option for every supported identity', () => {
+  function openThemeSubmenu(): void {
+    openPanel();
+    document.querySelector<HTMLButtonElement>('.user-menu__theme-trigger')?.click();
+    fixture.detectChanges();
+  }
+
+  function themeOptions(): HTMLButtonElement[] {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('.user-menu__theme-option'));
+  }
+
+  it('shows the active theme on the Theme row and keeps the options out of the main menu', () => {
     openPanel();
 
-    const options = document.querySelectorAll<HTMLButtonElement>('.user-menu__theme-option');
-    expect(options.length).toBe(5);
-    expect(Array.from(options).map((o) => o.textContent?.trim())).toEqual([
+    const trigger = document.querySelector<HTMLButtonElement>('.user-menu__theme-trigger');
+    expect(trigger?.textContent).toContain('Theme');
+    expect(trigger?.textContent).toContain('Default');
+    expect(trigger?.getAttribute('aria-haspopup')).toBe('menu');
+    expect(themeOptions().length).toBe(0);
+  });
+
+  it('opens a submenu with a radio option for every supported identity', () => {
+    openThemeSubmenu();
+
+    const options = themeOptions();
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
       'Default',
       'Greenbar',
       'Vault',
       'Private Ledger',
       'Telex',
     ]);
+    expect(options.every((o) => o.getAttribute('role') === 'menuitemradio')).toBe(true);
+    expect(options.map((o) => o.getAttribute('aria-checked'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
   });
 
-  it('clicking a theme option switches the active identity', () => {
+  it('choosing a theme option switches the identity and closes the menu', () => {
     const themeService = TestBed.inject(ThemeService);
-    openPanel();
+    openThemeSubmenu();
 
-    const options = document.querySelectorAll<HTMLButtonElement>('.user-menu__theme-option');
-    const vaultOption = Array.from(options).find((o) => o.textContent?.trim() === 'Vault');
-    vaultOption?.click();
+    themeOptions()
+      .find((o) => o.textContent?.trim() === 'Vault')
+      ?.click();
     fixture.detectChanges();
 
     expect(themeService.currentTheme()).toBe('vault');
-    expect(vaultOption?.getAttribute('aria-pressed')).toBe('true');
-  });
+    expect(themeOptions().length).toBe(0);
 
-  it('renders a dark-mode toggle labeled with the action for the current mode', () => {
     openPanel();
-
-    const toggle = document.querySelector<HTMLButtonElement>('.user-menu__theme-toggle');
-    expect(toggle).not.toBeNull();
-    expect(toggle?.getAttribute('aria-label')).toBe('Switch to dark mode');
-    expect(toggle?.getAttribute('aria-pressed')).toBe('false');
-  });
-
-  it('clicking the toggle switches dark mode without changing the theme identity', () => {
-    const themeService = TestBed.inject(ThemeService);
-    openPanel();
-
-    const toggle = document.querySelector<HTMLButtonElement>('.user-menu__theme-toggle');
-    toggle?.click();
-    fixture.detectChanges();
-
-    expect(themeService.darkMode()).toBe(true);
-    expect(themeService.currentTheme()).toBe('default');
-
-    const toggleAfter = document.querySelector<HTMLButtonElement>('.user-menu__theme-toggle');
-    expect(toggleAfter?.getAttribute('aria-label')).toBe('Switch to light mode');
-    expect(toggleAfter?.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      document.querySelector('.user-menu__theme-trigger .user-menu__item-value')?.textContent,
+    ).toBe('Vault');
   });
 });

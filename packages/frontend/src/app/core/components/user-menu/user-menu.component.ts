@@ -1,18 +1,12 @@
-import { CdkTrapFocus } from '@angular/cdk/a11y';
-import { ESCAPE } from '@angular/cdk/keycodes';
-import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
-import { TemplatePortal } from '@angular/cdk/portal';
+import { CdkMenu, CdkMenuItem, CdkMenuItemRadio, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  TemplateRef,
-  ViewContainerRef,
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ApiService } from '../../services/api.service';
@@ -20,37 +14,32 @@ import { SUPPORTED_THEMES, THEME_LABELS, ThemeName } from '../../models/theme.mo
 import { ThemeService } from '../../services/theme.service';
 
 /**
- * User identity trigger + dropdown, built on `@angular/cdk/overlay` + `@angular/cdk/a11y` per
- * frontend-angular-cdk.md — same "build a small overlay yourself" pattern as
- * CategoryPickerComponent (no Angular Material menu to reach for in this repo).
+ * User identity trigger + menu, built on `@angular/cdk/menu` per frontend-angular-cdk.md (no
+ * Angular Material menu to reach for in this repo). The theme identity is a submenu of radio items.
+ * The CDK menu stack owns focus, keyboard navigation, Escape/outside-click dismissal and the
+ * menuitem* ARIA roles.
  */
 @Component({
   selector: 'app-user-menu',
   templateUrl: './user-menu.component.html',
   styleUrl: './user-menu.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [OverlayModule, CdkTrapFocus],
+  imports: [CdkMenu, CdkMenuItem, CdkMenuItemRadio, CdkMenuTrigger],
 })
 export class UserMenuComponent {
   private readonly api = inject(ApiService);
   private readonly themeService = inject(ThemeService);
-  private readonly overlay = inject(Overlay);
-  private readonly viewContainerRef = inject(ViewContainerRef);
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly user = signal<string | null>(null);
   protected readonly loadError = signal(false);
-  protected readonly isOpen = signal(false);
 
   protected readonly theme = this.themeService.currentTheme;
-  protected readonly darkMode = this.themeService.darkMode;
 
   protected readonly themeOptions: readonly { name: ThemeName; label: string }[] =
     SUPPORTED_THEMES.map((name) => ({ name, label: THEME_LABELS[name] }));
 
-  protected readonly darkModeToggleLabel = computed<string>(() =>
-    this.darkMode() ? 'Switch to light mode' : 'Switch to dark mode',
-  );
+  protected readonly themeLabel = computed<string>(() => THEME_LABELS[this.theme()]);
 
   protected readonly ariaLabel = computed<string>(() => {
     const u = this.user();
@@ -59,10 +48,24 @@ export class UserMenuComponent {
     return 'User menu, loading identity';
   });
 
-  private readonly trigger = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
-  private readonly panelTemplate = viewChild.required<TemplateRef<unknown>>('panelTemplate');
+  /** The trigger sits at the trailing edge of the header, so the menu hangs from its end. */
+  protected readonly panelPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+  ];
 
-  private overlayRef: OverlayRef | null = null;
+  /** Same reason: the flyout opens toward the viewport's interior first, then flips. */
+  protected readonly submenuPositions: ConnectedPosition[] = [
+    {
+      originX: 'start',
+      originY: 'top',
+      overlayX: 'end',
+      overlayY: 'top',
+      offsetX: -2,
+      offsetY: -4,
+    },
+    { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 2, offsetY: -4 },
+  ];
 
   constructor() {
     this.api
@@ -72,58 +75,9 @@ export class UserMenuComponent {
         next: (me) => this.user.set(me.user),
         error: () => this.loadError.set(true),
       });
-
-    this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
   }
 
   protected setTheme(name: ThemeName): void {
     this.themeService.setTheme(name);
-  }
-
-  protected toggleDarkMode(): void {
-    this.themeService.toggleDarkMode();
-  }
-
-  protected toggle(): void {
-    if (this.isOpen()) {
-      this.close();
-    } else {
-      this.openPanel();
-    }
-  }
-
-  private openPanel(): void {
-    const triggerEl = this.trigger();
-    const positionStrategy = this.overlay
-      .position()
-      .flexibleConnectedTo(triggerEl)
-      .withPositions([
-        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
-      ]);
-
-    this.overlayRef = this.overlay.create({
-      positionStrategy,
-      scrollStrategy: this.overlay.scrollStrategies.reposition(),
-      hasBackdrop: true,
-      backdropClass: 'cdk-overlay-transparent-backdrop',
-    });
-
-    this.overlayRef.attach(new TemplatePortal(this.panelTemplate(), this.viewContainerRef));
-    this.isOpen.set(true);
-
-    this.overlayRef.backdropClick().subscribe(() => this.close());
-    this.overlayRef.keydownEvents().subscribe((event) => {
-      if (event.keyCode === ESCAPE) {
-        this.close();
-        triggerEl.nativeElement.focus();
-      }
-    });
-  }
-
-  private close(): void {
-    this.overlayRef?.dispose();
-    this.overlayRef = null;
-    this.isOpen.set(false);
   }
 }

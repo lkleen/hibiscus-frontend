@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { DarkModeToggleComponent } from '../dark-mode-toggle/dark-mode-toggle.component';
 import { UserMenuComponent } from '../user-menu/user-menu.component';
 
 @Component({
@@ -7,6 +8,6 @@ import { UserMenuComponent } from '../user-menu/user-menu.component';
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, RouterLinkActive, UserMenuComponent],
+  imports: [RouterLink, RouterLinkActive, DarkModeToggleComponent, UserMenuComponent],
 })
 export class HeaderComponent {}
