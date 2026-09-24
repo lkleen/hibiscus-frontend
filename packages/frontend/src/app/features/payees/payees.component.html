@@ -1,23 +1,23 @@
-<h1>Payees</h1>
+<h1>{{ i18n.t('payees.title') }}</h1>
 
 <div class="payee-search">
-  <label class="visually-hidden" for="payee-search-input">Search payees</label>
+  <label class="visually-hidden" for="payee-search-input">{{ i18n.t('payees.searchLabel') }}</label>
   <input
     id="payee-search-input"
     class="payee-search__input"
     type="search"
-    placeholder="Search payees by name…"
+    [placeholder]="i18n.t('payees.searchPlaceholder')"
     [value]="searchTerm()"
     (input)="onSearchInput($event)"
   />
 </div>
 
 @if (loading()) {
-  <p class="status-text">Loading payees…</p>
+  <p class="status-text">{{ i18n.t('payees.loading') }}</p>
 } @else if (error()) {
-  <p class="status-text status-text--error">Could not load payees.</p>
+  <p class="status-text status-text--error">{{ i18n.t('payees.error') }}</p>
 } @else if (payees().length === 0) {
-  <p class="status-text">No payees found.</p>
+  <p class="status-text">{{ i18n.t('payees.empty') }}</p>
 } @else {
   <ul class="payee-list">
     @for (payee of payees(); track payee.id) {

@@ -3,6 +3,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { Payee } from '../../core/models/payee.model';
+import { TranslationService } from '../../core/services/translation.service';
 
 @Component({
   selector: 'app-payees',
@@ -12,6 +13,7 @@ import { Payee } from '../../core/models/payee.model';
 })
 export class PayeesComponent {
   private readonly api = inject(ApiService);
+  protected readonly i18n = inject(TranslationService);
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly searchTerm = signal('');

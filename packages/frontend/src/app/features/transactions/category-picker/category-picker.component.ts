@@ -18,6 +18,7 @@ import {
 } from '@angular/core';
 import { Category, CategoryTreeNode } from '../../../core/models/category.model';
 import { buildCategoryTree } from '../../../core/utils/category-tree';
+import { TranslationService } from '../../../core/services/translation.service';
 
 interface FlatCategoryOption {
   category: Category;
@@ -47,6 +48,7 @@ function flattenTree(nodes: readonly CategoryTreeNode[], depth = 0): FlatCategor
   imports: [OverlayModule, CdkTrapFocus],
 })
 export class CategoryPickerComponent {
+  protected readonly i18n = inject(TranslationService);
   private readonly overlay = inject(Overlay);
   private readonly viewContainerRef = inject(ViewContainerRef);
   private readonly destroyRef = inject(DestroyRef);

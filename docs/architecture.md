@@ -107,6 +107,32 @@ paper, all fixed in `auth-demo/Caddyfile` / `docker-compose.auth-demo.yml`:
 
 TLS termination is the proxy's responsibility; this app only ever speaks plain HTTP behind it.
 
+## Internationalization
+
+The frontend ships two locales, `en` and `de`. There is no backend involvement: the API sends no
+localized text, and database content (account, category and payee names, transaction purposes) is
+user data and is shown as-is.
+
+- **URL is the source of truth.** Every route is `/:locale/...`; `LocaleService` mirrors the first
+  URL segment into a `locale` signal and sets `<html lang>`. Bare or unsupported-locale URLs
+  redirect to `/{preferred}/accounts`, where preferred is `de` if `navigator.language` starts with
+  `de`, else `en`. The locale is not persisted separately, so the URL alone decides it.
+- **Dictionaries** live in `packages/frontend/src/i18n/{en,de}.json` and are bundled (imported as
+  JSON, not fetched). `en.json` defines the `TranslationKey` type and `de.json` must satisfy
+  `Record<TranslationKey, string>`, so a key missing in either file is a compile error. A spec also
+  checks that placeholders match across locales.
+- **`TranslationService.t(key, params?)`** resolves `{name}` placeholders and throws on a missing
+  param. It reads the locale signal, so template calls update on language switch.
+- **Number formatting** passes the locale explicitly to `DecimalPipe` (`LOCALE_ID` is fixed at
+  bootstrap and cannot follow a URL change); German locale data is registered in `app.config.ts`.
+  Dates stay ISO (`yyyy-MM-dd`).
+- **Language switcher** is a submenu in the user menu, next to the theme submenu. It swaps the
+  locale segment and keeps path, query params and fragment.
+
+Adding a locale: add it to `SUPPORTED_LOCALES` (`core/models/locale.model.ts`), create its
+dictionary, register it in `DICTIONARIES` (`core/models/translation.model.ts`), register its Angular
+locale data in `app.config.ts`, and add a `locale.<code>` label to every dictionary.
+
 ## Local development
 
 See the root `README.md` for the full setup (including importing a data dump). In short:

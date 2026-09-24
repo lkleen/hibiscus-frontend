@@ -14,6 +14,7 @@ import {
   CategoryTreeItemComponent,
   CategoryUpdateEvent,
 } from './category-tree-item/category-tree-item.component';
+import { TranslationService } from '../../core/services/translation.service';
 
 @Component({
   selector: 'app-categories',
@@ -24,6 +25,7 @@ import {
 })
 export class CategoriesComponent {
   private readonly api = inject(ApiService);
+  protected readonly i18n = inject(TranslationService);
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly categories = signal<Category[]>([]);
@@ -82,7 +84,7 @@ export class CategoriesComponent {
           this.newCategoryParentId.set(null);
           this.reload();
         },
-        error: () => this.saveError.set('Could not create category.'),
+        error: () => this.saveError.set(this.i18n.t('categories.createError')),
       });
   }
 
@@ -93,12 +95,12 @@ export class CategoriesComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => this.reload(),
-        error: () => this.saveError.set('Could not update category.'),
+        error: () => this.saveError.set(this.i18n.t('categories.updateError')),
       });
   }
 
   protected onRemove(id: number): void {
-    if (!confirm('Delete this category? This cannot be undone.')) {
+    if (!confirm(this.i18n.t('categories.confirmDelete'))) {
       return;
     }
     this.saveError.set(null);
@@ -107,7 +109,7 @@ export class CategoriesComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => this.reload(),
-        error: () => this.saveError.set('Could not delete category.'),
+        error: () => this.saveError.set(this.i18n.t('categories.deleteError')),
       });
   }
 }

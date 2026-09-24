@@ -1,7 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { registerLocaleData } from '@angular/common';
+import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { LocaleService } from '../../core/services/locale.service';
 import { TransactionsComponent } from './transactions.component';
+
+registerLocaleData(localeDe);
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,5 +85,39 @@ describe('TransactionsComponent', () => {
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('No transactions match these filters.');
+  });
+
+  it('renders labels and amounts in the active locale', async () => {
+    TestBed.inject(LocaleService).locale.set('de');
+    fixture.detectChanges();
+
+    httpMock.expectOne('/api/accounts').flush([]);
+    httpMock.expectOne('/api/categories').flush([]);
+
+    await wait(250);
+    fixture.detectChanges();
+
+    httpMock
+      .expectOne((r) => r.url === '/api/transactions')
+      .flush({
+        items: [
+          {
+            id: 1,
+            accountId: 1,
+            date: '2026-09-01',
+            amount: -1234.5,
+            purpose: null,
+            counterparty: 'Supermarkt',
+            categoryId: null,
+          },
+        ],
+        total: 1,
+      });
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Umsätze');
+    expect(text).toContain('-1.234,50');
+    expect(text).toContain('Seite 1 von 1 (1 insgesamt)');
   });
 });

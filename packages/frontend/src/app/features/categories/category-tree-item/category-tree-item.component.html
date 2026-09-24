@@ -8,7 +8,7 @@
       [value]="node().color ?? '#94a3b8'"
     />
     <select #parentSelect class="tree-item__parent-select" [value]="parentSelectValue()">
-      <option value="">No parent (root)</option>
+      <option value="">{{ i18n.t('categories.noParent') }}</option>
       @for (candidate of selectableParents(); track candidate.id) {
         <option [value]="candidate.id.toString()">{{ candidate.name }}</option>
       }
@@ -18,9 +18,11 @@
       class="tree-item__btn tree-item__btn--primary"
       (click)="save(nameInput.value, colorInput.value, parentSelect.value)"
     >
-      Save
+      {{ i18n.t('categoryTree.save') }}
     </button>
-    <button type="button" class="tree-item__btn" (click)="cancelEdit()">Cancel</button>
+    <button type="button" class="tree-item__btn" (click)="cancelEdit()">
+      {{ i18n.t('categoryTree.cancel') }}
+    </button>
   } @else {
     <span
       class="tree-item__swatch"
@@ -29,16 +31,18 @@
     ></span>
     <span class="tree-item__name">{{ node().name }}</span>
     <div class="tree-item__actions">
-      <button type="button" class="tree-item__btn" (click)="startEdit()">Edit</button>
+      <button type="button" class="tree-item__btn" (click)="startEdit()">
+        {{ i18n.t('categoryTree.edit') }}
+      </button>
       <button type="button" class="tree-item__btn" (click)="addChild.emit(node().id)">
-        Add subcategory
+        {{ i18n.t('categoryTree.addChild') }}
       </button>
       <button
         type="button"
         class="tree-item__btn tree-item__btn--danger"
         (click)="remove.emit(node().id)"
       >
-        Delete
+        {{ i18n.t('categoryTree.delete') }}
       </button>
     </div>
   }

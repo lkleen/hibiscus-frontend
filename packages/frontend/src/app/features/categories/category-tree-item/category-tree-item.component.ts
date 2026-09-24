@@ -1,5 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { Category, CategoryTreeNode, UpdateCategory } from '../../../core/models/category.model';
+import { TranslationService } from '../../../core/services/translation.service';
 
 export interface CategoryUpdateEvent {
   id: number;
@@ -26,6 +35,8 @@ function collectDescendantIds(node: CategoryTreeNode): Set<number> {
   imports: [CategoryTreeItemComponent],
 })
 export class CategoryTreeItemComponent {
+  protected readonly i18n = inject(TranslationService);
+
   readonly node = input.required<CategoryTreeNode>();
   readonly allCategories = input.required<Category[]>();
   readonly depth = input(0);

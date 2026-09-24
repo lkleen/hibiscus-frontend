@@ -7,11 +7,3 @@ export const SUPPORTED_THEMES: readonly ThemeName[] = [
   'private',
   'telex',
 ];
-
-export const THEME_LABELS: Record<ThemeName, string> = {
-  default: 'Default',
-  greenbar: 'Greenbar',
-  vault: 'Vault',
-  private: 'Private Ledger',
-  telex: 'Telex',
-};

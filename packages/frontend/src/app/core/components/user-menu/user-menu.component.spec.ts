@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { LocaleService } from '../../services/locale.service';
 import { ThemeService } from '../../services/theme.service';
 import { installLocalStorageMock } from '../../utils/testing/local-storage-mock';
 import { installMutationObserverMock } from '../../utils/testing/mutation-observer-mock';
@@ -98,5 +99,61 @@ describe('UserMenuComponent', () => {
     expect(
       document.querySelector('.user-menu__theme-trigger .user-menu__item-value')?.textContent,
     ).toBe('Vault');
+  });
+
+  describe('language', () => {
+    function openLanguageSubmenu(): void {
+      openPanel();
+      document.querySelector<HTMLButtonElement>('.user-menu__language-trigger')?.click();
+      fixture.detectChanges();
+    }
+
+    function languageOptions(): HTMLButtonElement[] {
+      return Array.from(
+        document.querySelectorAll<HTMLButtonElement>('.user-menu__language-option'),
+      );
+    }
+
+    it('shows the active language on the Language row', () => {
+      openPanel();
+
+      const trigger = document.querySelector<HTMLButtonElement>('.user-menu__language-trigger');
+      expect(trigger?.textContent).toContain('Language');
+      expect(trigger?.textContent).toContain('English');
+    });
+
+    it('lists every supported locale by its own name, with the active one checked', () => {
+      openLanguageSubmenu();
+
+      const options = languageOptions();
+      expect(options.map((o) => o.textContent?.trim())).toEqual(['English', 'Deutsch']);
+      expect(options.map((o) => o.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+    });
+
+    it('choosing a language asks LocaleService to switch and closes the menu', () => {
+      const setLocale = vi.spyOn(TestBed.inject(LocaleService), 'setLocale').mockReturnValue();
+      openLanguageSubmenu();
+
+      languageOptions()
+        .find((o) => o.textContent?.trim() === 'Deutsch')
+        ?.click();
+      fixture.detectChanges();
+
+      expect(setLocale).toHaveBeenCalledWith('de');
+      expect(languageOptions().length).toBe(0);
+    });
+
+    it('re-renders its labels in the active locale', () => {
+      TestBed.inject(LocaleService).locale.set('de');
+      fixture.detectChanges();
+
+      openPanel();
+
+      const trigger = document.querySelector<HTMLButtonElement>('.user-menu__language-trigger');
+      expect(trigger?.textContent).toContain('Sprache');
+      expect(document.querySelector('.user-menu__identity')?.textContent).toContain(
+        'Angemeldet als lars@kleen.email',
+      );
+    });
   });
 });

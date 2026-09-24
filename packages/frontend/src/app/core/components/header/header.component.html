@@ -3,27 +3,16 @@
     <span class="header__brand-name">Hibiscus</span>
   </div>
 
-  <nav class="header__nav" aria-label="Main navigation">
-    <a class="header__nav-link" routerLink="/accounts" routerLinkActive="header__nav-link--active">
-      Accounts
-    </a>
-    <a
-      class="header__nav-link"
-      routerLink="/transactions"
-      routerLinkActive="header__nav-link--active"
-    >
-      Transactions
-    </a>
-    <a
-      class="header__nav-link"
-      routerLink="/categories"
-      routerLinkActive="header__nav-link--active"
-    >
-      Categories
-    </a>
-    <a class="header__nav-link" routerLink="/payees" routerLinkActive="header__nav-link--active">
-      Payees
-    </a>
+  <nav class="header__nav" [attr.aria-label]="i18n.t('nav.main')">
+    @for (link of navLinks; track link.path) {
+      <a
+        class="header__nav-link"
+        [routerLink]="['/', locale(), link.path]"
+        routerLinkActive="header__nav-link--active"
+      >
+        {{ i18n.t(link.labelKey) }}
+      </a>
+    }
   </nav>
 
   <div class="header__actions">

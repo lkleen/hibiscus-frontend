@@ -21,13 +21,15 @@
 </button>
 
 <ng-template #panelTemplate>
-  <div class="user-menu__panel" cdkMenu aria-label="User menu">
+  <div class="user-menu__panel" cdkMenu [attr.aria-label]="i18n.t('userMenu.panelLabel')">
     @if (user(); as u) {
-      <span class="user-menu__identity">Logged in as {{ u }}</span>
+      <span class="user-menu__identity">{{ i18n.t('userMenu.loggedInAs', { user: u }) }}</span>
     } @else if (loadError()) {
-      <span class="user-menu__identity user-menu__identity--error">Could not load identity</span>
+      <span class="user-menu__identity user-menu__identity--error">{{
+        i18n.t('userMenu.identityError')
+      }}</span>
     } @else {
-      <span class="user-menu__identity">Loading identity…</span>
+      <span class="user-menu__identity">{{ i18n.t('userMenu.identityLoading') }}</span>
     }
 
     <div class="user-menu__separator" role="separator"></div>
@@ -53,24 +55,49 @@
           <path d="m15 6-6 6 6 6" />
         </svg>
       </span>
-      <span class="user-menu__item-label">Theme</span>
-      <span class="user-menu__item-value">{{ themeLabel() }}</span>
+      <span class="user-menu__item-label">{{ i18n.t('userMenu.theme') }}</span>
+      <span class="user-menu__item-value">{{ themeLabel(theme()) }}</span>
+    </button>
+
+    <button
+      type="button"
+      class="user-menu__item user-menu__language-trigger"
+      cdkMenuItem
+      [cdkMenuTriggerFor]="languageMenu"
+      [cdkMenuPosition]="submenuPositions"
+    >
+      <span class="user-menu__item-lead">
+        <svg
+          class="user-menu__glyph"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m15 6-6 6 6 6" />
+        </svg>
+      </span>
+      <span class="user-menu__item-label">{{ i18n.t('userMenu.language') }}</span>
+      <span class="user-menu__item-value">{{ localeLabel(locale()) }}</span>
     </button>
   </div>
 </ng-template>
 
 <ng-template #themeMenu>
-  <div class="user-menu__panel" cdkMenu aria-label="Theme">
-    @for (option of themeOptions; track option.name) {
+  <div class="user-menu__panel" cdkMenu [attr.aria-label]="i18n.t('userMenu.theme')">
+    @for (option of themeOptions; track option) {
       <button
         type="button"
         class="user-menu__item user-menu__theme-option"
         cdkMenuItemRadio
-        [cdkMenuItemChecked]="theme() === option.name"
-        (cdkMenuItemTriggered)="setTheme(option.name)"
+        [cdkMenuItemChecked]="theme() === option"
+        (cdkMenuItemTriggered)="setTheme(option)"
       >
         <span class="user-menu__item-lead">
-          @if (theme() === option.name) {
+          @if (theme() === option) {
             <svg
               class="user-menu__glyph user-menu__glyph--check"
               viewBox="0 0 24 24"
@@ -85,7 +112,39 @@
             </svg>
           }
         </span>
-        <span class="user-menu__item-label">{{ option.label }}</span>
+        <span class="user-menu__item-label">{{ themeLabel(option) }}</span>
+      </button>
+    }
+  </div>
+</ng-template>
+
+<ng-template #languageMenu>
+  <div class="user-menu__panel" cdkMenu [attr.aria-label]="i18n.t('userMenu.language')">
+    @for (option of localeOptions; track option) {
+      <button
+        type="button"
+        class="user-menu__item user-menu__language-option"
+        cdkMenuItemRadio
+        [cdkMenuItemChecked]="locale() === option"
+        (cdkMenuItemTriggered)="setLocale(option)"
+      >
+        <span class="user-menu__item-lead">
+          @if (locale() === option) {
+            <svg
+              class="user-menu__glyph user-menu__glyph--check"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m5 12.5 4.5 4.5L19 7.5" />
+            </svg>
+          }
+        </span>
+        <span class="user-menu__item-label">{{ localeLabel(option) }}</span>
       </button>
     }
   </div>

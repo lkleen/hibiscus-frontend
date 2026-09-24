@@ -1,10 +1,10 @@
-<h1>Transactions</h1>
+<h1>{{ i18n.t('transactions.title') }}</h1>
 
 <form class="filters" (submit)="$event.preventDefault()">
   <div class="filters__field">
-    <label for="filter-account">Account</label>
+    <label for="filter-account">{{ i18n.t('transactions.filterAccount') }}</label>
     <select id="filter-account" (change)="onAccountChange($event)">
-      <option value="">All accounts</option>
+      <option value="">{{ i18n.t('transactions.allAccounts') }}</option>
       @for (account of accounts(); track account.id) {
         <option [value]="account.id.toString()">{{ account.name }}</option>
       }
@@ -12,19 +12,19 @@
   </div>
 
   <div class="filters__field">
-    <label for="filter-from">From</label>
+    <label for="filter-from">{{ i18n.t('transactions.filterFrom') }}</label>
     <input id="filter-from" type="date" [value]="from()" (change)="onFromChange($event)" />
   </div>
 
   <div class="filters__field">
-    <label for="filter-to">To</label>
+    <label for="filter-to">{{ i18n.t('transactions.filterTo') }}</label>
     <input id="filter-to" type="date" [value]="to()" (change)="onToChange($event)" />
   </div>
 
   <div class="filters__field">
-    <label for="filter-category">Category</label>
+    <label for="filter-category">{{ i18n.t('transactions.filterCategory') }}</label>
     <select id="filter-category" (change)="onCategoryFilterChange($event)">
-      <option value="">All categories</option>
+      <option value="">{{ i18n.t('transactions.allCategories') }}</option>
       @for (category of categories(); track category.id) {
         <option [value]="category.id.toString()">{{ category.name }}</option>
       }
@@ -32,11 +32,11 @@
   </div>
 
   <div class="filters__field filters__field--grow">
-    <label for="filter-search">Search</label>
+    <label for="filter-search">{{ i18n.t('transactions.filterSearch') }}</label>
     <input
       id="filter-search"
       type="search"
-      placeholder="Purpose or counterparty…"
+      [placeholder]="i18n.t('transactions.searchPlaceholder')"
       [value]="q()"
       (input)="onSearchInput($event)"
     />
@@ -44,20 +44,22 @@
 </form>
 
 @if (loading()) {
-  <p class="status-text">Loading transactions…</p>
+  <p class="status-text">{{ i18n.t('transactions.loading') }}</p>
 } @else if (error()) {
-  <p class="status-text status-text--error">Could not load transactions.</p>
+  <p class="status-text status-text--error">{{ i18n.t('transactions.error') }}</p>
 } @else if (items().length === 0) {
-  <p class="status-text">No transactions match these filters.</p>
+  <p class="status-text">{{ i18n.t('transactions.empty') }}</p>
 } @else {
   <table class="transaction-table">
     <thead>
       <tr>
-        <th scope="col">Date</th>
-        <th scope="col">Account</th>
-        <th scope="col">Counterparty / purpose</th>
-        <th scope="col" class="transaction-table__amount-col">Amount</th>
-        <th scope="col">Category</th>
+        <th scope="col">{{ i18n.t('transactions.colDate') }}</th>
+        <th scope="col">{{ i18n.t('transactions.colAccount') }}</th>
+        <th scope="col">{{ i18n.t('transactions.colCounterparty') }}</th>
+        <th scope="col" class="transaction-table__amount-col">
+          {{ i18n.t('transactions.colAmount') }}
+        </th>
+        <th scope="col">{{ i18n.t('transactions.colCategory') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -77,10 +79,11 @@
             [class.transaction-table__amount--positive]="transaction.amount > 0"
           >
             <span class="transaction-table__amount-signed">{{
-              transaction.amount | number: '1.2-2'
+              transaction.amount | number: '1.2-2' : locale()
             }}</span>
             <span class="transaction-table__amount-paren">{{
-              (transaction.amount < 0 ? -transaction.amount : transaction.amount) | number: '1.2-2'
+              (transaction.amount < 0 ? -transaction.amount : transaction.amount)
+                | number: '1.2-2' : locale()
             }}</span>
           </td>
           <td>
@@ -90,7 +93,9 @@
               (categoryChange)="onCategoryChange(transaction, $event)"
             />
             @if (categoryUpdateErrorId() === transaction.id) {
-              <span class="transaction-table__update-error">Could not save category</span>
+              <span class="transaction-table__update-error">{{
+                i18n.t('transactions.categoryUpdateError')
+              }}</span>
             }
           </td>
         </tr>
@@ -99,10 +104,20 @@
   </table>
 
   <div class="pagination">
-    <button type="button" (click)="previousPage()" [disabled]="page() <= 1">Previous</button>
+    <button type="button" (click)="previousPage()" [disabled]="page() <= 1">
+      {{ i18n.t('transactions.previous') }}
+    </button>
     <span class="pagination__status">
-      Page {{ page() }} of {{ totalPages() }} ({{ total() }} total)
+      {{
+        i18n.t('transactions.pagination', {
+          page: page(),
+          totalPages: totalPages(),
+          total: total(),
+        })
+      }}
     </span>
-    <button type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Next</button>
+    <button type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">
+      {{ i18n.t('transactions.next') }}
+    </button>
   </div>
 }

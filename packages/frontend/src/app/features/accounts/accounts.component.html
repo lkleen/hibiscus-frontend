@@ -1,11 +1,11 @@
-<h1>Accounts</h1>
+<h1>{{ i18n.t('accounts.title') }}</h1>
 
 @if (loading()) {
-  <p class="status-text">Loading accounts…</p>
+  <p class="status-text">{{ i18n.t('accounts.loading') }}</p>
 } @else if (error()) {
-  <p class="status-text status-text--error">Could not load accounts.</p>
+  <p class="status-text status-text--error">{{ i18n.t('accounts.error') }}</p>
 } @else if (accounts().length === 0) {
-  <p class="status-text">No accounts found.</p>
+  <p class="status-text">{{ i18n.t('accounts.empty') }}</p>
 } @else {
   <ul class="account-list">
     @for (account of accounts(); track account.id) {
@@ -24,10 +24,11 @@
               [class.account-card__amount--positive]="account.balance > 0"
             >
               <span class="account-card__amount-signed">{{
-                account.balance | number: '1.2-2'
+                account.balance | number: '1.2-2' : locale()
               }}</span>
               <span class="account-card__amount-paren">{{
-                (account.balance < 0 ? -account.balance : account.balance) | number: '1.2-2'
+                (account.balance < 0 ? -account.balance : account.balance)
+                  | number: '1.2-2' : locale()
               }}</span>
               {{ account.currency }}
             </span>

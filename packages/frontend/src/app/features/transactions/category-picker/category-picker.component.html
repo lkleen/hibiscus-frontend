@@ -11,7 +11,9 @@
     [style.background]="selectedCategory()?.color ?? 'transparent'"
     aria-hidden="true"
   ></span>
-  <span class="category-picker__label">{{ selectedCategory()?.name ?? 'Uncategorized' }}</span>
+  <span class="category-picker__label">{{
+    selectedCategory()?.name ?? i18n.t('categoryPicker.uncategorized')
+  }}</span>
 </button>
 
 <ng-template #panelTemplate>
@@ -20,7 +22,7 @@
     cdkTrapFocus
     cdkTrapFocusAutoCapture
     role="listbox"
-    aria-label="Choose category"
+    [attr.aria-label]="i18n.t('categoryPicker.choose')"
   >
     <button
       type="button"
@@ -30,7 +32,7 @@
       [attr.aria-selected]="selectedCategoryId() === null"
       (click)="select(null)"
     >
-      Uncategorized
+      {{ i18n.t('categoryPicker.uncategorized') }}
     </button>
     @for (option of flatOptions(); track option.category.id) {
       <button

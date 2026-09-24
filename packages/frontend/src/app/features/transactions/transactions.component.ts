@@ -14,6 +14,8 @@ import { Account } from '../../core/models/account.model';
 import { Category } from '../../core/models/category.model';
 import { Transaction, TransactionsQuery } from '../../core/models/transaction.model';
 import { CategoryPickerComponent } from './category-picker/category-picker.component';
+import { LocaleService } from '../../core/services/locale.service';
+import { TranslationService } from '../../core/services/translation.service';
 
 const PAGE_SIZE = 20;
 
@@ -30,6 +32,8 @@ function sameQuery(a: TransactionsQuery, b: TransactionsQuery): boolean {
 })
 export class TransactionsComponent {
   private readonly api = inject(ApiService);
+  protected readonly i18n = inject(TranslationService);
+  protected readonly locale = inject(LocaleService).locale;
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly pageSize = PAGE_SIZE;

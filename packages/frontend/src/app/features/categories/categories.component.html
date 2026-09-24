@@ -1,18 +1,23 @@
-<h1>Categories</h1>
+<h1>{{ i18n.t('categories.title') }}</h1>
 
 <form class="new-category" (submit)="$event.preventDefault()">
   <div class="new-category__field">
-    <label for="new-category-name">Name</label>
-    <input #nameInput id="new-category-name" type="text" placeholder="Category name" />
+    <label for="new-category-name">{{ i18n.t('categories.name') }}</label>
+    <input
+      #nameInput
+      id="new-category-name"
+      type="text"
+      [placeholder]="i18n.t('categories.namePlaceholder')"
+    />
   </div>
   <div class="new-category__field">
-    <label for="new-category-color">Color</label>
+    <label for="new-category-color">{{ i18n.t('categories.color') }}</label>
     <input #colorInput id="new-category-color" type="color" value="#2f6f4f" />
   </div>
   <div class="new-category__field">
-    <label for="new-category-parent">Parent</label>
+    <label for="new-category-parent">{{ i18n.t('categories.parent') }}</label>
     <select #parentSelect id="new-category-parent" [value]="newCategoryParentValue()">
-      <option value="">No parent (root)</option>
+      <option value="">{{ i18n.t('categories.noParent') }}</option>
       @for (category of categories(); track category.id) {
         <option [value]="category.id.toString()">{{ category.name }}</option>
       }
@@ -23,7 +28,7 @@
     class="new-category__submit"
     (click)="onCreate(nameInput.value, colorInput.value, parentSelect.value); nameInput.value = ''"
   >
-    Add category
+    {{ i18n.t('categories.add') }}
   </button>
 </form>
 
@@ -32,11 +37,11 @@
 }
 
 @if (loading()) {
-  <p class="status-text">Loading categories…</p>
+  <p class="status-text">{{ i18n.t('categories.loading') }}</p>
 } @else if (error()) {
-  <p class="status-text status-text--error">Could not load categories.</p>
+  <p class="status-text status-text--error">{{ i18n.t('categories.error') }}</p>
 } @else if (tree().length === 0) {
-  <p class="status-text">No categories yet.</p>
+  <p class="status-text">{{ i18n.t('categories.empty') }}</p>
 } @else {
   <ul class="category-tree">
     @for (node of tree(); track node.id) {
