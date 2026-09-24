@@ -27,12 +27,6 @@
   </nav>
 
   <div class="header__actions">
-    @if (user(); as u) {
-      <span class="header__identity">Logged in as {{ u }}</span>
-    } @else if (loadError()) {
-      <span class="header__identity header__identity--error">Could not load identity</span>
-    } @else {
-      <span class="header__identity header__identity--pending" aria-hidden="true"></span>
-    }
+    <app-user-menu />
   </div>
 </header>

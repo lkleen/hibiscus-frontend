@@ -61,13 +61,3 @@
   gap: 0.5rem;
   margin-inline-start: auto;
 }
-
-.header__identity {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  white-space: nowrap;
-
-  &--error {
-    color: var(--color-danger);
-  }
-}

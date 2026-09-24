@@ -1,0 +1,52 @@
+<button
+  #trigger
+  type="button"
+  class="user-menu__trigger"
+  (click)="toggle()"
+  [attr.aria-label]="ariaLabel()"
+  [attr.aria-expanded]="isOpen()"
+  aria-haspopup="true"
+>
+  <svg
+    class="user-menu__icon"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M4.5 19.5c1.5-3.5 4.5-5.5 7.5-5.5s6 2 7.5 5.5" />
+  </svg>
+</button>
+
+<ng-template #panelTemplate>
+  <div class="user-menu__panel" cdkTrapFocus cdkTrapFocusAutoCapture tabindex="-1">
+    @if (user(); as u) {
+      <span class="user-menu__identity">Logged in as {{ u }}</span>
+    } @else if (loadError()) {
+      <span class="user-menu__identity user-menu__identity--error">Could not load identity</span>
+    } @else {
+      <span class="user-menu__identity">Loading identity…</span>
+    }
+
+    <div class="user-menu__section">
+      <span class="user-menu__section-label" id="user-menu-theme-label">Theme</span>
+      <div class="user-menu__theme-toggle" role="group" aria-labelledby="user-menu-theme-label">
+        @for (name of themes; track name) {
+          <button
+            type="button"
+            class="user-menu__theme-option"
+            [class.user-menu__theme-option--active]="theme() === name"
+            [attr.aria-pressed]="theme() === name"
+            (click)="selectTheme(name)"
+          >
+            {{ themeLabels[name] }}
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+</ng-template>

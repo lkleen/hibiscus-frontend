@@ -1,0 +1,6 @@
+// Light theme — names the tokens already defined as :root defaults in tokens.scss (that block
+// was already a deliberately designed light theme; naming it is the only change needed here).
+// No token overrides: omitted tokens fall back to :root per the multi-theme contract.
+:root.theme-light {
+  color-scheme: light;
+}

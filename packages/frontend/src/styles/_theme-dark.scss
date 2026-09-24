@@ -1,0 +1,37 @@
+// Dark theme — palette designed via the frontend-design skill (continuation of the light theme's
+// muted forest-green accent identity, dark-text-on-accent buttons for AA contrast on a brighter
+// dark-mode accent). Every token here was checked against WCAG 2.1 AA (>=4.5:1 body text,
+// >=3:1 large text / UI boundaries). Omitted tokens fall back to :root defaults in tokens.scss.
+:root.theme-dark {
+  color-scheme: dark;
+
+  // Surfaces
+  --surface-ground: #14181a;
+  --surface-section: #1c2225;
+  --surface-card: #1c2225;
+  --surface-overlay: #1c2225;
+  --surface-border: #63727b;
+  --surface-hover: #242c30;
+  --surface-subtle: #242c30;
+
+  // Text
+  --text-color: #e8ebec;
+  --text-muted: #9aa6ab;
+  --text-on-accent: #14181a;
+
+  // Accent
+  --color-accent: #5fb98c;
+  --color-accent-hover: #74c89b;
+  --color-accent-subtle: #17281f;
+
+  // Semantic
+  --color-danger: #e5645c;
+  --color-danger-subtle: #2e1615;
+
+  // Scrim & backdrop
+  --color-scrim: rgba(0, 0, 0, 0.6);
+
+  // Depth & motion
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.55);
+}

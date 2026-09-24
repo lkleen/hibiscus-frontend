@@ -42,3 +42,7 @@ In addition to `@../claude-config/checklist.md`:
 - **Never publish the app's port in a Compose file.** Only a fronting proxy service may publish a
   port; the app itself stays on an internal Docker network in every shipped Compose file.
 - Keep `docs/architecture.md` in sync when the data model, routes, or auth contract change.
+- **Theming**: two named themes only, `light` and `dark` — see `ThemeService`
+  (`packages/frontend/src/app/core/services/theme.service.ts`). No separate `.dark-mode` axis
+  exists or is needed: `dark` IS this app's dark mode. Each theme sets `color-scheme` directly for
+  native form-control rendering.

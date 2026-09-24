@@ -1,4 +1,6 @@
 @use './styles/tokens';
+@use './styles/theme-light';
+@use './styles/theme-dark';
 
 * {
   box-sizing: border-box;
