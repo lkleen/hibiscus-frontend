@@ -3,7 +3,9 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import type { Transaction } from '@hibiscus-frontend/shared/contracts/transactions';
+import { BaseTableComponent } from '../../core/components/base-table/base-table.component';
 import { LocaleService } from '../../core/services/locale.service';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
 import { transaction } from './testing/transaction-fixture';
@@ -97,7 +99,8 @@ describe('TransactionsComponent', () => {
       [
         transaction({
           empfaengerName: 'Supermarket',
-          zweck: 'Weekly shop',
+          zweck: 'Direct debit',
+          zweck3: 'Weekly shop',
           umsatztypId: 1,
         }),
       ],
@@ -107,10 +110,47 @@ describe('TransactionsComponent', () => {
     expect(root.querySelectorAll('.ag-row').length).toBe(1);
     const text = root.textContent ?? '';
     expect(text).toContain('Supermarket');
+    expect(text).toContain('Direct debit');
     expect(text).toContain('Weekly shop');
     expect(text).toContain('Checking');
     expect(text).toContain('Groceries');
     expect(text).toContain('2026-09-01');
+  });
+
+  it('shows a dash in the text columns a transaction has no value for', async () => {
+    start();
+
+    await expectTransactionsRequest(
+      [transaction({ empfaengerName: null, zweck: '', zweck3: null })],
+      1,
+    );
+
+    const dashes = Array.from(root.querySelectorAll('.ag-cell')).filter(
+      (cell) => cell.textContent?.trim() === '—',
+    );
+    // Account (unknown here), recipient, type and purpose all fall back to the dash.
+    expect(dashes.length).toBe(4);
+  });
+
+  it("sizes the columns with ag-Grid's autoSizeStrategy, not fixed widths", async () => {
+    start();
+    await expectTransactionsRequest([transaction()], 1);
+
+    const table = fixture.debugElement.query(By.directive(BaseTableComponent))
+      .componentInstance as BaseTableComponent<Transaction>;
+
+    expect(table.api.getGridOption('autoSizeStrategy')).toMatchObject({
+      type: 'fitCellContents',
+      continuous: true,
+    });
+    const columnDefs = table.api.getGridOption('columnDefs') ?? [];
+    expect(columnDefs.length).toBe(7);
+    for (const def of columnDefs) {
+      expect(def).not.toHaveProperty('width');
+      expect(def).not.toHaveProperty('flex');
+      expect(def).not.toHaveProperty('minWidth');
+      expect(def).not.toHaveProperty('maxWidth');
+    }
   });
 
   it('shows an empty state when there are no matching transactions', async () => {
@@ -141,7 +181,9 @@ describe('TransactionsComponent', () => {
     expect(headers).toEqual([
       'Datum',
       'Konto',
-      'Gegenpartei / Verwendungszweck',
+      'Empfänger',
+      'Typ',
+      'Verwendungszweck',
       'Betrag',
       'Kategorie',
     ]);

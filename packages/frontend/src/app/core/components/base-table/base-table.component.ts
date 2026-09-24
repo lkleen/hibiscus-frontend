@@ -15,6 +15,7 @@ import {
 import {
   CellStyleModule,
   ClientSideRowModelModule,
+  ColumnAutoSizeModule,
   LocaleModule,
   ModuleRegistry,
   PaginationModule,
@@ -30,6 +31,7 @@ ModuleRegistry.registerModules([
   RowAutoHeightModule,
   LocaleModule,
   CellStyleModule,
+  ColumnAutoSizeModule,
 ]);
 
 // Turns cryptic `error #<n>` grid messages (e.g. an unregistered module) into readable ones. Only

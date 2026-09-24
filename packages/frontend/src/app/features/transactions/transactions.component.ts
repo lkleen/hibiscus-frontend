@@ -18,6 +18,7 @@ import type {
   GridApi,
   GridReadyEvent,
   RowDataUpdatedEvent,
+  SizeColumnsToContentStrategy,
   ValueFormatterParams,
   ValueGetterParams,
 } from 'ag-grid-community';
@@ -29,7 +30,6 @@ import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { AmountCellComponent } from './cells/amount-cell/amount-cell.component';
 import { CategoryCellComponent } from './cells/category-cell/category-cell.component';
-import { DescriptionCellComponent } from './cells/description-cell/description-cell.component';
 import type { TransactionsGridContext } from './cells/transactions-grid-context';
 
 /** Rows per grid page. */
@@ -44,6 +44,13 @@ const PAGES_PER_CHUNK = CHUNK_SIZE / PAGE_SIZE;
 
 function sameQuery(a: TransactionsQuery, b: TransactionsQuery): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Empty text columns show a dash, like the other tables in the app. */
+function textOrDash(params: ValueFormatterParams<Transaction, string | null>): string {
+  return params.value === null || params.value === undefined || params.value.trim() === ''
+    ? '—'
+    : params.value;
 }
 
 function requireRow(data: Transaction | undefined): Transaction {
@@ -113,9 +120,16 @@ export class TransactionsComponent {
     // Only one chunk of the result is loaded, so sorting or filtering in the grid would mislead;
     // ordering and filtering are the API's job.
     sortable: false,
-    resizable: false,
     suppressMovable: true,
     suppressHeaderMenuButton: true,
+  };
+
+  // ag-Grid sizes each column to its content, then scales up to fill the grid, and re-fits when the
+  // data, the columns (e.g. a language switch changes the headers) or the grid width change.
+  protected readonly autoSizeStrategy: SizeColumnsToContentStrategy = {
+    type: 'fitCellContents',
+    scaleUpToFitGridWidth: true,
+    continuous: true,
   };
 
   // Header labels come from the translations, never from the (German, DB-mirroring) field names.
@@ -125,8 +139,6 @@ export class TransactionsComponent {
       {
         field: 'datum',
         headerName: this.i18n.t('transactions.colDate'),
-        minWidth: 110,
-        maxWidth: 130,
         // The API sends ISO strings; taking the date part avoids any timezone conversion.
         valueFormatter: (params: ValueFormatterParams<Transaction, string>): string => {
           if (params.value === null || params.value === undefined) {
@@ -137,31 +149,33 @@ export class TransactionsComponent {
       },
       {
         headerName: this.i18n.t('transactions.colAccount'),
-        flex: 1,
-        minWidth: 140,
         valueGetter: (params: ValueGetterParams<Transaction>): string =>
           accounts.get(requireRow(params.data).kontoId)?.name ?? '—',
       },
       {
-        headerName: this.i18n.t('transactions.colCounterparty'),
-        flex: 3,
-        minWidth: 260,
-        autoHeight: true,
-        cellRenderer: DescriptionCellComponent,
+        field: 'empfaengerName',
+        headerName: this.i18n.t('transactions.colRecipient'),
+        valueFormatter: textOrDash,
+      },
+      {
+        field: 'zweck',
+        headerName: this.i18n.t('transactions.colType'),
+        valueFormatter: textOrDash,
+      },
+      {
+        field: 'zweck3',
+        headerName: this.i18n.t('transactions.colPurpose'),
+        valueFormatter: textOrDash,
       },
       {
         field: 'betrag',
         headerName: this.i18n.t('transactions.colAmount'),
         type: 'rightAligned',
-        flex: 1,
-        minWidth: 120,
         cellRenderer: AmountCellComponent,
       },
       {
         field: 'umsatztypId',
         headerName: this.i18n.t('transactions.colCategory'),
-        flex: 2,
-        minWidth: 180,
         autoHeight: true,
         cellRenderer: CategoryCellComponent,
       },
