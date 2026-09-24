@@ -4,17 +4,27 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import type { Transaction } from '@hibiscus-frontend/shared/contracts/transactions';
+import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
+import type { GridApi } from 'ag-grid-community';
 import { BaseTableComponent } from '../../core/components/base-table/base-table.component';
+import type { Category } from '../../core/models/category.model';
 import { LocaleService } from '../../core/services/locale.service';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
-import { transaction } from './testing/transaction-fixture';
+import type { TransactionsGridContext } from './cells/transactions-grid-context';
+import { account, transaction } from './testing/transaction-fixture';
 import { TransactionsComponent } from './transactions.component';
 
 registerLocaleData(localeDe);
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface Loaded {
+  accounts?: AccountRow[];
+  categories?: Category[];
+  items?: TransactionRow[];
 }
 
 describe('TransactionsComponent', () => {
@@ -47,65 +57,41 @@ describe('TransactionsComponent', () => {
     fixture.detectChanges();
   }
 
-  /** Starts the component and answers the initial accounts/categories requests. */
-  function start(accounts: unknown[] = [], categories: unknown[] = []): void {
+  /** Starts the component, answers its three requests and lets the grid render. */
+  async function load({ accounts = [], categories = [], items = [] }: Loaded = {}): Promise<void> {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush(accounts);
     httpMock.expectOne('/api/categories').flush(categories);
-  }
-
-  /** The transaction query is debounced (200ms) behind a signal->observable bridge. */
-  async function expectTransactionsRequest(
-    items: Transaction[],
-    total: number,
-  ): Promise<{ limit: string | null; offset: string | null; q: string | null }> {
-    await wait(250);
-    fixture.detectChanges();
-    const req = httpMock.expectOne((r) => r.url === '/api/transactions');
-    const params = {
-      limit: req.request.params.get('limit'),
-      offset: req.request.params.get('offset'),
-      q: req.request.params.get('q'),
-    };
-    req.flush({ items, total });
+    httpMock.expectOne('/api/transactions').flush(items);
     await settle();
-    return params;
   }
 
-  function pagerText(): string {
+  function grid(): GridApi<TransactionRow> {
     return (
-      root.querySelector('.pagination__status')?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-    );
+      fixture.debugElement.query(By.directive(BaseTableComponent))
+        .componentInstance as BaseTableComponent<TransactionRow>
+    ).api;
   }
 
-  function clickPager(label: 'Previous' | 'Next', times = 1): void {
-    const button = Array.from(root.querySelectorAll<HTMLButtonElement>('.pagination button')).find(
-      (b) => b.textContent?.trim() === label,
-    );
-    if (!button) throw new Error(`pager button "${label}" not rendered`);
-    for (let i = 0; i < times; i++) {
-      button.click();
-      fixture.detectChanges();
-    }
+  function displayedIds(): number[] {
+    const ids: number[] = [];
+    grid().forEachNodeAfterFilterAndSort((node) => ids.push(node.data?.id ?? -1));
+    return ids;
   }
 
-  it('renders the transactions returned by the API', async () => {
-    start(
-      [{ id: 1, name: 'Checking', iban: null, currency: 'EUR', balance: 100 }],
-      [{ id: 1, name: 'Groceries', parentId: null, color: '#2f6f4f' }],
-    );
-
-    await expectTransactionsRequest(
-      [
+  it('renders the transactions, with their account and category resolved', async () => {
+    await load({
+      accounts: [account({ id: 1, bezeichnung: 'Checking' })],
+      categories: [{ id: 1, name: 'Groceries', parentId: null, color: '#2f6f4f' }],
+      items: [
         transaction({
-          empfaengerName: 'Supermarket',
+          empfaenger_name: 'Supermarket',
           zweck: 'Direct debit',
           zweck3: 'Weekly shop',
-          umsatztypId: 1,
+          umsatztyp_id: 1,
         }),
       ],
-      1,
-    );
+    });
 
     expect(root.querySelectorAll('.ag-row').length).toBe(1);
     const text = root.textContent ?? '';
@@ -117,34 +103,28 @@ describe('TransactionsComponent', () => {
     expect(text).toContain('2026-09-01');
   });
 
-  it('shows a dash in the text columns a transaction has no value for', async () => {
-    start();
-
-    await expectTransactionsRequest(
-      [transaction({ empfaengerName: null, zweck: '', zweck3: null })],
-      1,
-    );
+  it('shows a dash in the columns a transaction has no value for', async () => {
+    await load({ items: [transaction({ empfaenger_name: null, zweck: '', zweck3: null })] });
 
     const dashes = Array.from(root.querySelectorAll('.ag-cell')).filter(
       (cell) => cell.textContent?.trim() === '—',
     );
-    // Account (unknown here), recipient, type and purpose all fall back to the dash.
-    expect(dashes.length).toBe(4);
+    // The four account columns (account unknown here) and every text column without a value fall
+    // back to the dash: recipient name/account/bank, the three purposes, booking type, transaction
+    // code, end-to-end id, balance.
+    expect(dashes.length).toBe(14);
   });
 
   it("sizes the columns with ag-Grid's autoSizeStrategy, not fixed widths", async () => {
-    start();
-    await expectTransactionsRequest([transaction()], 1);
+    await load({ items: [transaction()] });
 
-    const table = fixture.debugElement.query(By.directive(BaseTableComponent))
-      .componentInstance as BaseTableComponent<Transaction>;
-
-    expect(table.api.getGridOption('autoSizeStrategy')).toMatchObject({
+    expect(grid().getGridOption('autoSizeStrategy')).toMatchObject({
       type: 'fitCellContents',
       continuous: true,
     });
-    const columnDefs = table.api.getGridOption('columnDefs') ?? [];
-    expect(columnDefs.length).toBe(7);
+    const columnDefs = grid().getGridOption('columnDefs') ?? [];
+    // 18 shown columns plus the hidden `id` that only breaks sorting ties.
+    expect(columnDefs.length).toBe(19);
     for (const def of columnDefs) {
       expect(def).not.toHaveProperty('width');
       expect(def).not.toHaveProperty('flex');
@@ -153,81 +133,162 @@ describe('TransactionsComponent', () => {
     }
   });
 
-  it('shows an empty state when there are no matching transactions', async () => {
-    start();
-
-    await expectTransactionsRequest([], 0);
+  it('shows an empty state when there are no transactions', async () => {
+    await load();
 
     expect(root.textContent).toContain('No transactions match these filters.');
     expect(root.querySelectorAll('.ag-row').length).toBe(0);
   });
 
-  it('renders labels and amounts in the active locale', async () => {
+  it('renders labels, amounts, filters and the pager in the active locale', async () => {
     TestBed.inject(LocaleService).locale.set('de');
-    start();
-
-    await expectTransactionsRequest(
-      [transaction({ empfaengerName: 'Supermarkt', betrag: -1234.5 })],
-      1,
-    );
+    await load({ items: [transaction({ empfaenger_name: 'Supermarkt', betrag: -1234.5 })] });
 
     const text = root.textContent ?? '';
     expect(text).toContain('Umsätze');
     expect(text).toContain('-1.234,50');
-    expect(text).toContain('Seite 1 von 1 (1 insgesamt)');
+    expect(text).toContain('Seite');
     const headers = Array.from(root.querySelectorAll('.ag-header-cell-text')).map((h) =>
       h.textContent?.trim(),
     );
     expect(headers).toEqual([
       'Datum',
-      'Konto',
+      'Valuta',
+      'Kontoinhaber',
+      'Konto-BIC',
+      'Kontonummer',
+      'Kontobezeichnung',
       'Empfänger',
-      'Typ',
-      'Verwendungszweck',
+      'Empfängerkonto',
+      'Empfänger-BIC/BLZ',
+      'Verwendungszweck 1',
+      'Verwendungszweck 2',
+      'Verwendungszweck 3',
+      'Buchungsart',
+      'Geschäftsvorfallcode',
+      'Ende-zu-Ende-Referenz',
       'Betrag',
+      'Saldo',
       'Kategorie',
     ]);
+    const pager: string = root.querySelector('.ag-paging-panel')?.textContent ?? '';
+    expect(pager).toContain('Seitengröße:');
+    expect(pager.replace(/\s+/g, ' ')).toContain('1 bis 1 von 1');
+    expect(root.querySelectorAll('.ag-floating-filter').length).toBeGreaterThan(0);
   });
 
-  it('pages inside a loaded chunk without another request', async () => {
-    start();
-    const first = await expectTransactionsRequest([transaction()], 1000);
+  it('loads every row with one request and pages inside the grid', async () => {
+    const items: TransactionRow[] = Array.from({ length: 45 }, (_, i) =>
+      transaction({ id: i + 1, datum: '2026-01-01' }),
+    );
+    await load({ items });
 
-    expect(first).toMatchObject({ limit: '500', offset: '0' });
-    expect(pagerText()).toBe('Page 1 of 50 (1000 total)');
-
-    clickPager('Next');
-    await wait(250);
-    httpMock.expectNone((r) => r.url === '/api/transactions');
-
-    expect(pagerText()).toBe('Page 2 of 50 (1000 total)');
+    expect(root.querySelectorAll('.ag-row').length).toBe(20);
+    expect(grid().paginationGetTotalPages()).toBe(3);
+    expect(grid().paginationGetRowCount()).toBe(45);
   });
 
-  it('fetches the next chunk when paging past the loaded one', async () => {
-    start();
-    await expectTransactionsRequest([transaction()], 1000);
+  it('gives a negative balance the same theme-driven amount styling as the amount', async () => {
+    await load({ items: [transaction({ betrag: -5, saldo: -101.95 })] });
 
-    clickPager('Next', 25);
-
-    const second = await expectTransactionsRequest([transaction({ id: 501 })], 1000);
-    expect(second).toMatchObject({ limit: '500', offset: '500' });
-    expect(pagerText()).toBe('Page 26 of 50 (1000 total)');
+    for (const colId of ['betrag', 'saldo']) {
+      const cell = root.querySelector(`.ag-cell[col-id="${colId}"] app-transaction-amount-cell`);
+      expect(cell?.classList).toContain('transaction-table__amount--negative');
+    }
   });
 
-  it('goes back to the first page and chunk when a filter changes', async () => {
-    start();
-    await expectTransactionsRequest([transaction()], 1000);
-    clickPager('Next', 25);
-    await expectTransactionsRequest([transaction({ id: 501 })], 1000);
+  it('sorts the newest booking first, ties broken by the newest id', async () => {
+    await load({
+      items: [
+        transaction({ id: 1, datum: '2026-01-01' }),
+        transaction({ id: 2, datum: '2026-03-01' }),
+        transaction({ id: 3, datum: '2026-03-01' }),
+      ],
+    });
+
+    expect(displayedIds()).toEqual([3, 2, 1]);
+  });
+
+  it('sorts by a column when the user asks the grid to', async () => {
+    await load({
+      items: [
+        transaction({ id: 1, betrag: 5 }),
+        transaction({ id: 2, betrag: -20 }),
+        transaction({ id: 3, betrag: 12 }),
+      ],
+    });
+
+    const header = root.querySelector<HTMLElement>(
+      '.ag-header-cell[col-id="betrag"] .ag-header-cell-label',
+    );
+    if (!header) throw new Error('amount column header not rendered');
+    header.click();
+    await settle();
+    expect(displayedIds()).toEqual([2, 1, 3]);
+  });
+
+  it('filters with the quick filter over every column, including the account', async () => {
+    await load({
+      accounts: [
+        account({ id: 1, bezeichnung: 'Checking' }),
+        account({ id: 2, bezeichnung: 'Savings' }),
+      ],
+      items: [
+        transaction({ id: 1, konto_id: 1, zweck: 'rent' }),
+        transaction({ id: 2, konto_id: 1, zweck3: 'RENT for the garage' }),
+        transaction({ id: 3, konto_id: 2, zweck: 'groceries' }),
+      ],
+    });
 
     const search = root.querySelector<HTMLInputElement>('#filter-search');
     if (!search) throw new Error('search field not rendered');
     search.value = 'rent';
     search.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    await settle();
+    expect(displayedIds().sort()).toEqual([1, 2]);
 
-    const filtered = await expectTransactionsRequest([transaction({ id: 2 })], 30);
-    expect(filtered).toMatchObject({ limit: '500', offset: '0', q: 'rent' });
-    expect(pagerText()).toBe('Page 1 of 2 (30 total)');
+    search.value = 'savings';
+    search.dispatchEvent(new Event('input'));
+    await settle();
+    expect(displayedIds()).toEqual([3]);
+  });
+
+  it('filters a column by its own value, dates included', async () => {
+    await load({
+      items: [
+        transaction({ id: 1, datum: '2026-01-15' }),
+        transaction({ id: 2, datum: '2026-02-15' }),
+        transaction({ id: 3, datum: '2026-03-15' }),
+      ],
+    });
+
+    grid().setFilterModel({
+      datum: { filterType: 'date', type: 'greaterThan', dateFrom: '2026-02-01 00:00:00' },
+    });
+
+    expect(displayedIds().sort()).toEqual([2, 3]);
+  });
+
+  it('saves a changed category and applies it to the row the grid holds, staying on the page', async () => {
+    const items: TransactionRow[] = Array.from({ length: 45 }, (_, i) =>
+      transaction({ id: i + 1, datum: '2026-01-01' }),
+    );
+    await load({
+      categories: [{ id: 7, name: 'Groceries', parentId: null, color: '#2f6f4f' }],
+      items,
+    });
+    grid().paginationGoToPage(1);
+    await settle();
+
+    const context = grid().getGridOption('context') as TransactionsGridContext;
+    context.changeCategory(20, 7);
+    const req = httpMock.expectOne('/api/transactions/20');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ categoryId: 7 });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+
+    expect(grid().getRowNode('20')?.data?.umsatztyp_id).toBe(7);
+    expect(grid().paginationGetCurrentPage()).toBe(1);
   });
 });

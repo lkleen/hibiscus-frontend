@@ -23,7 +23,7 @@ describe('CategoryCellComponent', () => {
 
     TestBed.configureTestingModule({ imports: [CategoryCellComponent] });
     fixture = TestBed.createComponent(CategoryCellComponent);
-    fixture.componentInstance.agInit(cellParams(transaction({ id: 42, umsatztypId: 7 }), context));
+    fixture.componentInstance.agInit(cellParams(transaction({ id: 42, umsatztyp_id: 7 }), context));
     fixture.detectChanges();
   });
 

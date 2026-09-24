@@ -3,61 +3,66 @@ import {
   Component,
   DestroyRef,
   computed,
-  effect,
   inject,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import type {
-  Transaction,
-  TransactionsQuery,
-} from '@hibiscus-frontend/shared/contracts/transactions';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import type {
   ColDef,
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
-  RowDataUpdatedEvent,
   SizeColumnsToContentStrategy,
   ValueFormatterParams,
   ValueGetterParams,
 } from 'ag-grid-community';
-import { catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { BaseTableComponent } from '../../core/components/base-table/base-table.component';
-import { Account } from '../../core/models/account.model';
 import { Category } from '../../core/models/category.model';
+import type { TranslationKey } from '../../core/models/translation.model';
 import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { gridLocaleText } from '../../core/utils/grid-locale-text';
 import { AmountCellComponent } from './cells/amount-cell/amount-cell.component';
 import { CategoryCellComponent } from './cells/category-cell/category-cell.component';
 import type { TransactionsGridContext } from './cells/transactions-grid-context';
 
 /** Rows per grid page. */
 const PAGE_SIZE = 20;
-/**
- * Rows fetched from the API at once. The grid paginates within the loaded chunk; the next chunk is
- * fetched when the user pages past it. A multiple of PAGE_SIZE so a chunk never ends mid-page, and
- * well below the backend's per-response cap.
- */
-const CHUNK_SIZE = 500;
-const PAGES_PER_CHUNK = CHUNK_SIZE / PAGE_SIZE;
-
-function sameQuery(a: TransactionsQuery, b: TransactionsQuery): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
 
 /** Empty text columns show a dash, like the other tables in the app. */
-function textOrDash(params: ValueFormatterParams<Transaction, string | null>): string {
+function textOrDash(params: ValueFormatterParams<TransactionRow, string | null>): string {
   return params.value === null || params.value === undefined || params.value.trim() === ''
     ? '—'
     : params.value;
 }
 
-function requireRow(data: Transaction | undefined): Transaction {
+function requireRow(data: TransactionRow | undefined): TransactionRow {
   if (!data) throw new Error('transactions grid row has no data');
   return data;
 }
 
+/** The `konto` columns shown next to every transaction (looked up through `konto_id`). */
+type AccountField = 'name' | 'bic' | 'kontonummer' | 'bezeichnung';
+
+/** Text columns of the `umsatz` row, shown exactly as stored. */
+type TextField =
+  | 'empfaenger_name'
+  | 'empfaenger_konto'
+  | 'empfaenger_blz'
+  | 'zweck'
+  | 'zweck2'
+  | 'zweck3'
+  | 'art'
+  | 'gvcode'
+  | 'endtoendid';
+
+/**
+ * The transactions table. The API serves every `umsatz` row as stored, all of them in one response;
+ * sorting, filtering (column filters and the quick filter) and paging are ag-Grid's, on the loaded
+ * rows. See the `transactions-table` skill.
+ */
 @Component({
   selector: 'app-transactions',
   templateUrl: './transactions.component.html',
@@ -72,43 +77,24 @@ export class TransactionsComponent {
 
   protected readonly pageSize = PAGE_SIZE;
 
-  protected readonly accounts = signal<Account[]>([]);
+  protected readonly accounts = signal<AccountRow[]>([]);
   protected readonly categories = signal<Category[]>([]);
-
-  protected readonly accountId = signal<number | null>(null);
-  protected readonly from = signal('');
-  protected readonly to = signal('');
-  protected readonly categoryId = signal<number | null>(null);
+  /** Fed to ag-Grid's quick filter, which matches every column. */
   protected readonly q = signal('');
-  /** 1-based page over the whole result, not over the loaded chunk. */
-  protected readonly page = signal(1);
 
-  protected readonly items = signal<Transaction[]>([]);
-  protected readonly total = signal(0);
+  protected readonly items = signal<TransactionRow[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal(false);
   protected readonly categoryUpdateErrorId = signal<number | null>(null);
 
-  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.total() / PAGE_SIZE)));
-  protected readonly accountsById = computed(
+  private readonly accountsById = computed(
     () => new Map(this.accounts().map((account) => [account.id, account])),
   );
+  private readonly categoriesById = computed(
+    () => new Map(this.categories().map((category) => [category.id, category])),
+  );
 
-  private readonly chunk = computed(() => Math.floor((this.page() - 1) / PAGES_PER_CHUNK));
-  private readonly pageInChunk = computed(() => (this.page() - 1) % PAGES_PER_CHUNK);
-
-  // Depends on the chunk, not the page: paging inside a loaded chunk must not refetch.
-  private readonly query = computed<TransactionsQuery>(() => ({
-    accountId: this.accountId() ?? undefined,
-    from: this.from() || undefined,
-    to: this.to() || undefined,
-    categoryId: this.categoryId() ?? undefined,
-    q: this.q() || undefined,
-    limit: CHUNK_SIZE,
-    offset: this.chunk() * CHUNK_SIZE,
-  }));
-
-  private readonly gridApi = signal<GridApi<Transaction> | undefined>(undefined);
+  private readonly gridApi = signal<GridApi<TransactionRow> | undefined>(undefined);
 
   protected readonly gridContext: TransactionsGridContext = {
     categories: this.categories,
@@ -116,10 +102,9 @@ export class TransactionsComponent {
     changeCategory: (transactionId, categoryId) => this.onCategoryChange(transactionId, categoryId),
   };
 
-  protected readonly defaultColDef: ColDef<Transaction> = {
-    // Only one chunk of the result is loaded, so sorting or filtering in the grid would mislead;
-    // ordering and filtering are the API's job.
-    sortable: false,
+  protected readonly defaultColDef: ColDef<TransactionRow> = {
+    filter: true,
+    floatingFilter: true,
     suppressMovable: true,
     suppressHeaderMenuButton: true,
   };
@@ -133,60 +118,91 @@ export class TransactionsComponent {
   };
 
   // Header labels come from the translations, never from the (German, DB-mirroring) field names.
-  protected readonly columnDefs = computed<ColDef<Transaction>[]>(() => {
-    const accounts: Map<number, Account> = this.accountsById();
+  // Every meaningful `umsatz` column is shown as stored; ids are resolved to what they identify
+  // (the account's own columns, the category picker). The `initialSort`s only apply when a column
+  // is created, so a later columnDefs update (accounts loading) keeps the user's sorting.
+  protected readonly columnDefs = computed<ColDef<TransactionRow>[]>(() => {
+    const accounts: Map<number, AccountRow> = this.accountsById();
+    const categories: Map<number, Category> = this.categoriesById();
+    const text = (field: TextField, label: TranslationKey): ColDef<TransactionRow> => ({
+      field,
+      headerName: this.i18n.t(label),
+      cellDataType: 'text',
+      valueFormatter: textOrDash,
+    });
+    // Not a column of `umsatz`: the value comes from the transaction's account (`konto_id`), which
+    // may still be loading — then it shows the dash.
+    const account = (field: AccountField, label: TranslationKey): ColDef<TransactionRow> => ({
+      colId: `konto.${field}`,
+      headerName: this.i18n.t(label),
+      cellDataType: 'text',
+      valueGetter: (params: ValueGetterParams<TransactionRow>): string | null =>
+        accounts.get(requireRow(params.data).konto_id)?.[field] ?? null,
+      valueFormatter: textOrDash,
+    });
     return [
+      // Not shown: only the tie-break of the initial sort (newest booking first).
+      { field: 'id', initialHide: true, initialSort: 'desc', initialSortIndex: 1, filter: false },
       {
         field: 'datum',
         headerName: this.i18n.t('transactions.colDate'),
-        // The API sends ISO strings; taking the date part avoids any timezone conversion.
-        valueFormatter: (params: ValueFormatterParams<Transaction, string>): string => {
-          if (params.value === null || params.value === undefined) {
-            throw new Error('transaction without datum');
-          }
-          return params.value.slice(0, 10);
-        },
+        cellDataType: 'dateString',
+        initialSort: 'desc',
+        initialSortIndex: 0,
       },
       {
-        headerName: this.i18n.t('transactions.colAccount'),
-        valueGetter: (params: ValueGetterParams<Transaction>): string =>
-          accounts.get(requireRow(params.data).kontoId)?.name ?? '—',
+        field: 'valuta',
+        headerName: this.i18n.t('transactions.colValuta'),
+        cellDataType: 'dateString',
       },
-      {
-        field: 'empfaengerName',
-        headerName: this.i18n.t('transactions.colRecipient'),
-        valueFormatter: textOrDash,
-      },
-      {
-        field: 'zweck',
-        headerName: this.i18n.t('transactions.colType'),
-        valueFormatter: textOrDash,
-      },
-      {
-        field: 'zweck3',
-        headerName: this.i18n.t('transactions.colPurpose'),
-        valueFormatter: textOrDash,
-      },
+      account('name', 'transactions.colAccountHolder'),
+      account('bic', 'transactions.colAccountBic'),
+      account('kontonummer', 'transactions.colAccountNumber'),
+      account('bezeichnung', 'transactions.colAccountLabel'),
+      text('empfaenger_name', 'transactions.colRecipient'),
+      text('empfaenger_konto', 'transactions.colRecipientAccount'),
+      text('empfaenger_blz', 'transactions.colRecipientBank'),
+      text('zweck', 'transactions.colPurpose1'),
+      text('zweck2', 'transactions.colPurpose2'),
+      text('zweck3', 'transactions.colPurpose3'),
+      text('art', 'transactions.colBookingType'),
+      text('gvcode', 'transactions.colTransactionCode'),
+      text('endtoendid', 'transactions.colEndToEndId'),
       {
         field: 'betrag',
         headerName: this.i18n.t('transactions.colAmount'),
         type: 'rightAligned',
+        cellDataType: 'number',
         cellRenderer: AmountCellComponent,
       },
       {
-        field: 'umsatztypId',
+        field: 'saldo',
+        headerName: this.i18n.t('transactions.colBalance'),
+        type: 'rightAligned',
+        cellDataType: 'number',
+        cellRenderer: AmountCellComponent,
+      },
+      {
+        // The cell shows the category picker; sorting and filtering work on the category's name.
+        colId: 'category',
         headerName: this.i18n.t('transactions.colCategory'),
+        cellDataType: 'text',
         autoHeight: true,
+        valueGetter: (params: ValueGetterParams<TransactionRow>): string | null => {
+          const categoryId: number | null = requireRow(params.data).umsatztyp_id;
+          return categoryId === null ? null : (categories.get(categoryId)?.name ?? null);
+        },
         cellRenderer: CategoryCellComponent,
       },
     ];
   });
 
   protected readonly localeText = computed<Record<string, string>>(() => ({
+    ...gridLocaleText(this.i18n),
     loadingOoo: this.i18n.t('transactions.loading'),
   }));
 
-  protected readonly getRowId = (params: GetRowIdParams<Transaction>): string =>
+  protected readonly getRowId = (params: GetRowIdParams<TransactionRow>): string =>
     String(params.data.id);
 
   constructor() {
@@ -200,79 +216,27 @@ export class TransactionsComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((categories) => this.categories.set(categories));
 
-    toObservable(this.query)
-      .pipe(
-        debounceTime(200),
-        distinctUntilChanged(sameQuery),
-        switchMap((query) => {
-          this.loading.set(true);
-          this.error.set(false);
-          return this.api.getTransactions(query).pipe(
-            catchError(() => {
-              this.error.set(true);
-              return of({ items: [], total: 0 });
-            }),
-          );
-        }),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((response) => {
-        this.items.set(response.items);
-        this.total.set(response.total);
-        this.loading.set(false);
+    this.api
+      .getTransactions()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (items) => {
+          this.items.set(items);
+          this.loading.set(false);
+        },
+        error: () => {
+          this.error.set(true);
+          this.loading.set(false);
+        },
       });
-
-    // Paging inside the loaded chunk: the grid's own pagination does the work.
-    effect(() => {
-      const api: GridApi<Transaction> | undefined = this.gridApi();
-      const target: number = this.pageInChunk();
-      api?.paginationGoToPage(target);
-    });
   }
 
-  protected onGridReady(event: GridReadyEvent<Transaction>): void {
+  protected onGridReady(event: GridReadyEvent<TransactionRow>): void {
     this.gridApi.set(event.api);
-  }
-
-  // The grid falls back to its first page whenever its row data is replaced (a new chunk, or a row
-  // updated after a category change), so restore the page the user is on.
-  protected onRowDataUpdated(event: RowDataUpdatedEvent<Transaction>): void {
-    event.api.paginationGoToPage(this.pageInChunk());
-  }
-
-  protected onAccountChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    this.accountId.set(value ? Number(value) : null);
-    this.page.set(1);
-  }
-
-  protected onCategoryFilterChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    this.categoryId.set(value ? Number(value) : null);
-    this.page.set(1);
-  }
-
-  protected onFromChange(event: Event): void {
-    this.from.set((event.target as HTMLInputElement).value);
-    this.page.set(1);
-  }
-
-  protected onToChange(event: Event): void {
-    this.to.set((event.target as HTMLInputElement).value);
-    this.page.set(1);
   }
 
   protected onSearchInput(event: Event): void {
     this.q.set((event.target as HTMLInputElement).value);
-    this.page.set(1);
-  }
-
-  protected previousPage(): void {
-    this.page.update((p) => Math.max(1, p - 1));
-  }
-
-  protected nextPage(): void {
-    this.page.update((p) => Math.min(this.totalPages(), p + 1));
   }
 
   private onCategoryChange(transactionId: number, categoryId: number | null): void {
@@ -281,13 +245,18 @@ export class TransactionsComponent {
       .updateTransactionCategory(transactionId, { categoryId })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        // The backend answers 204, so apply the change to the row we hold. If the user has since
-        // moved to another chunk the row is gone and this is a no-op.
-        next: () =>
-          this.items.update((items) =>
-            items.map((t) => (t.id === transactionId ? { ...t, umsatztypId: categoryId } : t)),
-          ),
+        next: () => this.applyCategory(transactionId, categoryId),
         error: () => this.categoryUpdateErrorId.set(transactionId),
       });
+  }
+
+  // The backend answers 204, so the change is applied to the row the grid holds. A transaction
+  // update (not new `rowData`) keeps the user's page, sorting and filters, and re-evaluates them.
+  private applyCategory(transactionId: number, categoryId: number | null): void {
+    const api: GridApi<TransactionRow> | undefined = this.gridApi();
+    if (!api) throw new Error('transactions grid is not ready');
+    const row: TransactionRow | undefined = api.getRowNode(String(transactionId))?.data;
+    if (!row) throw new Error(`transaction ${transactionId} is not in the grid`);
+    api.applyTransaction({ update: [{ ...row, umsatztyp_id: categoryId }] });
   }
 }

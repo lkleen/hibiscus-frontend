@@ -31,8 +31,8 @@ describe('TranslationService', () => {
   it('fills placeholders from params', async () => {
     await router.navigateByUrl('/en/accounts');
 
-    expect(service.t('transactions.pagination', { page: 2, totalPages: 5, total: 93 })).toBe(
-      'Page 2 of 5 (93 total)',
+    expect(service.t('userMenu.triggerLoggedIn', { user: 'lars' })).toBe(
+      'User menu, logged in as lars',
     );
   });
 

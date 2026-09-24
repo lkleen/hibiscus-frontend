@@ -11,26 +11,25 @@
     @for (account of accounts(); track account.id) {
       <li class="account-card">
         <div class="account-card__main">
-          <span class="account-card__name">{{ account.name }}</span>
+          <span class="account-card__name">{{ account.bezeichnung ?? account.name }}</span>
           @if (account.iban) {
             <span class="account-card__iban">{{ account.iban }}</span>
           }
         </div>
         <div class="account-card__balance">
-          @if (account.balance !== null) {
+          @if (account.saldo !== null) {
             <span
               class="account-card__amount"
-              [class.account-card__amount--negative]="account.balance < 0"
-              [class.account-card__amount--positive]="account.balance > 0"
+              [class.account-card__amount--negative]="account.saldo < 0"
+              [class.account-card__amount--positive]="account.saldo > 0"
             >
               <span class="account-card__amount-signed">{{
-                account.balance | number: '1.2-2' : locale()
+                account.saldo | number: '1.2-2' : locale()
               }}</span>
               <span class="account-card__amount-paren">{{
-                (account.balance < 0 ? -account.balance : account.balance)
-                  | number: '1.2-2' : locale()
+                (account.saldo < 0 ? -account.saldo : account.saldo) | number: '1.2-2' : locale()
               }}</span>
-              {{ account.currency }}
+              {{ account.waehrung }}
             </span>
           } @else {
             <span class="account-card__amount account-card__amount--unknown">—</span>

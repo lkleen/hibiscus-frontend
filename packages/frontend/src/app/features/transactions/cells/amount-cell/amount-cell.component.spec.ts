@@ -2,7 +2,7 @@ import { registerLocaleData } from '@angular/common';
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LocaleService } from '../../../../core/services/locale.service';
-import { cellParams, transaction } from '../../testing/transaction-fixture';
+import { cellParams, gridContext, transaction } from '../../testing/transaction-fixture';
 import { AmountCellComponent } from './amount-cell.component';
 
 registerLocaleData(localeDe);
@@ -17,8 +17,8 @@ describe('AmountCellComponent', () => {
     host = fixture.nativeElement as HTMLElement;
   });
 
-  function render(betrag: number): void {
-    fixture.componentInstance.agInit(cellParams(transaction({ betrag })));
+  function render(value: number | null): void {
+    fixture.componentInstance.agInit(cellParams(transaction(), gridContext(), value));
     fixture.detectChanges();
   }
 
@@ -50,12 +50,20 @@ describe('AmountCellComponent', () => {
     expect(host.classList).not.toContain('transaction-table__amount--positive');
   });
 
+  it('renders a dash for a missing value, e.g. a transaction without a balance', () => {
+    render(null);
+
+    expect(host.textContent?.trim()).toBe('—');
+    expect(host.querySelector('.transaction-table__amount-signed')).toBeNull();
+    expect(host.classList).not.toContain('transaction-table__amount--negative');
+  });
+
   it('follows the active locale and updates on refresh', () => {
     TestBed.inject(LocaleService).locale.set('de');
     render(-1234.5);
     expect(text('.transaction-table__amount-signed')).toBe('-1.234,50');
 
-    fixture.componentInstance.refresh(cellParams(transaction({ betrag: 99 })));
+    fixture.componentInstance.refresh(cellParams(transaction(), gridContext(), 99));
     fixture.detectChanges();
     expect(text('.transaction-table__amount-signed')).toBe('99,00');
   });

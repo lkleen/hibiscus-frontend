@@ -1,18 +1,19 @@
 import { signal } from '@angular/core';
-import type { Transaction } from '@hibiscus-frontend/shared/contracts/transactions';
+import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import type { Category } from '../../../core/models/category.model';
 import type { TransactionCellParams } from '../cells/transaction-cell';
 import type { TransactionsGridContext } from '../cells/transactions-grid-context';
 
 /** A fully populated transaction; override only what a test cares about. */
-export function transaction(overrides: Partial<Transaction> = {}): Transaction {
+export function transaction(overrides: Partial<TransactionRow> = {}): TransactionRow {
   return {
     id: 1,
-    kontoId: 1,
-    empfaengerKonto: null,
-    empfaengerBlz: null,
-    empfaengerName: null,
-    empfaengerName2: null,
+    konto_id: 1,
+    empfaenger_konto: null,
+    empfaenger_blz: null,
+    empfaenger_name: null,
+    empfaenger_name2: null,
     betrag: -12.5,
     zweck: null,
     zweck2: null,
@@ -20,7 +21,30 @@ export function transaction(overrides: Partial<Transaction> = {}): Transaction {
     datum: '2026-09-01',
     valuta: '2026-09-01',
     saldo: null,
-    umsatztypId: null,
+    art: null,
+    gvcode: null,
+    endtoendid: null,
+    umsatztyp_id: null,
+    ...overrides,
+  };
+}
+
+/** A fully populated account; override only what a test cares about. */
+export function account(overrides: Partial<AccountRow> = {}): AccountRow {
+  return {
+    id: 1,
+    kontonummer: '12345678',
+    unterkonto: null,
+    blz: '10000000',
+    name: 'Jane Doe',
+    bezeichnung: 'Checking',
+    waehrung: 'EUR',
+    saldo: 100,
+    saldo_datum: '2026-09-01',
+    iban: null,
+    bic: 'TESTDEFF',
+    saldo_available: null,
+    kategorie: null,
     ...overrides,
   };
 }
@@ -39,8 +63,9 @@ export function gridContext(
 
 /** The slice of ag-Grid's renderer params the transaction cells actually read. */
 export function cellParams(
-  data: Transaction,
+  data: TransactionRow,
   context: TransactionsGridContext = gridContext(),
+  value: unknown = undefined,
 ): TransactionCellParams {
-  return { data, context } as TransactionCellParams;
+  return { data, context, value } as TransactionCellParams;
 }

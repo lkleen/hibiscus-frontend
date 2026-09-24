@@ -1,36 +1,6 @@
 <h1>{{ i18n.t('transactions.title') }}</h1>
 
 <form class="filters" (submit)="$event.preventDefault()">
-  <div class="filters__field">
-    <label for="filter-account">{{ i18n.t('transactions.filterAccount') }}</label>
-    <select id="filter-account" (change)="onAccountChange($event)">
-      <option value="">{{ i18n.t('transactions.allAccounts') }}</option>
-      @for (account of accounts(); track account.id) {
-        <option [value]="account.id.toString()">{{ account.name }}</option>
-      }
-    </select>
-  </div>
-
-  <div class="filters__field">
-    <label for="filter-from">{{ i18n.t('transactions.filterFrom') }}</label>
-    <input id="filter-from" type="date" [value]="from()" (change)="onFromChange($event)" />
-  </div>
-
-  <div class="filters__field">
-    <label for="filter-to">{{ i18n.t('transactions.filterTo') }}</label>
-    <input id="filter-to" type="date" [value]="to()" (change)="onToChange($event)" />
-  </div>
-
-  <div class="filters__field">
-    <label for="filter-category">{{ i18n.t('transactions.filterCategory') }}</label>
-    <select id="filter-category" (change)="onCategoryFilterChange($event)">
-      <option value="">{{ i18n.t('transactions.allCategories') }}</option>
-      @for (category of categories(); track category.id) {
-        <option [value]="category.id.toString()">{{ category.name }}</option>
-      }
-    </select>
-  </div>
-
   <div class="filters__field filters__field--grow">
     <label for="filter-search">{{ i18n.t('transactions.filterSearch') }}</label>
     <input
@@ -53,37 +23,19 @@
   [context]="gridContext"
   [localeText]="localeText()"
   [loading]="loading()"
+  [quickFilterText]="q()"
+  [cacheQuickFilter]="true"
   [suppressNoRowsOverlay]="true"
   [suppressColumnVirtualisation]="true"
   [suppressRowVirtualisation]="true"
   [pagination]="true"
   [paginationPageSize]="pageSize"
-  [suppressPaginationPanel]="true"
   domLayout="autoHeight"
   (gridReady)="onGridReady($event)"
-  (rowDataUpdated)="onRowDataUpdated($event)"
 />
 
 @if (error()) {
   <p class="status-text status-text--error">{{ i18n.t('transactions.error') }}</p>
 } @else if (!loading() && items().length === 0) {
   <p class="status-text">{{ i18n.t('transactions.empty') }}</p>
-} @else if (items().length > 0) {
-  <div class="pagination">
-    <button type="button" (click)="previousPage()" [disabled]="page() <= 1">
-      {{ i18n.t('transactions.previous') }}
-    </button>
-    <span class="pagination__status">
-      {{
-        i18n.t('transactions.pagination', {
-          page: page(),
-          totalPages: totalPages(),
-          total: total(),
-        })
-      }}
-    </span>
-    <button type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">
-      {{ i18n.t('transactions.next') }}
-    </button>
-  </div>
 }

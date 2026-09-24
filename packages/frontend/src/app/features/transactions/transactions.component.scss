@@ -25,7 +25,6 @@
     color: var(--text-muted);
   }
 
-  select,
   input {
     padding: 0.45rem 0.6rem;
     border: 1px solid var(--surface-border);
@@ -46,41 +45,7 @@
   }
 }
 
-// Keeps the grid clear of the filter form above and the status text / pager below.
+// Keeps the grid clear of the search field above and the status text below.
 .transactions__grid {
   margin-block-end: 1rem;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-
-  button {
-    padding: 0.4rem 0.9rem;
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-base);
-    background: var(--surface-card);
-    color: var(--text-color);
-    cursor: pointer;
-
-    &:hover:not(:disabled) {
-      background: var(--surface-hover);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-}
-
-.pagination__status {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
 }

@@ -1,13 +1,12 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Account } from '../models/account.model';
 import { CreateCategory, Category, UpdateCategory } from '../models/category.model';
 import { Me } from '../models/me.model';
 import { Payee } from '../models/payee.model';
+import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
-  TransactionListResponse,
-  TransactionsQuery,
+  TransactionRow,
   UpdateTransactionCategory,
 } from '@hibiscus-frontend/shared/contracts/transactions';
 
@@ -24,29 +23,12 @@ export class ApiService {
     return this.http.get<Me>('/api/me');
   }
 
-  getAccounts(): Observable<Account[]> {
-    return this.http.get<Account[]>('/api/accounts');
+  getAccounts(): Observable<AccountRow[]> {
+    return this.http.get<AccountRow[]>('/api/accounts');
   }
 
-  getTransactions(query: TransactionsQuery): Observable<TransactionListResponse> {
-    let params = new HttpParams();
-    if (query.accountId !== undefined) {
-      params = params.set('accountId', query.accountId);
-    }
-    if (query.from) {
-      params = params.set('from', query.from);
-    }
-    if (query.to) {
-      params = params.set('to', query.to);
-    }
-    if (query.categoryId !== undefined) {
-      params = params.set('categoryId', query.categoryId);
-    }
-    if (query.q) {
-      params = params.set('q', query.q);
-    }
-    params = params.set('limit', query.limit).set('offset', query.offset);
-    return this.http.get<TransactionListResponse>('/api/transactions', { params });
+  getTransactions(): Observable<TransactionRow[]> {
+    return this.http.get<TransactionRow[]>('/api/transactions');
   }
 
   /** The backend answers `204 No Content`; callers apply the change to their own copy of the row. */

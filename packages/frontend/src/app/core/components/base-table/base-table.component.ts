@@ -14,12 +14,18 @@ import {
 } from 'ag-grid-angular';
 import {
   CellStyleModule,
+  ClientSideRowModelApiModule,
   ClientSideRowModelModule,
   ColumnAutoSizeModule,
+  DateFilterModule,
   LocaleModule,
   ModuleRegistry,
+  NumberFilterModule,
   PaginationModule,
+  QuickFilterModule,
+  RowApiModule,
   RowAutoHeightModule,
+  TextFilterModule,
   enableDevValidations,
 } from 'ag-grid-community';
 import { baseTableTheme } from './base-table.theme';
@@ -32,6 +38,12 @@ ModuleRegistry.registerModules([
   LocaleModule,
   CellStyleModule,
   ColumnAutoSizeModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  QuickFilterModule,
+  RowApiModule,
+  ClientSideRowModelApiModule,
 ]);
 
 // Turns cryptic `error #<n>` grid messages (e.g. an unregistered module) into readable ones. Only

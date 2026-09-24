@@ -35,21 +35,13 @@ describe('ApiService', () => {
     req.flush([]);
   });
 
-  it('builds transaction query params, omitting unset filters', () => {
-    service.getTransactions({ accountId: 3, q: 'rent', limit: 500, offset: 1000 }).subscribe();
+  it('requests every transaction at once, without paging or filter params', () => {
+    service.getTransactions().subscribe();
 
-    const req = httpMock.expectOne((r) => r.url === '/api/transactions');
+    const req = httpMock.expectOne('/api/transactions');
     expect(req.request.method).toBe('GET');
-    expect(req.request.params.get('accountId')).toBe('3');
-    expect(req.request.params.get('q')).toBe('rent');
-    expect(req.request.params.get('limit')).toBe('500');
-    expect(req.request.params.get('offset')).toBe('1000');
-    expect(req.request.params.has('page')).toBe(false);
-    expect(req.request.params.has('pageSize')).toBe(false);
-    expect(req.request.params.has('from')).toBe(false);
-    expect(req.request.params.has('to')).toBe(false);
-    expect(req.request.params.has('categoryId')).toBe(false);
-    req.flush({ items: [], total: 0 });
+    expect(req.request.params.keys()).toEqual([]);
+    req.flush([]);
   });
 
   it('PATCHes a transaction category', () => {

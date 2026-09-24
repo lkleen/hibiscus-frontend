@@ -44,8 +44,8 @@ itself requires authentication too — there is no unauthenticated route in this
 | Method & path                         | Purpose                                    |
 |----------------------------------------|---------------------------------------------|
 | `GET /api/me`                          | Echoes the authenticated identity           |
-| `GET /api/accounts`                    | List `konto` rows                          |
-| `GET /api/transactions`                | Filterable `umsatz` list, newest first (`datum DESC, id DESC`), returned as `{ items, total }` (query params: `accountId`, `from`, `to`, `categoryId`, `q`, `limit` ≤ 1000, `offset`) |
+| `GET /api/accounts`                    | List `konto` rows, as stored (`AccountRow`) |
+| `GET /api/transactions`                | Every `umsatz` row, as stored (`TransactionRow[]`), unfiltered and unpaged |
 | `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`; answers `204` |
 | `GET /api/categories`                  | `umsatztyp` tree                           |
 | `POST /api/categories`                 | Create a category                          |
@@ -55,26 +55,38 @@ itself requires authentication too — there is no unauthenticated route in this
 
 ### Shared contracts
 
-`packages/shared` declares the transaction request/response types once
-(`@hibiscus-frontend/shared/contracts/transactions`); the backend route and repository and the
-frontend `ApiService` both import them, so the two sides cannot drift apart. They are authored
-as `.d.ts` files, which TypeScript type-checks but never emits, so the package needs no build step
-and the backend's `dist/` layout is unchanged.
+`packages/shared` declares the API request/response types once
+(`@hibiscus-frontend/shared/contracts/transactions`, `…/accounts`); the backend routes and
+repositories and the frontend `ApiService` both import them, so the two sides cannot drift apart.
+They are authored as `.d.ts` files, which TypeScript type-checks but never emits, so the package
+needs no build step and the backend's `dist/` layout is unchanged.
 
-The field names of these types mirror the Hibiscus schema (`betrag`, `zweck`, `datum`,
-`umsatztypId`, …) because the DB layout is fixed for compatibility with the desktop client. They
-are an API detail: the UI never displays a field name — every visible label (column headers
-included) comes from the translations.
+`GET /api/transactions` returns the selected `umsatz` columns exactly as the DB has them
+(`TransactionRow`: `konto_id`, `empfaenger_name`, `betrag`, `zweck`, `umsatztyp_id`, …). The
+backend neither renames nor derives anything — the DB layout is fixed for compatibility with the
+desktop client, and the API mirrors it one-to-one. The UI never displays a column name: every
+visible label (column headers included) comes from the translations.
 
-### Transactions paging
+`GET /api/accounts` does the same for `konto` (`AccountRow`). Note that `konto.name` is the account
+*holder* (the same on every account); an account's own label is `bezeichnung`.
 
-The result is loaded in **chunks**: the frontend requests `limit=500` rows at a time
-(`offset = chunk × 500`) and the ag-Grid client-side row model paginates inside the loaded chunk
-(20 rows per page). The pager shows global pages from `total`; paging past a chunk boundary
-fetches the next chunk, filter changes go back to the first chunk. The server caps `limit` at
-1000 and orders rows deterministically so chunk boundaries are stable. Because the desktop client
-can insert rows between two chunk fetches, a row may occasionally repeat or be skipped at a
-boundary; keyset paging would remove that if it ever matters.
+The transactions grid shows every meaningful `umsatz` column as stored — the ids are the only
+values it resolves: `konto_id` to the account's holder, BIC, account number and label (four plain
+columns looked up from `/api/accounts`) and `umsatztyp_id` to the category. What the text columns contain differs by account and over
+time (bank/Hibiscus import formats), so the grid does not interpret them.
+
+### Transactions table
+
+The table loads **every** `umsatz` row in one request (about 10,000 rows, a few MB of JSON) and
+ag-Grid's client-side row model does the rest: sorting (newest booking first by default), column
+filters (text, number and date filters with floating filters), the quick filter over all columns
+(the search field), and pagination (20 rows per page, built-in pager). The backend never sorts,
+filters or pages for the table; `ORDER BY id` only makes the response deterministic. ag-Grid
+Community only — no Enterprise features, so no row grouping. The grid's own texts (filter menus,
+pager) are translated through the `grid.*` dictionary keys (`core/utils/grid-locale-text.ts`).
+
+A category change is saved with `PATCH /api/transactions/:id` and then applied to the row the grid
+holds (`applyTransaction`), which keeps the user's page, sorting and filters.
 
 ## Authentication
 

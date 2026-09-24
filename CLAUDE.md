@@ -24,6 +24,7 @@ Load context files on demand based on the task. All paths are relative to the pr
 | CDK overlays, a11y, virtual scroll, drag-drop              | @../claude-config/frontend-angular-cdk.md                                            |
 | Tokens, theming, dark mode                                | @../claude-config/frontend-theming.md                                                 |
 | Creating or modifying a theme file                        | @../claude-config/frontend-theming.md + @../claude-config/frontend-theming-custom.md  |
+| Transactions table — columns, `/api/transactions`, grid sort/filter/group | `transactions-table` skill (`.claude/skills/transactions-table`)                        |
 | Planning / plan mode (writing or updating a plan)          | @../claude-config/plan-mode.md                                                        |
 
 **No Angular Material.** This project uses `@angular/cdk` primitives plus the custom token/component

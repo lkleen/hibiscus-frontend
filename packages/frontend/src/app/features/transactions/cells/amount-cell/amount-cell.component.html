@@ -1,2 +1,8 @@
-<span class="transaction-table__amount-signed">{{ amount() | number: '1.2-2' : locale() }}</span>
-<span class="transaction-table__amount-paren">{{ magnitude() | number: '1.2-2' : locale() }}</span>
+@if (amount() !== null) {
+  <span class="transaction-table__amount-signed">{{ amount() | number: '1.2-2' : locale() }}</span>
+  <span class="transaction-table__amount-paren">{{
+    magnitude() | number: '1.2-2' : locale()
+  }}</span>
+} @else {
+  <span>—</span>
+}

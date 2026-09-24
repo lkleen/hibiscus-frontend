@@ -1,11 +1,11 @@
 import { computed, signal } from '@angular/core';
-import type { Transaction } from '@hibiscus-frontend/shared/contracts/transactions';
+import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import type { ICellRendererAngularComp } from 'ag-grid-angular';
 import type { ICellRendererParams } from 'ag-grid-community';
 import type { TransactionsGridContext } from './transactions-grid-context';
 
 export type TransactionCellParams = ICellRendererParams<
-  Transaction,
+  TransactionRow,
   unknown,
   TransactionsGridContext
 >;
@@ -18,11 +18,14 @@ export type TransactionCellParams = ICellRendererParams<
 export abstract class TransactionCell implements ICellRendererAngularComp {
   private readonly params = signal<TransactionCellParams | undefined>(undefined);
 
-  protected readonly row = computed<Transaction>(() => {
-    const data: Transaction | undefined = this.params()?.data;
+  protected readonly row = computed<TransactionRow>(() => {
+    const data: TransactionRow | undefined = this.params()?.data;
     if (!data) throw new Error('transaction cell rendered without row data');
     return data;
   });
+
+  /** What ag-Grid computed for this cell (the column's field or `valueGetter`). */
+  protected readonly value = computed<unknown>(() => this.params()?.value);
 
   protected readonly context = computed<TransactionsGridContext>(() => {
     const context: TransactionsGridContext | undefined = this.params()?.context;
