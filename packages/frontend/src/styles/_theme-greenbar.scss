@@ -1,0 +1,90 @@
+// Greenbar Ledger — mainframe-era continuous-feed accounting paper. Banded transaction rows,
+// monospace tabular figures, ink-stamp pine green. Positive amounts get a leading "+" and the
+// accent color; negative amounts stay in a brick-red ink. See references/api-index.md-style design
+// notes: this theme, unlike vault/private, keeps the app's native signed amount rendering.
+:root.theme-greenbar {
+  color-scheme: light;
+
+  // Surfaces
+  --surface-ground: #f7f5ef;
+  --surface-section: #fffffe;
+  --surface-card: #fffffe;
+  --surface-overlay: #fffffe;
+  --surface-border: #d8d2c2;
+  --surface-hover: #edebdf;
+  --surface-subtle: #efede1;
+  --surface-stripe: #eaf3e9;
+  --radius-base: 4px;
+
+  // Text
+  --text-color: #1b1b18;
+  --text-muted: #6b6858;
+  --text-on-accent: #ffffff;
+
+  // Accent
+  --color-accent: #2f5233;
+  --color-accent-hover: #244027;
+  --color-accent-subtle: #e2efe8;
+  --color-positive: var(--color-accent);
+
+  // Semantic
+  --color-danger: #8a3324;
+  --color-danger-subtle: #f3e3de;
+
+  // Scrim & backdrop
+  --color-scrim: rgba(20, 30, 20, 0.45);
+
+  // Depth & motion
+  --shadow-card-hover: 0 4px 16px rgba(47, 82, 51, 0.12);
+  --shadow-overlay: 0 8px 32px rgba(27, 27, 24, 0.18);
+
+  // Typography
+  --font-sans: 'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+}
+
+:root.theme-greenbar.dark-mode {
+  color-scheme: dark;
+
+  --surface-ground: #14170f;
+  --surface-section: #1b1f15;
+  --surface-card: #1b1f15;
+  --surface-overlay: #1b1f15;
+  --surface-border: #3a4030;
+  --surface-hover: #232919;
+  --surface-subtle: #202619;
+  --surface-stripe: #202619;
+
+  --text-color: #e9ece1;
+  --text-muted: #9ca68c;
+  --text-on-accent: #14170f;
+
+  --color-accent: #8fce9a;
+  --color-accent-hover: #a6dab0;
+  --color-accent-subtle: #24361f;
+  --color-positive: var(--color-accent);
+
+  --color-danger: #e08a72;
+  --color-danger-subtle: #3a2019;
+
+  --color-scrim: rgba(10, 14, 8, 0.6);
+
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+// Amount format: "signed" style (native minus, plus a leading "+" on positives) + zebra-striped
+// transaction rows. See transactions.component.scss / accounts.component.scss for the generic
+// *-signed / *-paren span definitions this theme is choosing between (it keeps the signed span).
+:root.theme-greenbar
+  .transaction-table__amount--positive
+  .transaction-table__amount-signed::before,
+:root.theme-greenbar .account-card__amount--positive .account-card__amount-signed::before {
+  content: '+';
+}
+
+:root.theme-greenbar .transaction-table tbody tr:nth-child(even) td {
+  background: var(--surface-stripe);
+}

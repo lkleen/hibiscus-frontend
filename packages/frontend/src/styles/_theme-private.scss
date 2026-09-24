@@ -1,0 +1,91 @@
+// Private Ledger — old-world private banking, engraved letterhead. Ivory paper, deep navy ink, a
+// serif built for a checkbook register, a thin bronze rule used sparingly. Negative amounts in
+// oxblood/red-ink parentheses; positive amounts plain.
+:root.theme-private {
+  color-scheme: light;
+
+  // Surfaces
+  --surface-ground: #f5f0e6;
+  --surface-section: #fbf8f1;
+  --surface-card: #fbf8f1;
+  --surface-overlay: #fbf8f1;
+  --surface-border: #e1d6bf;
+  --surface-hover: #f1e9d7;
+  --surface-subtle: #f1e9d7;
+  --color-rule: #a98b4e;
+  --radius-base: 2px;
+
+  // Text
+  --text-color: #1b2a41;
+  --text-muted: #5b6b85;
+  --text-on-accent: #fbf8f1;
+
+  // Accent
+  --color-accent: #6b2737;
+  --color-accent-hover: #551f2b;
+  --color-accent-subtle: #f0e4c8;
+
+  // Semantic
+  --color-danger: #6b2737;
+  --color-danger-subtle: #f1e1d8;
+
+  // Scrim & backdrop
+  --color-scrim: rgba(27, 42, 65, 0.4);
+
+  // Depth & motion
+  --shadow-card-hover: 0 4px 18px rgba(27, 42, 65, 0.12);
+  --shadow-overlay: 0 10px 34px rgba(27, 42, 65, 0.22);
+
+  // Typography — the one fully-serif theme, display and body alike.
+  --font-sans: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-display: var(--font-sans);
+}
+
+:root.theme-private.dark-mode {
+  color-scheme: dark;
+
+  --surface-ground: #12192a;
+  --surface-section: #1a2338;
+  --surface-card: #1a2338;
+  --surface-overlay: #1a2338;
+  --surface-border: #33415c;
+  --surface-hover: #212b44;
+  --surface-subtle: #212b44;
+  --color-rule: #c9a66b;
+
+  --text-color: #ede7d8;
+  --text-muted: #9fa9c0;
+  --text-on-accent: #12192a;
+
+  // Oxblood reads poorly on navy — bronze takes over as the accent in dark mode.
+  --color-accent: #c9a66b;
+  --color-accent-hover: #dbbb86;
+  --color-accent-subtle: #28304a;
+
+  --color-danger: #d98a96;
+  --color-danger-subtle: #3a2430;
+
+  --color-scrim: rgba(0, 0, 0, 0.55);
+
+  --shadow-card-hover: 0 4px 18px rgba(0, 0, 0, 0.35);
+  --shadow-overlay: 0 10px 34px rgba(0, 0, 0, 0.5);
+}
+
+// Amount format: "parenthetical" style, same as vault — but negative amounts keep the
+// oxblood/red-ink danger color (the generic .amount--negative rule already colors via
+// --color-danger, so only the signed/paren visibility flip is needed here).
+:root.theme-private .transaction-table__amount-signed,
+:root.theme-private .account-card__amount-signed {
+  display: none;
+}
+
+:root.theme-private .transaction-table__amount-paren,
+:root.theme-private .account-card__amount-paren {
+  display: inline;
+}
+
+// Bronze/gold "rule" color for the one clear structural divider in the shell — distinct from the
+// tan --surface-border used everywhere else.
+:root.theme-private .header {
+  --header-border-color: var(--color-rule);
+}

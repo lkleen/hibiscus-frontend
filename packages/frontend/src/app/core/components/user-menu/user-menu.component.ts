@@ -15,8 +15,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { SUPPORTED_THEMES, THEME_LABELS, ThemeName } from '../../models/theme.model';
 import { ApiService } from '../../services/api.service';
+import { SUPPORTED_THEMES, THEME_LABELS, ThemeName } from '../../models/theme.model';
 import { ThemeService } from '../../services/theme.service';
 
 /**
@@ -42,9 +42,15 @@ export class UserMenuComponent {
   protected readonly loadError = signal(false);
   protected readonly isOpen = signal(false);
 
-  protected readonly themes = SUPPORTED_THEMES;
-  protected readonly themeLabels = THEME_LABELS;
   protected readonly theme = this.themeService.currentTheme;
+  protected readonly darkMode = this.themeService.darkMode;
+
+  protected readonly themeOptions: readonly { name: ThemeName; label: string }[] =
+    SUPPORTED_THEMES.map((name) => ({ name, label: THEME_LABELS[name] }));
+
+  protected readonly darkModeToggleLabel = computed<string>(() =>
+    this.darkMode() ? 'Switch to light mode' : 'Switch to dark mode',
+  );
 
   protected readonly ariaLabel = computed<string>(() => {
     const u = this.user();
@@ -70,8 +76,12 @@ export class UserMenuComponent {
     this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
   }
 
-  protected selectTheme(name: ThemeName): void {
+  protected setTheme(name: ThemeName): void {
     this.themeService.setTheme(name);
+  }
+
+  protected toggleDarkMode(): void {
+    this.themeService.toggleDarkMode();
   }
 
   protected toggle(): void {

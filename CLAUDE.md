@@ -42,7 +42,13 @@ In addition to `@../claude-config/checklist.md`:
 - **Never publish the app's port in a Compose file.** Only a fronting proxy service may publish a
   port; the app itself stays on an internal Docker network in every shipped Compose file.
 - Keep `docs/architecture.md` in sync when the data model, routes, or auth contract change.
-- **Theming**: two named themes only, `light` and `dark` — see `ThemeService`
-  (`packages/frontend/src/app/core/services/theme.service.ts`). No separate `.dark-mode` axis
-  exists or is needed: `dark` IS this app's dark mode. Each theme sets `color-scheme` directly for
-  native form-control rendering.
+- **Theming**: five named theme identities — `default`, `greenbar`, `vault`, `private`, `telex` —
+  selected via a `theme-[name]` class on `<html>`, plus an independent light/dark axis via a
+  `.dark-mode` class that coexists with the identity class. See `ThemeService`
+  (`packages/frontend/src/app/core/services/theme.service.ts`): `setTheme(name)` changes identity,
+  `setDarkMode(bool)` / `toggleDarkMode()` change the axis. `dark` is NOT a theme identity — every
+  identity supports both light and dark; do not reintroduce a two-theme light/dark model. Each
+  theme sets `color-scheme` directly (light in the base `:root.theme-[name]` block, dark in
+  `:root.theme-[name].dark-mode`) for native form-control rendering. This matches the general
+  contract in `../claude-config/frontend-theming.md` — see that file for the full token list before
+  adding or modifying a theme.

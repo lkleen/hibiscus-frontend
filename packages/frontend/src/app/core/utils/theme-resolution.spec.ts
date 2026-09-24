@@ -2,7 +2,7 @@ import {
   THEME_STORAGE_KEY,
   THEME_STORAGE_TTL_MS,
   persistTheme,
-  resolveInitialTheme,
+  resolveInitialPreference,
 } from './theme-resolution';
 import { installLocalStorageMock } from './testing/local-storage-mock';
 
@@ -22,58 +22,76 @@ describe('theme-resolution', () => {
     mockMatchMedia(false);
   });
 
-  describe('resolveInitialTheme', () => {
-    it('returns the stored theme when it is fresh', () => {
+  describe('resolveInitialPreference', () => {
+    it('returns the stored preference when it is fresh', () => {
+      window.localStorage.setItem(
+        THEME_STORAGE_KEY,
+        JSON.stringify({ theme: 'vault', darkMode: true, savedAt: Date.now() }),
+      );
+
+      expect(resolveInitialPreference()).toEqual({ theme: 'vault', darkMode: true });
+    });
+
+    it('migrates a legacy light/dark-only stored value to the default identity', () => {
       window.localStorage.setItem(
         THEME_STORAGE_KEY,
         JSON.stringify({ theme: 'dark', savedAt: Date.now() }),
       );
 
-      expect(resolveInitialTheme()).toBe('dark');
+      expect(resolveInitialPreference()).toEqual({ theme: 'default', darkMode: true });
     });
 
-    it('falls back to the OS preference when nothing is stored', () => {
+    it('falls back to default + OS preference when nothing is stored', () => {
       mockMatchMedia(true);
 
-      expect(resolveInitialTheme()).toBe('dark');
+      expect(resolveInitialPreference()).toEqual({ theme: 'default', darkMode: true });
     });
 
-    it('falls back to the OS preference when the stored entry is older than the TTL', () => {
+    it('falls back to OS preference when the stored entry is older than the TTL', () => {
       window.localStorage.setItem(
         THEME_STORAGE_KEY,
-        JSON.stringify({ theme: 'dark', savedAt: Date.now() - THEME_STORAGE_TTL_MS - 1 }),
+        JSON.stringify({
+          theme: 'vault',
+          darkMode: true,
+          savedAt: Date.now() - THEME_STORAGE_TTL_MS - 1,
+        }),
       );
       mockMatchMedia(false);
 
-      expect(resolveInitialTheme()).toBe('light');
+      expect(resolveInitialPreference()).toEqual({ theme: 'default', darkMode: false });
     });
 
-    it('falls back to the OS preference when the stored value is corrupt JSON', () => {
+    it('falls back to OS preference when the stored value is corrupt JSON', () => {
       window.localStorage.setItem(THEME_STORAGE_KEY, '{not json');
 
-      expect(resolveInitialTheme()).toBe('light');
+      expect(resolveInitialPreference()).toEqual({ theme: 'default', darkMode: false });
     });
 
-    it('falls back to the OS preference when the stored theme name is invalid', () => {
+    it('falls back to OS preference when the stored theme name is invalid', () => {
       window.localStorage.setItem(
         THEME_STORAGE_KEY,
-        JSON.stringify({ theme: 'sepia', savedAt: Date.now() }),
+        JSON.stringify({ theme: 'sepia', darkMode: false, savedAt: Date.now() }),
       );
 
-      expect(resolveInitialTheme()).toBe('light');
+      expect(resolveInitialPreference()).toEqual({ theme: 'default', darkMode: false });
     });
   });
 
   describe('persistTheme', () => {
-    it('writes the theme and a fresh timestamp to localStorage', () => {
+    it('writes the theme, dark-mode flag, and a fresh timestamp to localStorage', () => {
       const before = Date.now();
 
-      persistTheme('dark');
+      persistTheme({ theme: 'telex', darkMode: true });
 
       const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
       expect(raw).not.toBeNull();
-      const parsed = JSON.parse(raw as string) as { theme: string; savedAt: number };
-      expect(parsed.theme).toBe('dark');
+      const parsed = JSON.parse(raw as string) as {
+        theme: string;
+        darkMode: boolean;
+        savedAt: number;
+      };
+      expect(parsed.theme).toBe('telex');
+      expect(parsed.darkMode).toBe(true);
       expect(parsed.savedAt).toBeGreaterThanOrEqual(before);
     });
   });

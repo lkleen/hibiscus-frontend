@@ -3,45 +3,57 @@
   <head>
     <meta charset="utf-8" />
     <script>
-      // Applies theme-light/theme-dark to <html> before first paint, to avoid a flash of the
-      // wrong theme. This is a hand-ported copy of
-      // src/app/core/utils/theme-resolution.ts (resolveInitialTheme) — it must run synchronously
-      // before Angular bootstraps, so it can't import that module. Both copies implement the same
-      // bm-theme localStorage + 1-hour TTL + OS-preference fallback algorithm and MUST be changed
-      // together.
+      // Applies theme-[name] and .dark-mode to <html> before first paint, to avoid a flash of the
+      // wrong theme/mode. This is a hand-ported copy of
+      // src/app/core/utils/theme-resolution.ts (resolveInitialPreference) — it must run
+      // synchronously before Angular bootstraps, so it can't import that module. Both copies
+      // implement the same bm-theme localStorage + 1-hour TTL + OS-preference fallback + legacy
+      // light/dark migration algorithm and MUST be changed together.
       (function () {
         var ONE_HOUR_MS = 60 * 60 * 1000;
+        var SUPPORTED_THEMES = ['default', 'greenbar', 'vault', 'private', 'telex'];
         var theme = null;
+        var darkMode = null;
         try {
           var raw = localStorage.getItem('bm-theme');
           if (raw) {
             var parsed = JSON.parse(raw);
             var age = Date.now() - (parsed && parsed.savedAt);
-            if (
-              parsed &&
-              (parsed.theme === 'light' || parsed.theme === 'dark') &&
-              typeof parsed.savedAt === 'number' &&
-              age >= 0 &&
-              age < ONE_HOUR_MS
-            ) {
-              theme = parsed.theme;
+            if (parsed && typeof parsed.savedAt === 'number' && age >= 0 && age < ONE_HOUR_MS) {
+              if (parsed.theme === 'light') {
+                theme = 'default';
+                darkMode = false;
+              } else if (parsed.theme === 'dark') {
+                theme = 'default';
+                darkMode = true;
+              } else if (SUPPORTED_THEMES.indexOf(parsed.theme) !== -1) {
+                theme = parsed.theme;
+                darkMode = typeof parsed.darkMode === 'boolean' ? parsed.darkMode : false;
+              }
             }
           }
         } catch (e) {
-          // localStorage unavailable — fall through to OS preference below.
+          // localStorage unavailable — fall through to defaults below.
         }
         if (!theme) {
-          theme =
-            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-              ? 'dark'
-              : 'light';
+          theme = 'default';
+          darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
         document.documentElement.classList.add('theme-' + theme);
+        if (darkMode) {
+          document.documentElement.classList.add('dark-mode');
+        }
       })();
     </script>
     <title>Hibiscus</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <app-root></app-root>

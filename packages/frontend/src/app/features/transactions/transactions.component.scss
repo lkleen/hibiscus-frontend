@@ -83,6 +83,22 @@
   color: var(--color-danger);
 }
 
+.transaction-table__amount--positive {
+  color: var(--color-positive, var(--text-color));
+}
+
+.transaction-table__amount-paren {
+  display: none;
+}
+
+.transaction-table__amount--negative .transaction-table__amount-paren::before {
+  content: '(';
+}
+
+.transaction-table__amount--negative .transaction-table__amount-paren::after {
+  content: ')';
+}
+
 .transaction-table__counterparty {
   font-weight: 600;
   color: var(--text-color);

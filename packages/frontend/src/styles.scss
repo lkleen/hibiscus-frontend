@@ -1,6 +1,9 @@
 @use './styles/tokens';
-@use './styles/theme-light';
-@use './styles/theme-dark';
+@use './styles/theme-default';
+@use './styles/theme-greenbar';
+@use './styles/theme-private';
+@use './styles/theme-telex';
+@use './styles/theme-vault';
 
 * {
   box-sizing: border-box;

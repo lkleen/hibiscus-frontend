@@ -32,21 +32,68 @@
       <span class="user-menu__identity">Loading identity…</span>
     }
 
-    <div class="user-menu__section">
-      <span class="user-menu__section-label" id="user-menu-theme-label">Theme</span>
-      <div class="user-menu__theme-toggle" role="group" aria-labelledby="user-menu-theme-label">
-        @for (name of themes; track name) {
+    <div class="user-menu__section user-menu__section--stack">
+      <span class="user-menu__section-label">Theme</span>
+      <div class="user-menu__theme-picker" role="group" aria-label="Theme">
+        @for (option of themeOptions; track option.name) {
           <button
             type="button"
             class="user-menu__theme-option"
-            [class.user-menu__theme-option--active]="theme() === name"
-            [attr.aria-pressed]="theme() === name"
-            (click)="selectTheme(name)"
+            [class.user-menu__theme-option--active]="theme() === option.name"
+            [attr.aria-pressed]="theme() === option.name"
+            (click)="setTheme(option.name)"
           >
-            {{ themeLabels[name] }}
+            {{ option.label }}
           </button>
         }
       </div>
+    </div>
+
+    <div class="user-menu__section">
+      <span class="user-menu__section-label">Appearance</span>
+      <button
+        type="button"
+        class="user-menu__theme-toggle"
+        [attr.aria-label]="darkModeToggleLabel()"
+        [attr.aria-pressed]="darkMode()"
+        (click)="toggleDarkMode()"
+      >
+        @if (darkMode()) {
+          <svg
+            class="user-menu__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+          </svg>
+        } @else {
+          <svg
+            class="user-menu__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <line x1="12" y1="2" x2="12" y2="4" />
+            <line x1="12" y1="20" x2="12" y2="22" />
+            <line x1="4.93" y1="4.93" x2="6.34" y2="6.34" />
+            <line x1="17.66" y1="17.66" x2="19.07" y2="19.07" />
+            <line x1="2" y1="12" x2="4" y2="12" />
+            <line x1="20" y1="12" x2="22" y2="12" />
+            <line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
+            <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
+          </svg>
+        }
+      </button>
     </div>
   </div>
 </ng-template>

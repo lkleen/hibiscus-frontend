@@ -1,0 +1,96 @@
+// Vault Graphite — bank-vault steel and brass. Sharp edges (zero radius), no color-coded amounts,
+// negative amounts shown in parentheses instead of a minus sign (accounting notation). The one
+// brass accent is spent only on the active nav underline and the user-menu trigger — nowhere else.
+:root.theme-vault {
+  color-scheme: light;
+
+  // Surfaces
+  --surface-ground: #edeff1;
+  --surface-section: #f7f8f9;
+  --surface-card: #f7f8f9;
+  --surface-overlay: #f7f8f9;
+  --surface-border: #c7ccd1;
+  --surface-hover: #e3e6e9;
+  --surface-subtle: #e3e6e9;
+  --radius-base: 0;
+
+  // Text
+  --text-color: #1b1e21;
+  --text-muted: #565c61;
+  --text-on-accent: #ffffff;
+
+  // Accent
+  --color-accent: #8a6d3b;
+  --color-accent-hover: #6e5730;
+  --color-accent-subtle: #efe6d2;
+
+  // Scrim & backdrop
+  --color-scrim: rgba(20, 22, 24, 0.5);
+
+  // Depth & motion
+  --shadow-card-hover: 0 1px 4px rgba(0, 0, 0, 0.12);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.2);
+
+  // Typography
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: var(--font-sans);
+}
+
+:root.theme-vault.dark-mode {
+  color-scheme: dark;
+
+  --surface-ground: #1e2124;
+  --surface-section: #262a2d;
+  --surface-card: #262a2d;
+  --surface-overlay: #262a2d;
+  --surface-border: #3a3f44;
+  --surface-hover: #2c3134;
+  --surface-subtle: #2c3134;
+
+  --text-color: #e4e6e8;
+  --text-muted: #9aa1a6;
+  --text-on-accent: #1e2124;
+
+  --color-accent: #c6a05c;
+  --color-accent-hover: #d9b677;
+  --color-accent-subtle: #332b18;
+
+  // No thematic red for vault, but dark surfaces still need a legible danger color for real error
+  // states (form validation, failed loads) — reuse the default theme's proven dark values.
+  --color-danger: #e5645c;
+  --color-danger-subtle: #2e1615;
+
+  --color-scrim: rgba(0, 0, 0, 0.6);
+
+  --shadow-card-hover: 0 2px 10px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+// Amount format: "parenthetical" style — negative shown as (1,200.00), positive plain, no color
+// coding for either.
+:root.theme-vault .transaction-table__amount-signed,
+:root.theme-vault .account-card__amount-signed {
+  display: none;
+}
+
+:root.theme-vault .transaction-table__amount-paren,
+:root.theme-vault .account-card__amount-paren {
+  display: inline;
+}
+
+:root.theme-vault .transaction-table__amount--negative,
+:root.theme-vault .account-card__amount--negative {
+  color: var(--text-color);
+}
+
+// Brass accent, spent only here: the active nav underline and the user-menu trigger.
+:root.theme-vault .header__nav-link--active {
+  color: var(--text-color);
+  background: transparent;
+  border-block-end: 2px solid var(--color-accent);
+  border-radius: 0;
+}
+
+:root.theme-vault .user-menu__trigger {
+  --user-menu-trigger-color: var(--color-accent);
+}

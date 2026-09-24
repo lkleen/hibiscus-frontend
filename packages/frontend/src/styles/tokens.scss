@@ -1,11 +1,15 @@
 // Design tokens for the Hibiscus frontend.
 //
-// This is the base token set and the `light` theme's source of truth (see ./_theme-light.scss).
-// Two named themes are supported — `light` and `dark` — selected via a `theme-[name]` class on
-// <html> (see ../app/core/services/theme.service.ts). Components must reference these custom
-// properties exclusively — never hardcode colors, spacing units, or font stacks in component
-// styles. See ../../../../claude-config/frontend-theming.md / frontend-theming-custom.md for the
-// general contract.
+// This is the base token set and the `default` theme's light-mode source of truth (see
+// ./_theme-default.scss). Five theme identities are supported — `default`, `greenbar`, `vault`,
+// `private`, `telex` — selected via a `theme-[name]` class on <html>, each with an independent
+// light/dark axis via a `.dark-mode` class (see ../app/core/services/theme.service.ts). Components
+// must reference these custom properties exclusively — never hardcode colors, spacing units, or
+// font stacks in component styles. See ../../../../claude-config/frontend-theming.md /
+// frontend-theming-custom.md for the general contract. A few tokens (`--color-positive`,
+// `--color-rule`, `--surface-stripe`) are theme-exclusive and intentionally have no :root default
+// here — see the theme partials that define them and the component CSS that references them via
+// var(--token, <fallback>).
 
 :root {
   // Surfaces

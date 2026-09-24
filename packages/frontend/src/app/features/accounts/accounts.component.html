@@ -18,8 +18,18 @@
         </div>
         <div class="account-card__balance">
           @if (account.balance !== null) {
-            <span class="account-card__amount">
-              {{ account.balance | number: '1.2-2' }} {{ account.currency }}
+            <span
+              class="account-card__amount"
+              [class.account-card__amount--negative]="account.balance < 0"
+              [class.account-card__amount--positive]="account.balance > 0"
+            >
+              <span class="account-card__amount-signed">{{
+                account.balance | number: '1.2-2'
+              }}</span>
+              <span class="account-card__amount-paren">{{
+                (account.balance < 0 ? -account.balance : account.balance) | number: '1.2-2'
+              }}</span>
+              {{ account.currency }}
             </span>
           } @else {
             <span class="account-card__amount account-card__amount--unknown">—</span>

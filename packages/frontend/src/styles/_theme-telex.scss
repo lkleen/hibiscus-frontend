@@ -1,0 +1,80 @@
+// Telex / Back Office — compliance-desk settlement terminal, not cyberpunk. Monospace throughout,
+// restrained steel-blue accent, dense tabular data, zero chrome. No color-coded amounts at all
+// (austerity) — signed style with a leading "+"/"-" like greenbar.
+:root.theme-telex {
+  color-scheme: light;
+
+  // Surfaces
+  --surface-ground: #f2f1ee;
+  --surface-section: #fafaf8;
+  --surface-card: #fafaf8;
+  --surface-overlay: #fafaf8;
+  --surface-border: #cbcbc6;
+  --surface-hover: #e7e6e2;
+  --surface-subtle: #e7e6e2;
+  --radius-base: 0;
+
+  // Text
+  --text-color: #101112;
+  --text-muted: #55585b;
+  --text-on-accent: #ffffff;
+
+  // Accent
+  --color-accent: #4c6b8a;
+  --color-accent-hover: #3c5670;
+  --color-accent-subtle: #dfe6ec;
+
+  // Scrim & backdrop
+  --color-scrim: rgba(16, 17, 18, 0.55);
+
+  // Depth & motion
+  --shadow-card-hover: 0 1px 4px rgba(0, 0, 0, 0.1);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.2);
+
+  // Typography — the one fully-monospace theme, sans/display/mono all map to the same face.
+  --font-sans: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --font-display: var(--font-sans);
+  --font-mono: var(--font-sans);
+}
+
+:root.theme-telex.dark-mode {
+  color-scheme: dark;
+
+  --surface-ground: #0e0f10;
+  --surface-section: #17181a;
+  --surface-card: #17181a;
+  --surface-overlay: #17181a;
+  --surface-border: #2c2e31;
+  --surface-hover: #1e2023;
+  --surface-subtle: #1e2023;
+
+  --text-color: #ecece9;
+  --text-muted: #9a9d9f;
+  --text-on-accent: #0e0f10;
+
+  --color-accent: #6e92b5;
+  --color-accent-hover: #86a6c4;
+  --color-accent-subtle: #1c2731;
+
+  // No thematic red for telex, but dark surfaces still need a legible danger color for real error
+  // states — reuse the default theme's proven dark values.
+  --color-danger: #e5645c;
+  --color-danger-subtle: #2e1615;
+
+  --color-scrim: rgba(0, 0, 0, 0.65);
+
+  --shadow-card-hover: 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+// Amount format: "signed" style, leading "+"/"-" like greenbar — but no color coding at all.
+// Neutralize the generic danger-red negative color; the leading "+" comes from ::before.
+:root.theme-telex .transaction-table__amount--negative,
+:root.theme-telex .account-card__amount--negative {
+  color: var(--text-color);
+}
+
+:root.theme-telex .transaction-table__amount--positive .transaction-table__amount-signed::before,
+:root.theme-telex .account-card__amount--positive .account-card__amount-signed::before {
+  content: '+';
+}

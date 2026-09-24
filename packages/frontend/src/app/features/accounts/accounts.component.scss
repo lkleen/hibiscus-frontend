@@ -61,4 +61,24 @@
     color: var(--text-muted);
     font-weight: 400;
   }
+
+  &--negative {
+    color: var(--color-danger);
+  }
+
+  &--positive {
+    color: var(--color-positive, var(--text-color));
+  }
+}
+
+.account-card__amount-paren {
+  display: none;
+}
+
+.account-card__amount--negative .account-card__amount-paren::before {
+  content: '(';
+}
+
+.account-card__amount--negative .account-card__amount-paren::after {
+  content: ')';
 }

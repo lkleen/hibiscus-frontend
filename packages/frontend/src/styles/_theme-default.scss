@@ -1,8 +1,13 @@
-// Dark theme — palette designed via the frontend-design skill (continuation of the light theme's
-// muted forest-green accent identity, dark-text-on-accent buttons for AA contrast on a brighter
-// dark-mode accent). Every token here was checked against WCAG 2.1 AA (>=4.5:1 body text,
-// >=3:1 large text / UI boundaries). Omitted tokens fall back to :root defaults in tokens.scss.
-:root.theme-dark {
+// Default theme — names the tokens already defined as :root defaults in tokens.scss (that block
+// was already a deliberately designed light theme; naming it is the only change needed here).
+// No token overrides in the light block: omitted tokens fall back to :root per the multi-theme
+// contract. Dark block is unchanged from the original two-theme model's `dark` palette, checked
+// against WCAG 2.1 AA (>=4.5:1 body text, >=3:1 large text / UI boundaries).
+:root.theme-default {
+  color-scheme: light;
+}
+
+:root.theme-default.dark-mode {
   color-scheme: dark;
 
   // Surfaces
