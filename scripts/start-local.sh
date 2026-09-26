@@ -45,6 +45,9 @@ docker compose -f "$ROOT_DIR/docker-compose.dev.yml" --env-file "$ENV_FILE" up -
 docker compose -f "$ROOT_DIR/docker-compose.dev.yml" --env-file "$ENV_FILE" ps
 
 cleanup() {
+  # Runs once, from the EXIT trap. Ctrl-C reaches this script more than once (the terminal's
+  # SIGINT plus the one pnpm forwards), so ignore further signals while the prompt is open.
+  trap '' INT TERM
   echo ""
   echo "Shutting down..."
   kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
@@ -58,7 +61,10 @@ cleanup() {
   fi
   echo "Done."
 }
-trap cleanup EXIT INT TERM
+# INT/TERM only leave the script; the EXIT trap then runs cleanup exactly once.
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "Starting backend..."
 (cd "$ROOT_DIR/packages/backend" && pnpm start:local) &
