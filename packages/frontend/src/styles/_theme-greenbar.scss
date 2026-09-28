@@ -76,14 +76,17 @@
 }
 
 // Amount format: "signed" style (native minus, plus a leading "+" on positives) + zebra-striped
-// transaction rows (the striping is `--base-table-row-alt-bg` of the shared table, see
-// base-table.component.scss). See amount-cell.component.scss / accounts.component.scss for the
+// transaction rows (the striping is `--app-table-row-alt-bg` of the PrimeNG table bridge, see
+// _primeng-table.scss). See amount-cell.component.scss / accounts.component.scss for the
 // generic *-signed / *-paren span definitions this theme is choosing between (it keeps the signed span).
 :root.theme-greenbar .transaction-table__amount--positive .transaction-table__amount-signed::before,
 :root.theme-greenbar .account-card__amount--positive .account-card__amount-signed::before {
   content: '+';
 }
 
-:root.theme-greenbar .base-table {
-  --base-table-row-alt-bg: var(--surface-stripe);
+// The table's tokens live at :root (see _primeng-table.scss), not scoped to a component host
+// class, so the override targets the theme root directly rather than a `.base-table`-style
+// descendant selector.
+:root.theme-greenbar {
+  --app-table-row-alt-bg: var(--surface-stripe);
 }

@@ -6,9 +6,8 @@
   no ORM) and the forward-auth middleware. Serves the JSON API under `/api/*` and, in the
   production Docker image, the built frontend as static files.
 - `packages/frontend` — Angular (CDK only, no Material) single-page app that consumes the API.
-  Every table goes through `BaseTableComponent` (`core/components/base-table`), an ag-Grid
-  Community grid that carries the project theme; features use it like `<ag-grid-angular>` and
-  supply their own column definitions and cell renderers.
+  The one data table (transactions) uses PrimeNG's `p-table` directly, themed through the CSS
+  bridge in `styles/_primeng-table.scss` rather than a shared wrapper component.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
@@ -70,23 +69,23 @@ visible label (column headers included) comes from the translations.
 `GET /api/accounts` does the same for `konto` (`AccountRow`). Note that `konto.name` is the account
 *holder* (the same on every account); an account's own label is `bezeichnung`.
 
-The transactions grid shows every meaningful `umsatz` column as stored — the ids are the only
+The transactions table shows every meaningful `umsatz` column as stored — the ids are the only
 values it resolves: `konto_id` to the account's holder, BIC, account number and label (four plain
 columns looked up from `/api/accounts`) and `umsatztyp_id` to the category. What the text columns contain differs by account and over
-time (bank/Hibiscus import formats), so the grid does not interpret them.
+time (bank/Hibiscus import formats), so the table does not interpret them.
 
 ### Transactions table
 
 The table loads **every** `umsatz` row in one request (about 10,000 rows, a few MB of JSON) and
-ag-Grid's client-side row model does the rest: sorting (newest booking first by default), column
-filters (text, number and date filters with floating filters), the quick filter over all columns
-(the search field), and pagination (20 rows per page, built-in pager). The backend never sorts,
-filters or pages for the table; `ORDER BY id` only makes the response deterministic. ag-Grid
-Community only — no Enterprise features, so no row grouping. The grid's own texts (filter menus,
-pager) are translated through the `grid.*` dictionary keys (`core/utils/grid-locale-text.ts`).
+PrimeNG's `p-table` does the rest, client-side: sorting (newest booking first by default), column
+filters (text, numeric and date filters, one per column), the global filter over every listed
+column (the search field), and pagination (20 rows per page by default, built-in pager). The
+backend never sorts, filters or pages for the table; `ORDER BY id` only makes the response
+deterministic. See the `transactions-table` skill for the PrimeNG-specific mechanisms (the
+`TransactionViewRow` materialised for lookups, the date-filter workaround, `globalFilterFields`).
 
-A category change is saved with `PATCH /api/transactions/:id` and then applied to the row the grid
-holds (`applyTransaction`), which keeps the user's page, sorting and filters.
+A category change is saved with `PATCH /api/transactions/:id` and then applied to the row the
+table holds by mutating it in place, which keeps the user's page, sorting and filters.
 
 ## Authentication
 

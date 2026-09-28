@@ -1,9 +1,5 @@
-import { signal } from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import type { Category } from '../../../core/models/category.model';
-import type { TransactionCellParams } from '../cells/transaction-cell';
-import type { TransactionsGridContext } from '../cells/transactions-grid-context';
 
 /** A fully populated transaction; override only what a test cares about. */
 export function transaction(overrides: Partial<TransactionRow> = {}): TransactionRow {
@@ -47,25 +43,4 @@ export function account(overrides: Partial<AccountRow> = {}): AccountRow {
     kategorie: null,
     ...overrides,
   };
-}
-
-/** A grid context with inert defaults. */
-export function gridContext(
-  overrides: Partial<TransactionsGridContext> = {},
-): TransactionsGridContext {
-  return {
-    categories: signal<Category[]>([]),
-    categoryUpdateErrorId: signal<number | null>(null),
-    changeCategory: () => undefined,
-    ...overrides,
-  };
-}
-
-/** The slice of ag-Grid's renderer params the transaction cells actually read. */
-export function cellParams(
-  data: TransactionRow,
-  context: TransactionsGridContext = gridContext(),
-  value: unknown = undefined,
-): TransactionCellParams {
-  return { data, context, value } as TransactionCellParams;
 }

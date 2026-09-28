@@ -45,7 +45,13 @@
   }
 }
 
-// Keeps the grid clear of the search field above and the status text below.
-.transactions__grid {
+// Keeps the table clear of the search field above and the status text below.
+.transaction-table {
+  display: block;
   margin-block-end: 1rem;
+}
+
+.transaction-table__col--numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

@@ -8,3 +8,9 @@
   margin-inline: auto;
   padding: 1.5rem var(--layout-padding-x);
 }
+
+// The transactions grid has many columns, so its page spans the full width instead of the
+// readable-content cap.
+.app-main:has(app-transactions) {
+  max-width: none;
+}

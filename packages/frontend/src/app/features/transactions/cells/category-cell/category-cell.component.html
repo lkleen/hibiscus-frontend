@@ -1,6 +1,6 @@
 <app-category-picker
-  [categories]="context().categories()"
-  [selectedCategoryId]="row().umsatztyp_id"
+  [categories]="categories()"
+  [selectedCategoryId]="categoryId()"
   (categoryChange)="onCategoryChange($event)"
 />
 @if (hasUpdateError()) {

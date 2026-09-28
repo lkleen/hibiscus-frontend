@@ -2,7 +2,6 @@ import { registerLocaleData } from '@angular/common';
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LocaleService } from '../../../../core/services/locale.service';
-import { cellParams, gridContext, transaction } from '../../testing/transaction-fixture';
 import { AmountCellComponent } from './amount-cell.component';
 
 registerLocaleData(localeDe);
@@ -18,7 +17,7 @@ describe('AmountCellComponent', () => {
   });
 
   function render(value: number | null): void {
-    fixture.componentInstance.agInit(cellParams(transaction(), gridContext(), value));
+    fixture.componentRef.setInput('amount', value);
     fixture.detectChanges();
   }
 
@@ -58,13 +57,12 @@ describe('AmountCellComponent', () => {
     expect(host.classList).not.toContain('transaction-table__amount--negative');
   });
 
-  it('follows the active locale and updates on refresh', () => {
+  it('follows the active locale and updates when the amount input changes', () => {
     TestBed.inject(LocaleService).locale.set('de');
     render(-1234.5);
     expect(text('.transaction-table__amount-signed')).toBe('-1.234,50');
 
-    fixture.componentInstance.refresh(cellParams(transaction(), gridContext(), 99));
-    fixture.detectChanges();
+    render(99);
     expect(text('.transaction-table__amount-signed')).toBe('99,00');
   });
 });

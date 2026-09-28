@@ -25,11 +25,24 @@ Load context files on demand based on the task. All paths are relative to the pr
 | Tokens, theming, dark mode                                | @../claude-config/frontend-theming.md                                                 |
 | Creating or modifying a theme file                        | @../claude-config/frontend-theming.md + @../claude-config/frontend-theming-custom.md  |
 | Transactions table — columns, `/api/transactions`, grid sort/filter/group | `transactions-table` skill (`.claude/skills/transactions-table`)                        |
+| Any table or grid work (`p-table`, `p-treetable`)         | `angular-primeng-table` skill (`.claude/skills/angular-primeng-table`)                 |
 | Planning / plan mode (writing or updating a plan)          | @../claude-config/plan-mode.md                                                        |
 
 **No Angular Material.** This project uses `@angular/cdk` primitives plus the custom token/component
 system described in `frontend-theming.md`/`frontend-theming-custom.md` — do not add
 `@angular/material` as a dependency.
+
+**Tables are PrimeNG.** This project's table library is PrimeNG (`p-table`, `p-treetable`) — see the
+`angular-primeng-table` skill. There is **no ag-Grid Enterprise licence** for this project, and
+ag-Grid Community cannot do tree data, so ag-Grid was removed rather than kept as a second option:
+do not reintroduce `ag-grid-angular`/`ag-grid-community`, and do not add a wrapper component around
+`p-table` — the table follows the active theme through the CSS bridge in
+`src/styles/_primeng-table.scss`.
+
+**Stay on PrimeNG 21.** It pairs with Angular 21 (`primeng@22` peers Angular 22) and, unlike 22, is
+MIT-licensed. PrimeNG 22 moved to the commercial PrimeUI model, whose free Community tier requires a
+small-company profile this project cannot assume — so a 21 → 22 bump is a licensing decision, not a
+version bump. Raise it, never do it silently.
 
 ## Project checklist
 

@@ -1,0 +1,135 @@
+// Theming bridge for PrimeNG's table components (replaces the deleted base-table.component.scss /
+// base-table.theme.ts, which did the same job for ag-Grid). PrimeNG resolves its own look from
+// `--p-*` CSS custom properties (set once at bootstrap by `providePrimeNG`), not from a JS Theming
+// API, so the equivalent of ag-Grid's `baseTableTheme.withParams({...})` is a stylesheet.
+//
+// Same two-layer indirection as the old `.base-table` block:
+//   1. `--app-table-*` tokens, each defaulting to a global design token — the house component-token
+//      pattern, so a theme identity can restyle the table by overriding only what it needs.
+//   2. PrimeNG's own `--p-datatable-*` / `--p-treetable-*` / `--p-paginator-*` variables, pointed at
+//      layer 1 instead of Aura's defaults. This is the layer a theme file never has to touch.
+// Because the app sets `cssLayer: true` for PrimeNG, this plain CSS (outside any `@layer`) already
+// outranks PrimeNG's own rules — no specificity tricks, no `!important`.
+//
+// Every `--p-*` name below was verified against the installed v21 preset by generating its actual
+// output (not by reading the source tree and guessing the kebab-case conversion):
+//   node --input-type=module -e "
+//     import { Theme } from '<repo>/node_modules/.pnpm/@primeuix+styled@1.0.0/node_modules/@primeuix/styled/dist/index.mjs';
+//     import Aura from './node_modules/@primeuix/themes/dist/aura/index.mjs';
+//     Theme.setTheme({ preset: Aura.default ?? Aura, options: { cssLayer: false, darkModeSelector: '.dark-mode' } });
+//     console.log(Theme.getComponent('datatable').css); // also 'treetable', 'paginator'
+//   "
+// This prints the real generated stylesheet, so every variable name quoted here is one PrimeNG
+// actually declares — e.g. the root wrapper's border token is `--p-datatable-border-color`, *not*
+// `--p-datatable-root-border-color` (the `root` path segment collapses, same as `colorScheme.light`/
+// `.dark` do). Two things Aura does not expose, confirmed the same way:
+//   - No `--p-datatable-border-radius` (or treetable equivalent) exists. The table's own corner
+//     radius isn't themeable per-component; only unrelated child popovers (filter overlay, etc.)
+//     have their own radius tokens. `--app-table-radius` therefore has nothing to bridge to.
+//   - No `--p-datatable-*-font-family` exists either. Aura's global `--p-typography-font-family`
+//     defaults to `inherit`, so the table already follows `body`'s `--font-sans` (set in
+//     styles.scss) through ordinary CSS inheritance — overriding the global token would reach every
+//     PrimeNG component, not just the table, so it is deliberately left alone here.
+//   - Aura's treetable preset has no `row.stripedBackground` token at all (datatable has one). The
+//     greenbar zebra-striping bridge below is therefore meaningful for `p-table` only; a future
+//     `p-treetable` would need its own striping approach.
+
+:root {
+  // --- Layer 1: component tokens, each defaulting to a global token (ported 1:1 from the deleted
+  // base-table.component.scss `--base-table-*` set) ---
+  --app-table-bg: var(--surface-card);
+  --app-table-color: var(--text-color);
+  --app-table-border-color: var(--surface-border);
+  --app-table-accent: var(--color-accent);
+  --app-table-header-bg: var(--surface-subtle);
+  --app-table-header-color: var(--text-muted);
+  --app-table-row-alt-bg: transparent;
+  --app-table-row-hover-bg: var(--surface-hover);
+  --app-table-radius: var(--radius-base);
+  --app-table-font-family: var(--font-sans);
+  --app-table-font-size: var(--text-sm);
+  --app-table-cell-padding-x: 0.75rem;
+
+  // --- Layer 2: PrimeNG's datatable tokens, mapped onto layer 1 ---
+  --p-datatable-border-color: var(--app-table-border-color);
+
+  --p-datatable-row-background: var(--app-table-bg);
+  --p-datatable-row-color: var(--app-table-color);
+  --p-datatable-row-hover-background: var(--app-table-row-hover-bg);
+  --p-datatable-row-hover-color: var(--app-table-color);
+  // Zebra striping — a live theme feature; greenbar overrides `--app-table-row-alt-bg` on top of
+  // this (see _theme-greenbar.scss), every other theme keeps it `transparent`.
+  --p-datatable-row-striped-background: var(--app-table-row-alt-bg);
+  // No selection styling existed under ag-Grid (baseTableTheme never set a selected-row color), so
+  // there is no layer-1 token to reuse — fall back to the global accent-tint token directly.
+  --p-datatable-row-selected-background: var(--color-accent-subtle);
+  --p-datatable-row-selected-color: var(--app-table-color);
+
+  --p-datatable-header-background: var(--app-table-header-bg);
+  --p-datatable-header-color: var(--app-table-header-color);
+  --p-datatable-header-border-color: var(--app-table-border-color);
+  --p-datatable-header-cell-background: var(--app-table-header-bg);
+  --p-datatable-header-cell-color: var(--app-table-header-color);
+  --p-datatable-header-cell-border-color: var(--app-table-border-color);
+  --p-datatable-header-cell-hover-background: var(--app-table-row-hover-bg);
+  --p-datatable-header-cell-hover-color: var(--app-table-header-color);
+  --p-datatable-header-cell-selected-background: var(--color-accent-subtle);
+  --p-datatable-header-cell-selected-color: var(--app-table-header-color);
+  --p-datatable-header-cell-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-datatable-header-padding: 0.5rem var(--app-table-cell-padding-x);
+
+  --p-datatable-body-cell-border-color: var(--app-table-border-color);
+  --p-datatable-body-cell-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-datatable-body-cell-font-size: var(--app-table-font-size);
+  --p-datatable-column-title-font-size: var(--app-table-font-size);
+
+  --p-datatable-sort-icon-color: var(--app-table-header-color);
+  --p-datatable-sort-icon-hover-color: var(--app-table-accent);
+
+  // The border between the table body and an inline top/bottom paginator.
+  --p-datatable-paginator-top-border-color: var(--app-table-border-color);
+  --p-datatable-paginator-bottom-border-color: var(--app-table-border-color);
+
+  // --- Layer 2: the paginator is its own PrimeNG component (not part of `datatable`'s tokens), so
+  // it needs its own bridge for the pager to visually match the table it belongs to. ---
+  --p-paginator-background: var(--app-table-bg);
+  --p-paginator-color: var(--app-table-color);
+  --p-paginator-current-page-report-color: var(--app-table-header-color);
+  --p-paginator-nav-button-color: var(--app-table-color);
+  --p-paginator-nav-button-hover-background: var(--app-table-row-hover-bg);
+  --p-paginator-nav-button-hover-color: var(--app-table-color);
+  --p-paginator-nav-button-selected-background: var(--app-table-accent);
+  --p-paginator-nav-button-selected-color: var(--text-on-accent);
+
+  // --- Layer 2: treetable counterparts, kept brief — no tree table exists yet, but when one
+  // arrives it should already follow every theme identity without this bridge needing rediscovery.
+  // Same groups as datatable minus striping (Aura's treetable preset has no striped-row token). ---
+  --p-treetable-border-color: var(--app-table-border-color);
+
+  --p-treetable-row-background: var(--app-table-bg);
+  --p-treetable-row-color: var(--app-table-color);
+  --p-treetable-row-hover-background: var(--app-table-row-hover-bg);
+  --p-treetable-row-hover-color: var(--app-table-color);
+  --p-treetable-row-selected-background: var(--color-accent-subtle);
+  --p-treetable-row-selected-color: var(--app-table-color);
+
+  --p-treetable-header-background: var(--app-table-header-bg);
+  --p-treetable-header-color: var(--app-table-header-color);
+  --p-treetable-header-border-color: var(--app-table-border-color);
+  --p-treetable-header-cell-background: var(--app-table-header-bg);
+  --p-treetable-header-cell-color: var(--app-table-header-color);
+  --p-treetable-header-cell-border-color: var(--app-table-border-color);
+  --p-treetable-header-cell-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-treetable-header-padding: 0.5rem var(--app-table-cell-padding-x);
+
+  --p-treetable-body-cell-border-color: var(--app-table-border-color);
+  --p-treetable-body-cell-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-treetable-body-cell-font-size: var(--app-table-font-size);
+  --p-treetable-column-title-font-size: var(--app-table-font-size);
+
+  --p-treetable-sort-icon-color: var(--app-table-header-color);
+  --p-treetable-sort-icon-hover-color: var(--app-table-accent);
+
+  --p-treetable-paginator-top-border-color: var(--app-table-border-color);
+  --p-treetable-paginator-bottom-border-color: var(--app-table-border-color);
+}
