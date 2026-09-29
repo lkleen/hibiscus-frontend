@@ -8,6 +8,7 @@ import {
   contentChildren,
   inject,
   input,
+  linkedSignal,
   signal,
   viewChild,
 } from '@angular/core';
@@ -56,6 +57,20 @@ interface ResolvedSortKey {
 }
 
 /**
+ * Shape of `p-table`'s `(onColReorder)` payload this handler reads. Unlike `(sortFunction)`,
+ * PrimeNG does type this output — `EventEmitter<TableColumnReorderEvent>` (`primeng/types/table`,
+ * see `types/primeng-table.d.ts`) — but that type's third field, `columns?: any[]` (the array
+ * `ObjectUtils.reorderArray` would have mutated had `[columns]` been bound to `<p-table>`; see this
+ * component's own class doc comment for why it isn't), is exactly the `any` this project's "no
+ * `any`" rule forbids importing. This local interface, like `DataTableSortFunctionEvent` above,
+ * declares only the two index fields this handler actually reads.
+ */
+interface DataTableColReorderEvent {
+  readonly dragIndex?: number;
+  readonly dropIndex?: number;
+}
+
+/**
  * The project's one generic table component — every flat table goes through this, never
  * `<p-table>` directly (see `CLAUDE.md` and the `angular-primeng-table` skill). Modelled on
  * ag-Grid's `ColDef`/`GridOptions`/grid API: rows stay raw, every computed value is a column
@@ -65,6 +80,14 @@ interface ResolvedSortKey {
  * `sortMode="multiple"` and `customSort` are fixed, not configurable — the whole point of this
  * component is that sorting always goes through column `comparator`s (`onSortFunction` below), so
  * there is no supported "let PrimeNG sort raw values" mode to switch to.
+ *
+ * `<p-table>`'s own `[columns]` input is deliberately left unbound. `visibleColumns` below is this
+ * component's one source of truth for column order; PrimeNG's column-drag code
+ * (`Table.onColumnDrop` in `primeng-table.mjs`) calls `ObjectUtils.reorderArray(this.columns, …)`
+ * on whatever `[columns]` is bound to, which is a no-op against `undefined` — so binding it would
+ * just give PrimeNG a second, competing copy of the order to (not) maintain. `onColReorder` below
+ * applies the same move to `visibleColumns` itself, from the indices PrimeNG's drop event always
+ * carries regardless of whether `[columns]` is bound.
  */
 @Component({
   selector: 'app-data-table',
@@ -102,8 +125,20 @@ export class DataTableComponent<Row extends object> {
   // `isVisibleColumn` is a type guard (`data-table.model.ts`), so this narrows to
   // `DataTableVisibleColDef` — every rendered-columns-only code path (the header row, this array's
   // consumers below) gets `headerKey` known to exist, with no cast.
-  protected readonly visibleColumns = computed<readonly DataTableVisibleColDef<Row, unknown>[]>(
+  //
+  // A `linkedSignal`, not a plain `computed`: column order is session state that a drag-and-drop
+  // (`onColReorder` below) moves independently of `columns()`'s own order — a `computed` has no
+  // settable state of its own, so it could never hold a moved order. `linkedSignal` recomputes from
+  // `columns()` (the `filter` above) whenever *that* signal's value changes — i.e. the order resets
+  // whenever a new `columns` array is passed in, or the table is recreated — and otherwise just
+  // holds whatever `.set()` last wrote in `onColReorder`. That's exactly `columnReorder`'s
+  // session-only contract (see its doc comment in `data-table.model.ts`).
+  protected readonly visibleColumns = linkedSignal<readonly DataTableVisibleColDef<Row, unknown>[]>(
     () => this.columns().filter(isVisibleColumn),
+  );
+
+  protected readonly reorderEnabled = computed<boolean>(
+    () => this.options().columnReorder ?? DEFAULT_TABLE_OPTIONS.columnReorder,
   );
 
   protected readonly emptyColspan = computed<number>(() => this.visibleColumns().length);
@@ -349,6 +384,58 @@ export class DataTableComponent<Row extends object> {
       throw new Error(`data-table: no cell template registered for cellRenderer "${rendererName}"`);
     }
     return template;
+  }
+
+  /**
+   * Makes the whole header cell a drag source. PrimeNG's `ReorderableColumn.onMouseDown` sets the
+   * `th` draggable only when `findSingle(event.target, '[data-pc-column-resizer="true"]')` finds
+   * nothing — but `findSingle` searches the target's *descendants*, so a press on the `th` itself
+   * (its text node or padding) finds the resize handle inside it and switches dragging off; only a
+   * press on a child like the sort icon could start a drag (verified in the browser). This runs on
+   * the `tr`, i.e. after PrimeNG's own listener on the `th`, and applies the check PrimeNG meant:
+   * is the press *inside* the resize handle or an input. (PrimeNG's check also gets the handle
+   * itself wrong — a press on it finds no descendant, so the `th` became draggable — hence the
+   * explicit `false` too.)
+   */
+  protected onHeaderMouseDown(event: MouseEvent): void {
+    if (!this.reorderEnabled() || !(event.target instanceof Element)) return;
+    const th = event.target.closest('th');
+    if (!th) return;
+    th.draggable = !event.target.closest('[data-pc-column-resizer="true"], input, textarea');
+  }
+
+  /**
+   * `(onColReorder)` handler. PrimeNG never mutates `columns()`/`visibleColumns()` itself when
+   * `<p-table>`'s `[columns]` is left unbound (see this component's class doc comment) — it always
+   * emits `dragIndex`/`dropIndex` regardless, so this applies the move to `visibleColumns` itself,
+   * with the same `splice(to, 0, splice(from, 1)[0])` semantics as PrimeNG's own
+   * `ObjectUtils.reorderArray` (verified in `primeng-utils.mjs`). Unlike PrimeNG's version, an
+   * out-of-range index throws rather than silently wrapping (`% length`): PrimeNG only takes that
+   * branch when `dropIndex >= length`, which a real drag can't produce (both indices come from
+   * `DomHandler.indexWithinGroup`, i.e. the position of an existing header `th`), so reaching it
+   * here means the event is malformed — core.md's fail-loud rule says that throws, not silently
+   * self-corrects.
+   */
+  protected onColReorder(event: DataTableColReorderEvent): void {
+    const { dragIndex, dropIndex } = event;
+    if (dragIndex === undefined || dropIndex === undefined) {
+      throw new Error('data-table: onColReorder event missing dragIndex/dropIndex');
+    }
+    const columns = [...this.visibleColumns()];
+    if (
+      dragIndex < 0 ||
+      dragIndex >= columns.length ||
+      dropIndex < 0 ||
+      dropIndex >= columns.length
+    ) {
+      throw new Error(
+        `data-table: onColReorder index out of range ` +
+          `(dragIndex=${dragIndex}, dropIndex=${dropIndex}, length=${columns.length})`,
+      );
+    }
+    const [moved] = columns.splice(dragIndex, 1);
+    columns.splice(dropIndex, 0, moved);
+    this.visibleColumns.set(columns);
   }
 
   protected onSortFunction(event: DataTableSortFunctionEvent<Row>): void {

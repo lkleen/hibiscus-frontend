@@ -42,14 +42,19 @@
   [scrollHeight]="scrollHeight()"
   [resizableColumns]="resizeEnabled()"
   [columnResizeMode]="resizeMode()"
+  [reorderableColumns]="reorderEnabled()"
+  (onColReorder)="onColReorder($event)"
+  [showInitialSortBadge]="false"
 >
   <ng-template #header>
-    <tr>
+    <tr (mousedown)="onHeaderMouseDown($event)">
       @for (column of visibleColumns(); track column.colId) {
         @if (column.sortable === false) {
           <th
             pResizableColumn
             [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+            pReorderableColumn
+            [pReorderableColumnDisabled]="!reorderEnabled()"
             [style.min-width.px]="headerMinWidth(column)"
             [class.data-table__col--end]="column.align === 'end'"
           >
@@ -59,6 +64,8 @@
           <th
             pResizableColumn
             [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+            pReorderableColumn
+            [pReorderableColumnDisabled]="!reorderEnabled()"
             [style.min-width.px]="headerMinWidth(column)"
             [class.data-table__col--end]="column.align === 'end'"
             [pSortableColumn]="column.colId"

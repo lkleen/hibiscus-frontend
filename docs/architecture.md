@@ -11,8 +11,9 @@
   (`valueGetter`, `valueFormatter`, `comparator`, `filterValueGetter`, `getQuickFilterText`)
   evaluated live, never materialised onto rows. Column sizing via `autoSizeStrategy`
   (`fitGridWidth` / `fitProvidedWidth` / `fitCellContents`) and drag-resize (default on, 'expand'
-  mode) are done in pure CSS. Features are added to the component, never implemented per table.
-  Theming goes through the CSS bridge in `styles/_primeng-table.scss`.
+  mode) are done in pure CSS. Columns can be reordered by dragging their header (default on,
+  `columnReorder` option), order kept for the session only. Features are added to the component,
+  never implemented per table. Theming goes through the CSS bridge in `styles/_primeng-table.scss`.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 

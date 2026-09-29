@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, signal, computed } from '@angular/c
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import localeDe from '@angular/common/locales/de';
 import { By } from '@angular/platform-browser';
-import { Table } from 'primeng/table';
+import { ColumnFilter, ReorderableColumn, Table } from 'primeng/table';
 import { DataTableComponent } from './data-table.component';
 import type { DataTableColDef, DataTableOptions } from './data-table.model';
 import { colDef } from './data-table.model';
@@ -169,6 +169,17 @@ describe('DataTableComponent', () => {
       .map((node) => node.textContent ?? '')
       .join('')
       .trim();
+  }
+
+  /**
+   * `ReorderableColumn` is a directive, not a component — `By.directive` still finds the `th`
+   * elements it's attached to, but the instance itself comes from the element's injector, not
+   * `componentInstance` (which is only populated for a component hosted at that element).
+   */
+  function reorderableColumnDirectives(): ReorderableColumn[] {
+    return fixture.debugElement
+      .queryAll(By.directive(ReorderableColumn))
+      .map((debugEl) => debugEl.injector.get(ReorderableColumn));
   }
 
   it('1. renders headers from headerKey (translated text), hidden columns render no th/td', async () => {
@@ -758,5 +769,139 @@ describe('DataTableComponent', () => {
     );
     expect(innerTable?.style.width).toBe('max-content');
     expect(innerTable?.style.minWidth).toBe('50rem');
+  });
+
+  it('20. default: reorderableColumns is on and headers carry an enabled pReorderableColumn; onColReorder moves header, filter and body cells together', async () => {
+    host.rows.set([toyRow({ id: 1, name: 'Row1' })]);
+    await settle();
+
+    const tableDebug = fixture.debugElement.query(By.directive(Table));
+    if (!tableDebug) throw new Error('table not found');
+    const tableComponent = tableDebug.componentInstance as Table<ToyRow>;
+    expect(tableComponent.reorderableColumns).toBe(true);
+
+    const reorderDirectivesBefore = reorderableColumnDirectives();
+    expect(reorderDirectivesBefore.length).toBeGreaterThan(0);
+    expect(
+      reorderDirectivesBefore.every((directive) => !directive.pReorderableColumnDisabled),
+    ).toBe(true);
+
+    // Columns start as name, amount, day, tag, nofilter, custom (hideId is hidden). Moving index 0
+    // to index 2 — the same `splice(to, 0, splice(from, 1)[0])` semantics PrimeNG's own
+    // `ObjectUtils.reorderArray` uses — lands on amount, day, name, tag, nofilter, custom.
+    tableComponent.onColReorder.emit({ dragIndex: 0, dropIndex: 2 });
+    await settle();
+
+    const headers = Array.from(root.querySelectorAll<HTMLElement>('thead tr:first-child th')).map(
+      headerLabel,
+    );
+    expect(headers).toEqual([
+      'Amount',
+      'Date',
+      'Recipient',
+      'Booking type',
+      'Search',
+      'Search all columns…',
+    ]);
+
+    // Filter row follows the same order (nofilter renders no p-columnFilter at all).
+    const filterFields = fixture.debugElement
+      .queryAll(By.directive(ColumnFilter))
+      .map((debugEl) => (debugEl.componentInstance as ColumnFilter).field);
+    expect(filterFields).toEqual(['amount', 'day', 'name', 'tag', 'custom']);
+
+    // Body cells follow too: 'Row1' (the name column's value) is now the third cell.
+    expect(cellText(bodyRows()[0], 2)).toBe('Row1');
+  });
+
+  it('21. visibleColumns order resets to a new columns array own order when one is set', async () => {
+    host.rows.set([toyRow()]);
+    await settle();
+
+    const tableDebug = fixture.debugElement.query(By.directive(Table));
+    if (!tableDebug) throw new Error('table not found');
+    const tableComponent = tableDebug.componentInstance as Table<ToyRow>;
+    tableComponent.onColReorder.emit({ dragIndex: 0, dropIndex: 2 });
+    await settle();
+
+    const firstHeader = root.querySelectorAll<HTMLElement>('thead tr:first-child th')[0];
+    if (!firstHeader) throw new Error('header not rendered');
+    expect(headerLabel(firstHeader)).toBe('Amount');
+
+    // A fresh array reference (not the cached `columnsBase()` one already applied) — a
+    // `linkedSignal` only resets when its source signal's *value* actually changes.
+    host.columns.set([...host.columnsBase()]);
+    await settle();
+
+    const headers = Array.from(root.querySelectorAll<HTMLElement>('thead tr:first-child th')).map(
+      headerLabel,
+    );
+    expect(headers).toEqual([
+      'Recipient',
+      'Amount',
+      'Date',
+      'Booking type',
+      'Search',
+      'Search all columns…',
+    ]);
+  });
+
+  it('22. columnReorder: false disables reorderableColumns on p-table and pReorderableColumn on every header', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      columnReorder: false,
+    });
+    await settle();
+
+    const tableDebug = fixture.debugElement.query(By.directive(Table));
+    if (!tableDebug) throw new Error('table not found');
+    const tableComponent = tableDebug.componentInstance as Table<ToyRow>;
+    expect(tableComponent.reorderableColumns).toBe(false);
+
+    const reorderDirectives = reorderableColumnDirectives();
+    expect(reorderDirectives.length).toBeGreaterThan(0);
+    expect(reorderDirectives.every((directive) => directive.pReorderableColumnDisabled)).toBe(true);
+  });
+
+  it('23. onColReorder throws on an out-of-range index', async () => {
+    host.rows.set([toyRow()]);
+    await settle();
+
+    // Not `tableComponent.onColReorder.emit(...)` here: Angular's compiled template listener
+    // (`executeListenerWithErrorHandling` in `@angular/core`) catches whatever a `(onColReorder)`
+    // handler throws and routes it to `handleUncaughtError` instead of letting it propagate back
+    // to `emit()`'s caller — verified empirically (the test failed synchronously with no thrown
+    // error, while Vitest separately reported the same error as an unhandled exception). Calling
+    // the component's own `onColReorder` directly, bypassing that wrapper, is the only way to
+    // observe the synchronous throw this test asserts.
+    const dataTableDebug = fixture.debugElement.query(By.directive(DataTableComponent));
+    if (!dataTableDebug) throw new Error('data-table not found');
+    const dataTableComponent = dataTableDebug.componentInstance as unknown as {
+      onColReorder: (event: { dragIndex: number; dropIndex: number }) => void;
+    };
+
+    expect(() => {
+      dataTableComponent.onColReorder({ dragIndex: 0, dropIndex: 99 });
+    }).toThrow(/index out of range/i);
+  });
+
+  it('24. pressing a header cell itself makes it draggable; pressing its resize handle does not', async () => {
+    host.rows.set([toyRow()]);
+    await settle();
+
+    // PrimeNG alone leaves a press on the `th` itself non-draggable, because its resizer check
+    // searches the pressed element's descendants — see `onHeaderMouseDown`.
+    const th = root.querySelector<HTMLElement>('thead tr:first-child th');
+    if (!th) throw new Error('header not rendered');
+    th.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(th.draggable).toBe(true);
+
+    const resizer = th.querySelector<HTMLElement>('[data-pc-column-resizer="true"]');
+    if (!resizer) throw new Error('resizer not rendered');
+    resizer.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    expect(th.draggable).toBe(false);
   });
 });

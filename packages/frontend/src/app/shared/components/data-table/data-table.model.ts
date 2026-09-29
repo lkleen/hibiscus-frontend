@@ -202,6 +202,15 @@ export interface DataTableOptions<Row> {
    *  scrolls horizontally — ag-Grid's own default). Per-column opt-out is `DataTableColDefBase`'s
    *  `resizable`. Default: `{ mode: 'expand' }` (see `DEFAULT_TABLE_OPTIONS`). */
   readonly columnResize?: false | { readonly mode: 'fit' | 'expand' };
+  /** Drag-and-drop column reordering by header, mirroring ag-Grid's `suppressMovableColumns`
+   *  inverted to match the positive naming of `columnResize`/`striped`. Maps to PrimeNG's
+   *  `[reorderableColumns]` plus a static `pReorderableColumn` on every header cell (see
+   *  `data-table.component.html`). The order itself is session state only — kept in
+   *  `DataTableComponent.visibleColumns` while the component lives, reset whenever `columns()`
+   *  itself changes (a new array reference) or the table is recreated; there is no localStorage.
+   *  No per-column opt-out (YAGNI; add ag-Grid's `suppressMovable` if a table ever needs one).
+   *  Default `true`. */
+  readonly columnReorder?: boolean;
   /** Required, not defaulted: there is no honest generic "no rows" copy for an arbitrary table
    *  (see `DEFAULT_TABLE_OPTIONS`'s comment in `data-table.defaults.ts`). Making this required
    *  rather than optional-with-a-runtime-throw means a caller that forgets it gets a compile
