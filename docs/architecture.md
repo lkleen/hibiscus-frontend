@@ -9,8 +9,10 @@
   All tables use the generic `<app-data-table>` component (`app/shared/components/data-table/`),
   which wraps PrimeNG's `p-table` with an ag-Grid-shaped API: raw rows, and column-owned lambdas
   (`valueGetter`, `valueFormatter`, `comparator`, `filterValueGetter`, `getQuickFilterText`)
-  evaluated live, never materialised onto rows. Features are added to the component, never
-  implemented per table. Theming goes through the CSS bridge in `styles/_primeng-table.scss`.
+  evaluated live, never materialised onto rows. Column sizing via `autoSizeStrategy`
+  (`fitGridWidth` / `fitProvidedWidth` / `fitCellContents`) and drag-resize (default on, 'expand'
+  mode) are done in pure CSS. Features are added to the component, never implemented per table.
+  Theming goes through the CSS bridge in `styles/_primeng-table.scss`.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
@@ -86,6 +88,8 @@ search, and pagination (20 rows per page by default). The backend returns all ro
 (deterministic only); it does not sort, filter or page. Column definitions include `valueGetter`
 lambdas for resolving `konto_id` to account details (holder, BIC, account number, label) and
 `umsatztyp_id` to the category name; all values are computed live, not materialised onto rows.
+The table uses `autoSizeStrategy: fitCellContents` with an 82rem minimum width, so cells are
+single-line and the table scrolls horizontally.
 A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
 is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
 filters. See the `transactions-table` skill for column definitions and the refresh contract.

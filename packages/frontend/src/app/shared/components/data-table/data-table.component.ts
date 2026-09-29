@@ -25,6 +25,7 @@ import {
 } from './data-table.defaults';
 import { isVisibleColumn } from './data-table.model';
 import type {
+  DataTableAutoSizeStrategy,
   DataTableColDef,
   DataTableFilterType,
   DataTableOptions,
@@ -180,9 +181,71 @@ export class DataTableComponent<Row extends object> {
     return height === false ? undefined : height;
   });
 
+  protected readonly autoSizeStrategy = computed<DataTableAutoSizeStrategy>(
+    () => this.options().autoSizeStrategy ?? DEFAULT_TABLE_OPTIONS.autoSizeStrategy,
+  );
+
+  /** `fitCellContents`'s CSS modifier class — see `data-table.component.scss`. */
+  protected readonly fitContents = computed<boolean>(
+    () => this.autoSizeStrategy().type === 'fitCellContents',
+  );
+
+  private readonly columnResizeOption = computed<false | { readonly mode: 'fit' | 'expand' }>(
+    () => this.options().columnResize ?? DEFAULT_TABLE_OPTIONS.columnResize,
+  );
+
+  protected readonly resizeEnabled = computed<boolean>(() => this.columnResizeOption() !== false);
+
+  // `<p-table>`'s `[columnResizeMode]` still needs a value when resize is disabled (PrimeNG just
+  // never reads it then, since `resizableColumns` is `false`) — `'expand'` is as good a filler as
+  // any, so this never has to special-case "disabled" beyond `resizeEnabled` above.
+  protected readonly resizeMode = computed<'fit' | 'expand'>(() => {
+    const option = this.columnResizeOption();
+    return option === false ? 'expand' : option.mode;
+  });
+
+  /** `colId` → this column's `fitGridWidth` min width (px), built from `autoSizeStrategy`'s
+   *  `columnLimits`. Throws on a `colId` that isn't a visible column — the same fail-loud contract
+   *  `columnById` already applies to sort meta, extended here to width limits. Empty for every
+   *  strategy but `fitGridWidth`. */
+  private readonly columnMinWidths = computed<ReadonlyMap<string, number>>(() => {
+    const strategy = this.autoSizeStrategy();
+    if (strategy.type !== 'fitGridWidth') return new Map<string, number>();
+    const visibleColIds: ReadonlySet<string> = new Set(
+      this.visibleColumns().map((column) => column.colId),
+    );
+    const minWidths = new Map<string, number>();
+    for (const limit of strategy.columnLimits ?? []) {
+      if (!visibleColIds.has(limit.colId)) {
+        throw new Error(
+          `data-table: unknown column "${limit.colId}" in autoSizeStrategy.columnLimits`,
+        );
+      }
+      minWidths.set(limit.colId, limit.minWidth);
+    }
+    return minWidths;
+  });
+
+  // `tableStyle` merges `options.minWidth` (a floor, every strategy) with the strategy's own table
+  // width (see `DataTableAutoSizeStrategy`'s doc comment for what each variant maps to). This is a
+  // `computed`, so its identity is stable across unrelated change detection runs — important for
+  // `'expand'`-mode resize, which writes `style.width`/`style.minWidth` on the `<table>` directly:
+  // `[tableStyle]` re-diffs by value each cycle, and an unchanged object produces no updates, so a
+  // dragged width survives paging/sorting/filtering instead of being overwritten every cycle.
   protected readonly tableStyle = computed<Record<string, string> | undefined>(() => {
     const minWidth = this.options().minWidth;
-    return minWidth ? { 'min-width': minWidth } : undefined;
+    const strategy = this.autoSizeStrategy();
+    const width =
+      strategy.type === 'fitProvidedWidth'
+        ? `${strategy.width}px`
+        : strategy.type === 'fitCellContents'
+          ? 'max-content'
+          : undefined;
+    if (!minWidth && !width) return undefined;
+    return {
+      ...(minWidth ? { 'min-width': minWidth } : {}),
+      ...(width ? { width } : {}),
+    };
   });
 
   protected readonly multiSortMeta = computed<{ field: string; order: 1 | -1 }[]>(() =>
@@ -243,6 +306,17 @@ export class DataTableComponent<Row extends object> {
 
   protected filterType(column: DataTableColDef<Row, unknown>): DataTableFilterType {
     return column.filter === false ? 'text' : (column.filter ?? 'text');
+  }
+
+  /** The header `th`'s inline `min-width` (px) for `fitGridWidth`: the column's own
+   *  `columnLimits` entry, else the strategy's `defaultMinWidth`, else unset — `undefined` clears
+   *  the `[style.min-width.px]` binding rather than writing `0`. Every other strategy leaves
+   *  columns unset (`fitProvidedWidth`: natural; `fitCellContents`: the `nowrap` modifier class
+   *  does the sizing). */
+  protected headerMinWidth(column: DataTableVisibleColDef<Row, unknown>): number | undefined {
+    const strategy = this.autoSizeStrategy();
+    if (strategy.type !== 'fitGridWidth') return undefined;
+    return this.columnMinWidths().get(column.colId) ?? strategy.defaultMinWidth;
   }
 
   protected onSearchInput(event: Event): void {

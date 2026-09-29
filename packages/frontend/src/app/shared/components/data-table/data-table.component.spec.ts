@@ -549,4 +549,214 @@ describe('DataTableComponent', () => {
       fixture.detectChanges();
     }).toThrow();
   });
+
+  it('11. default: p-datatable has p-datatable-resizable class, no p-datatable-resizable-fit, headers have resizers', async () => {
+    host.rows.set([toyRow()]);
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable).toBeTruthy();
+
+    // Should have resizable class but not resizable-fit
+    expect(pTable?.classList.contains('p-datatable-resizable')).toBe(true);
+    expect(pTable?.classList.contains('p-datatable-resizable-fit')).toBe(false);
+
+    // First-row headers should have the resizer span
+    const headerThs = Array.from(root.querySelectorAll<HTMLElement>('thead tr:first-child th'));
+    expect(headerThs.length).toBeGreaterThan(0);
+
+    // Each header th should contain a .p-datatable-column-resizer span (created by PrimeNG)
+    for (const th of headerThs) {
+      const resizer = th.querySelector<HTMLElement>('.p-datatable-column-resizer');
+      expect(resizer).toBeTruthy();
+    }
+  });
+
+  it('12. columnResize: { mode: "fit" } adds p-datatable-resizable-fit class', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      columnResize: { mode: 'fit' },
+    });
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable?.classList.contains('p-datatable-resizable')).toBe(true);
+    expect(pTable?.classList.contains('p-datatable-resizable-fit')).toBe(true);
+  });
+
+  it('13. columnResize: false removes resizable classes and resizer spans', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      columnResize: false,
+    });
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable?.classList.contains('p-datatable-resizable')).toBe(false);
+    expect(pTable?.classList.contains('p-datatable-resizable-fit')).toBe(false);
+
+    // No resizer spans should exist
+    const resizers = root.querySelectorAll<HTMLElement>('.p-datatable-column-resizer');
+    expect(resizers.length).toBe(0);
+  });
+
+  it('14. a column with resizable: false has no resizer, while others do', async () => {
+    host.rows.set([toyRow()]);
+
+    // Create columns with the "name" column marked as not resizable
+    const customColumns: DataTableColDef<ToyRow, unknown>[] = [
+      colDef<ToyRow, string | null>({
+        colId: 'name',
+        headerKey: 'transactions.colRecipient',
+        valueGetter: (row: ToyRow): string | null => row.name,
+        resizable: false, // Not resizable
+      }),
+      colDef<ToyRow, number | null>({
+        colId: 'amount',
+        headerKey: 'transactions.colAmount',
+        resizable: true, // Explicitly resizable
+      }),
+      ...host.columnsBase().slice(2),
+    ];
+    host.columns.set(customColumns);
+    await settle();
+
+    const headerThs = Array.from(root.querySelectorAll<HTMLElement>('thead tr:first-child th'));
+
+    // First th (name column) should NOT have a resizer
+    const nameThResizer = headerThs[0]?.querySelector<HTMLElement>('.p-datatable-column-resizer');
+    expect(nameThResizer).toBeNull();
+
+    // Second th (amount column) should have a resizer
+    const amountThResizer = headerThs[1]?.querySelector<HTMLElement>('.p-datatable-column-resizer');
+    expect(amountThResizer).toBeTruthy();
+  });
+
+  it('15. fitGridWidth with columnLimits sets inline min-width on header ths', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      autoSizeStrategy: {
+        type: 'fitGridWidth',
+        defaultMinWidth: 80,
+        columnLimits: [{ colId: 'amount', minWidth: 120 }],
+      },
+    });
+    await settle();
+
+    const headerThs = Array.from(root.querySelectorAll<HTMLElement>('thead tr:first-child th'));
+
+    // amount column (index 1) has its own limit; name column (index 0) falls back to defaultMinWidth
+    expect(headerThs[1]?.style.minWidth).toBe('120px');
+    expect(headerThs[0]?.style.minWidth).toBe('80px');
+
+    // The filter row carries no limits of its own — PrimeNG's nth-child rules size it with row 1.
+    const filterThs: HTMLElement[] = Array.from(
+      root.querySelectorAll<HTMLElement>('thead tr:nth-child(2) th'),
+    );
+    expect(filterThs.length).toBeGreaterThan(0);
+    expect(filterThs.every((th: HTMLElement): boolean => th.style.minWidth === '')).toBe(true);
+  });
+
+  it('16b. a hidden column in columnLimits throws, since it renders no header cell', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      autoSizeStrategy: {
+        type: 'fitGridWidth',
+        columnLimits: [{ colId: 'hideId', minWidth: 100 }],
+      },
+    });
+
+    expect(() => {
+      fixture.detectChanges();
+    }).toThrow(/unknown column.*hideId/i);
+  });
+
+  it('16. unknown colId in columnLimits throws error with "unknown column"', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      autoSizeStrategy: {
+        type: 'fitGridWidth',
+        columnLimits: [{ colId: 'nonexistent', minWidth: 100 }],
+      },
+    });
+
+    // Should throw when trying to compute columnLimits
+    expect(() => {
+      fixture.detectChanges();
+    }).toThrow(/unknown column.*nonexistent/i);
+  });
+
+  it('17. fitProvidedWidth sets inline width on the inner table', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      autoSizeStrategy: {
+        type: 'fitProvidedWidth',
+        width: 900,
+      },
+    });
+    await settle();
+
+    // Find the inner table element (PrimeNG renders it within p-table)
+    const innerTable = root.querySelector<HTMLTableElement>(
+      '.p-datatable-table, [data-pc-section="table"]',
+    );
+    expect(innerTable).toBeTruthy();
+    expect(innerTable?.style.width).toBe('900px');
+  });
+
+  it('18. fitCellContents sets width max-content on table and adds data-table--fit-contents class', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      autoSizeStrategy: {
+        type: 'fitCellContents',
+      },
+    });
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable?.classList.contains('data-table--fit-contents')).toBe(true);
+
+    // Find the inner table element
+    const innerTable = root.querySelector<HTMLTableElement>(
+      '.p-datatable-table, [data-pc-section="table"]',
+    );
+    expect(innerTable?.style.width).toBe('max-content');
+  });
+
+  it('19. minWidth combines with fitCellContents (both min-width and width max-content)', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      minWidth: '50rem',
+      autoSizeStrategy: {
+        type: 'fitCellContents',
+      },
+    });
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable?.classList.contains('data-table--fit-contents')).toBe(true);
+
+    // Find the inner table element
+    const innerTable = root.querySelector<HTMLTableElement>(
+      '.p-datatable-table, [data-pc-section="table"]',
+    );
+    expect(innerTable?.style.width).toBe('max-content');
+    expect(innerTable?.style.minWidth).toBe('50rem');
+  });
 });

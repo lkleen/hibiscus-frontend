@@ -49,6 +49,7 @@
   --app-table-font-family: var(--font-sans);
   --app-table-font-size: var(--text-sm);
   --app-table-cell-padding-x: 0.75rem;
+  --app-table-resize-indicator-color: var(--color-accent);
 
   // --- Layer 2: PrimeNG's datatable tokens, mapped onto layer 1 ---
   --p-datatable-border-color: var(--app-table-border-color);
@@ -85,6 +86,11 @@
 
   --p-datatable-sort-icon-color: var(--app-table-header-color);
   --p-datatable-sort-icon-hover-color: var(--app-table-accent);
+
+  // The column drag-resize handle's indicator line (verified against the installed Aura preset's
+  // `datatable.resizeIndicator.color` — `@primeuix/themes` v3.0.1's generated CSS declares
+  // `--p-datatable-resize-indicator-color`, not e.g. `--p-datatable-column-resize-indicator-color`).
+  --p-datatable-resize-indicator-color: var(--app-table-resize-indicator-color);
 
   // The border between the table body and an inline top/bottom paginator.
   --p-datatable-paginator-top-border-color: var(--app-table-border-color);

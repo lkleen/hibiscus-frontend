@@ -78,3 +78,33 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+// `autoSizeStrategy: { type: 'fitCellContents' }` — the table itself sizes to `width: max-content`
+// (`tableStyle`, see data-table.component.ts); this is the per-cell half of that: every header and
+// body cell stays on one line, so a column's width comes from its widest cell's content instead of
+// wrapping into it. Reaches into `<p-table>`'s rendered `th`/`td` the same way `.data-table__col--
+// end` above already does: they're stamped from this component's own `#header`/`#body`
+// `ng-template`s, so they carry this component's view-encapsulation attribute even though PrimeNG
+// inserts them into its own DOM structure — no `::ng-deep` needed.
+.data-table--fit-contents {
+  th,
+  td {
+    white-space: nowrap;
+  }
+
+  // Like ag-Grid's floating filters, the filter row takes the column's width instead of setting it.
+  // Otherwise every column is at least as wide as a filter cell: the `<input size="20">` that
+  // `p-columnFilter` renders is ~200px wide on its own, so every column ended up the same width
+  // (verified in the browser). Both halves are needed: the cell must not ask for width (`width:
+  // 0`), and the input must shrink to whatever the column gives it. The input is PrimeNG's own
+  // markup inside `p-columnFilter`, so it carries no encapsulation attribute. `::ng-deep` is the
+  // only way to reach it, and nesting it under this component's own classes keeps it scoped.
+  .data-table__filter-cell {
+    width: 0;
+
+    ::ng-deep input {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+}

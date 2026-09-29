@@ -1,4 +1,4 @@
-import { containsMatcher, defaultComparator } from './data-table.defaults';
+import { DEFAULT_TABLE_OPTIONS, containsMatcher, defaultComparator } from './data-table.defaults';
 
 /**
  * Mirrors what `DataTableComponent.compareRows` does with a column `comparator`: call it for the
@@ -99,5 +99,15 @@ describe('containsMatcher', () => {
 
   it('does not match an absent substring', () => {
     expect(containsMatcher('Supermarket', 'xyz')).toBe(false);
+  });
+});
+
+describe('DEFAULT_TABLE_OPTIONS', () => {
+  it('has autoSizeStrategy: { type: "fitGridWidth" }', () => {
+    expect(DEFAULT_TABLE_OPTIONS.autoSizeStrategy).toEqual({ type: 'fitGridWidth' });
+  });
+
+  it('has columnResize: { mode: "expand" }', () => {
+    expect(DEFAULT_TABLE_OPTIONS.columnResize).toEqual({ mode: 'expand' });
   });
 });

@@ -22,6 +22,7 @@
 <p-table
   #dt
   class="data-table"
+  [class.data-table--fit-contents]="fitContents()"
   [value]="boundRows()"
   [rowTrackBy]="rowTrackBy"
   [paginator]="paginationEnabled()"
@@ -39,16 +40,26 @@
   [stripedRows]="striped()"
   [scrollable]="scrollable()"
   [scrollHeight]="scrollHeight()"
+  [resizableColumns]="resizeEnabled()"
+  [columnResizeMode]="resizeMode()"
 >
   <ng-template #header>
     <tr>
       @for (column of visibleColumns(); track column.colId) {
         @if (column.sortable === false) {
-          <th [class.data-table__col--end]="column.align === 'end'">
+          <th
+            pResizableColumn
+            [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+            [style.min-width.px]="headerMinWidth(column)"
+            [class.data-table__col--end]="column.align === 'end'"
+          >
             {{ i18n.t(column.headerKey) }}
           </th>
         } @else {
           <th
+            pResizableColumn
+            [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+            [style.min-width.px]="headerMinWidth(column)"
             [class.data-table__col--end]="column.align === 'end'"
             [pSortableColumn]="column.colId"
           >
@@ -60,7 +71,7 @@
     </tr>
     <tr>
       @for (column of visibleColumns(); track column.colId) {
-        <th>
+        <th class="data-table__filter-cell">
           @if (column.filter !== false) {
             <p-columnFilter
               [type]="filterType(column)"

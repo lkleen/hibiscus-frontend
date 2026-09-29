@@ -85,10 +85,10 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   cannot do tree data and the Enterprise tier is a paid licence this project does not have. PrimeNG
   21 replaced it. **Stay on PrimeNG 21** — it is MIT-licensed; PrimeNG 22 moved to the commercial
   PrimeUI model, so bumping past 21 is a licensing decision, not a routine version bump.
-- **Lost capability, no replacement:** ag-Grid's `autoSizeStrategy` (size-to-content, continuously
-  re-fit) has no PrimeNG equivalent. Column sizing today is a `[tableStyle]` `min-width` hint plus
-  plain browser table auto-layout — deliberately minimal, to be tuned once there's real usage to
-  look at. Don't try to rebuild auto-sizing by hand; tell the user it isn't available.
+- **Column sizing** is available through the `options.autoSizeStrategy` (mirrors ag-Grid's): `fitGridWidth`
+  (fills the container), `fitProvidedWidth` (fixed width), `fitCellContents` (cells are single-line,
+  table scrolls). Sizing is done in pure CSS, not by measuring in JS. The transactions table uses
+  `fitCellContents` with an 82rem floor.
 
 ## 4. Adding or removing a column
 

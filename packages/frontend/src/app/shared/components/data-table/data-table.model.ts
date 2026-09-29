@@ -52,6 +52,12 @@ interface DataTableColDefBase<Row, Value> {
    *  result, unformatted. */
   readonly getQuickFilterText?: (value: Value, row: Row) => unknown;
   readonly align?: 'start' | 'end';
+  /** Mirrors ag-Grid's ColDef `resizable`. Default `true`; irrelevant when `options.columnResize`
+   *  is `false` (no column gets a handle then). `false` sets PrimeNG's `pResizableColumnDisabled`
+   *  on this header cell, so no drag handle is created for it; the other columns stay resizable.
+   *  PrimeNG creates the handle once, after the view initialises, so changing this at runtime has
+   *  no effect. */
+  readonly resizable?: boolean;
 }
 
 /** A rendered column: shows a header/filter/body cell and is included in the quick filter. */
@@ -123,6 +129,49 @@ export interface DataTableSortModel {
 }
 
 /**
+ * A per-column width limit for the `fitGridWidth` `autoSizeStrategy`, mirroring ag-Grid's
+ * `columnLimits` (this project doesn't support ag-Grid's `width`/`flex`; see the "column sizing"
+ * plan). There is deliberately no `maxWidth`. Chrome ignores `max-width` on table cells under auto
+ * layout, and even a capped inner wrapper can't hold a column down, because a `width: 100%` table
+ * hands its spare width to columns in proportion to their content (verified in the browser). A
+ * real cap would need `table-layout: fixed`, which turns off content sizing altogether.
+ *
+ * `minWidth` is a **px number, not a CSS string**: it ends up as the header `th`'s inline
+ * `min-width`, which Chrome does honour, and PrimeNG's own column-resize code
+ * (`onColumnResizeEnd` in `primeng-table.mjs`) reads that inline `min-width` back with
+ * `replace(/[^\d.]/g, '')` and treats the digits as px — a CSS string like `'8rem'` would silently
+ * become an 8px floor the moment a user drags that column. Speaking px from the start avoids that
+ * trap. (`DataTableOptions.minWidth`, the *table's* width floor, stays a CSS string on purpose —
+ * PrimeNG's resize code never reads it, so it isn't subject to this parsing.)
+ */
+export interface DataTableColumnLimit {
+  readonly colId: string;
+  readonly minWidth: number; // px
+}
+
+/**
+ * Mirrors ag-Grid's grid-level `autoSizeStrategy` (`GridOptions.autoSizeStrategy.type`:
+ * `'fitGridWidth' | 'fitProvidedWidth' | 'fitCellContents'`). Unlike ag-Grid, this is done in pure
+ * CSS, not by measuring cells in JS — see `data-table.component.ts`'s `tableStyle`/`headerMinWidth`
+ * for how each variant maps onto the `<table>` and its header cells:
+ * - `'fitGridWidth'` — the table fills its container (PrimeNG's own default `width: 100%`); columns
+ *   without their own `columnLimits` entry fall back to `defaultMinWidth`.
+ * - `'fitProvidedWidth'` — the table is fixed at `width` (px).
+ * - `'fitCellContents'` — the table sizes to `width: max-content` and every cell gets
+ *   `white-space: nowrap` (the `data-table--fit-contents` modifier class), so columns take exactly
+ *   their content's width, the same visual effect ag-Grid's `autoSizeAllColumns()` produces.
+ */
+export type DataTableAutoSizeStrategy =
+  | {
+      readonly type: 'fitGridWidth';
+      /** px, applied to every visible column that has no `columnLimits` entry of its own. */
+      readonly defaultMinWidth?: number;
+      readonly columnLimits?: readonly DataTableColumnLimit[];
+    }
+  | { readonly type: 'fitProvidedWidth'; readonly width: number } // px
+  | { readonly type: 'fitCellContents' };
+
+/**
  * Grid-level options, modelled on ag-Grid's `GridOptions`. Every key is optional except
  * `getRowId` and `emptyKey`; the rest default from `DEFAULT_TABLE_OPTIONS` in
  * `data-table.defaults.ts` — see that file's comment for `minWidth`, the one optional key
@@ -140,8 +189,19 @@ export interface DataTableOptions<Row> {
    *  flex column with a bounded height (see `data-table.component.scss`). */
   readonly scrollHeight?: string | false;
   /** `undefined` sets no `min-width` on the table (natural sizing) — deliberately not defaulted;
-   *  see `data-table.defaults.ts`. */
+   *  see `data-table.defaults.ts`. Combines with `autoSizeStrategy` — it's a floor on top of
+   *  whatever width the strategy computes, not an alternative to it. */
   readonly minWidth?: string;
+  /** ag-Grid's grid-level `autoSizeStrategy`. Default: `{ type: 'fitGridWidth' }` (see
+   *  `DEFAULT_TABLE_OPTIONS`). */
+  readonly autoSizeStrategy?: DataTableAutoSizeStrategy;
+  /** ag-Grid's column resizing, expressed with PrimeNG's own resize knobs: `false` disables dragging
+   *  entirely (every header cell gets `pResizableColumnDisabled`, because PrimeNG creates a handle
+   *  whenever that is not `true`, whatever the table's `resizableColumns` says); `{ mode }` maps 1:1 to PrimeNG's
+   *  `columnResizeMode` (`'fit'` takes width from the next column, `'expand'` grows the table and
+   *  scrolls horizontally — ag-Grid's own default). Per-column opt-out is `DataTableColDefBase`'s
+   *  `resizable`. Default: `{ mode: 'expand' }` (see `DEFAULT_TABLE_OPTIONS`). */
+  readonly columnResize?: false | { readonly mode: 'fit' | 'expand' };
   /** Required, not defaulted: there is no honest generic "no rows" copy for an arbitrary table
    *  (see `DEFAULT_TABLE_OPTIONS`'s comment in `data-table.defaults.ts`). Making this required
    *  rather than optional-with-a-runtime-throw means a caller that forgets it gets a compile

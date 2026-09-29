@@ -137,6 +137,7 @@ export class TransactionsComponent {
       { colId: 'datum', order: -1 },
       { colId: 'id', order: -1 },
     ],
+    autoSizeStrategy: { type: 'fitCellContents' },
     minWidth: '82rem',
     scrollHeight: 'flex',
     emptyKey: 'transactions.empty',

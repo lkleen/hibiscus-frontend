@@ -154,6 +154,8 @@ describe('TransactionsComponent', () => {
     const table = root.querySelector<HTMLTableElement>('table');
     if (!table) throw new Error('table not rendered');
     expect(table.style.minWidth).toBeTruthy();
+    // fitCellContents strategy sets the table to max-content width for single-line cells.
+    expect(table.style.width).toBe('max-content');
 
     const headerCells = Array.from(root.querySelectorAll('thead tr:first-child th'));
     expect(headerCells.length).toBe(18);
