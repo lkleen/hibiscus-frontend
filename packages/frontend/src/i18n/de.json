@@ -60,9 +60,11 @@
   "payees.error": "Empfänger konnten nicht geladen werden.",
   "payees.empty": "Keine Empfänger gefunden.",
 
+  "table.filterSearch": "Suche",
+  "table.searchPlaceholder": "In allen Spalten suchen…",
+  "table.pageReport": "{first} bis {last} von {totalRecords}",
+
   "transactions.title": "Umsätze",
-  "transactions.filterSearch": "Suche",
-  "transactions.searchPlaceholder": "In allen Spalten suchen…",
   "transactions.loading": "Umsätze werden geladen…",
   "transactions.error": "Umsätze konnten nicht geladen werden.",
   "transactions.empty": "Keine Umsätze entsprechen diesen Filtern.",
@@ -85,7 +87,6 @@
   "transactions.colBalance": "Saldo",
   "transactions.colCategory": "Kategorie",
   "transactions.categoryUpdateError": "Kategorie konnte nicht gespeichert werden",
-  "transactions.pageReport": "{first} bis {last} von {totalRecords}",
 
   "primeng.startsWith": "Beginnt mit",
   "primeng.contains": "Enthält",

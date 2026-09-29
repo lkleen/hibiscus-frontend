@@ -35,8 +35,10 @@ system described in `frontend-theming.md`/`frontend-theming-custom.md` — do no
 **Tables are PrimeNG.** This project's table library is PrimeNG (`p-table`, `p-treetable`) — see the
 `angular-primeng-table` skill. There is **no ag-Grid Enterprise licence** for this project, and
 ag-Grid Community cannot do tree data, so ag-Grid was removed rather than kept as a second option:
-do not reintroduce `ag-grid-angular`/`ag-grid-community`, and do not add a wrapper component around
-`p-table` — the table follows the active theme through the CSS bridge in
+do not reintroduce `ag-grid-angular`/`ag-grid-community`. Every table uses `<app-data-table>`
+(`packages/frontend/src/app/shared/components/data-table/`); new table features go into that
+component (switchable, with replaceable default lambdas), never into a feature. Never put `<p-table>`
+in a feature template. The table still follows the active theme through the CSS bridge in
 `src/styles/_primeng-table.scss`.
 
 **Stay on PrimeNG 21.** It pairs with Angular 21 (`primeng@22` peers Angular 22) and, unlike 22, is

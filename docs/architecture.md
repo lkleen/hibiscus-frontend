@@ -6,8 +6,11 @@
   no ORM) and the forward-auth middleware. Serves the JSON API under `/api/*` and, in the
   production Docker image, the built frontend as static files.
 - `packages/frontend` — Angular (CDK only, no Material) single-page app that consumes the API.
-  The one data table (transactions) uses PrimeNG's `p-table` directly, themed through the CSS
-  bridge in `styles/_primeng-table.scss` rather than a shared wrapper component.
+  All tables use the generic `<app-data-table>` component (`app/shared/components/data-table/`),
+  which wraps PrimeNG's `p-table` with an ag-Grid-shaped API: raw rows, and column-owned lambdas
+  (`valueGetter`, `valueFormatter`, `comparator`, `filterValueGetter`, `getQuickFilterText`)
+  evaluated live, never materialised onto rows. Features are added to the component, never
+  implemented per table. Theming goes through the CSS bridge in `styles/_primeng-table.scss`.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
@@ -76,16 +79,16 @@ time (bank/Hibiscus import formats), so the table does not interpret them.
 
 ### Transactions table
 
-The table loads **every** `umsatz` row in one request (about 10,000 rows, a few MB of JSON) and
-PrimeNG's `p-table` does the rest, client-side: sorting (newest booking first by default), column
-filters (text, numeric and date filters, one per column), the global filter over every listed
-column (the search field), and pagination (20 rows per page by default, built-in pager). The
-backend never sorts, filters or pages for the table; `ORDER BY id` only makes the response
-deterministic. See the `transactions-table` skill for the PrimeNG-specific mechanisms (the
-`TransactionViewRow` materialised for lookups, the date-filter workaround, `globalFilterFields`).
-
-A category change is saved with `PATCH /api/transactions/:id` and then applied to the row the
-table holds by mutating it in place, which keeps the user's page, sorting and filters.
+The table loads **every** `umsatz` row in one request (about 10,000 rows, a few MB of JSON) as
+raw `TransactionRow` objects. The `<app-data-table>` component handles all client-side sorting
+(newest booking first by default), column filtering (text, numeric and date per column), global
+search, and pagination (20 rows per page by default). The backend returns all rows `ORDER BY id`
+(deterministic only); it does not sort, filter or page. Column definitions include `valueGetter`
+lambdas for resolving `konto_id` to account details (holder, BIC, account number, label) and
+`umsatztyp_id` to the category name; all values are computed live, not materialised onto rows.
+A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
+is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
+filters. See the `transactions-table` skill for column definitions and the refresh contract.
 
 ## Authentication
 

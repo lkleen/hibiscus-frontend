@@ -51,39 +51,36 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   client-side. The backend route does not sort, filter or page for the table's sake, and gains no
   `limit`/`offset`, filter or sort parameters on `GET /api/transactions`. The frontend does not
   re-implement any of this with hand-rolled state.
-- Before writing any table code, follow the `angular-primeng-table` skill. There is **no** wrapper
-  component (the deleted `BaseTableComponent`/`ag-dev` pattern) — `<p-table>` is used directly in
-  `transactions.component.html`, and it follows the active theme through the CSS bridge in
-  `src/styles/_primeng-table.scss`, not a component-level theme object.
+- Before writing any table code, follow the `angular-primeng-table` skill. Use `<app-data-table>`
+  in `transactions.component.html` — it wraps PrimeNG's `p-table` with column-owned lambdas and
+  raw rows. It follows the active theme through the CSS bridge in `src/styles/_primeng-table.scss`.
 - The backend returns all rows, `ORDER BY id` only for a deterministic response; that is transport,
   not table behaviour. The table loads every row in one request (about 10,000 rows) and does all
   sorting/filtering/paging on that in-memory set.
-- **No `valueGetter`/`cellDataType` — looked-up values are materialised onto a view row instead.**
-  PrimeNG's sort, column filters and global search only work on plain properties of the bound row,
-  so `transactions.component.ts` builds a `TransactionViewRow` (`TransactionRow` plus the four
-  looked-up account columns, `category_name`, and two filter-only `Date` fields — see below) in a
-  `signal`/effect, not a `computed`. This does **not** license reinterpreting a DB value: it only
-  *attaches* resolved lookups next to the untouched raw fields, and §1/§2 still bind — display and
-  sort still use the raw stored value wherever one exists.
-- Per-column filters are `<p-columnFilter type="text"|"numeric"|"date" display="row"
-  filterOn="input">` in the template's second header row. `filterOn="input"` is required — v21
-  defaults to `'enter'`, which would silently drop the as-you-type behaviour the old floating
-  filters had.
-- **The date-filter trap:** PrimeNG's `type="date"` filter renders a datepicker that emits a
-  `Date`, and `FilterService` then calls `.toDateString()` on the cell value — which throws on the
-  ISO date strings `GET /api/transactions` returns. So `datum`/`valuta` are filtered on the view
-  row's `datum_date`/`valuta_date` (`Date | null`, parsed locally, filter-only), while the visible
-  cell and the sort both keep the raw ISO string (lexicographic order is already chronological).
-  Never point a date `p-columnFilter` at the raw string field.
-- `[globalFilterFields]` must list every field the search box should reach, including the
-  looked-up ones (`konto_name`, `category_name`, …) — PrimeNG only resolves own/nested properties
-  of the row and throws if a listed field is absent. A new displayed column that should be
-  searchable has to be added here too.
-- A category change mutates the existing row **object** in place (same array, same object
-  identity) rather than replacing it — PrimeNG resets the page to 1 whenever the `[value]` array's
-  identity changes while a filter is active, and `filteredValue` (what renders while filtering)
-  holds the same row references as the array, not copies, so replacing the object would leave a
-  stale one rendered.
+- **Lookups are `valueGetter`s in column definitions, evaluated live; rows stay raw.** The four
+  account columns and the category column use `valueGetter` lambdas to resolve `konto_id` and
+  `umsatztyp_id` from the raw row. No `TransactionViewRow` — column definitions compute values live,
+  and PrimeNG's sort, filters and search call the lambdas directly. This does **not** license
+  reinterpreting a DB value: a `valueGetter` may only resolve ids and must never reinterpret stored
+  values. §1/§2 still bind — lookups stay confined to the columns that need them.
+- Per-column filters come from each column's `filter` type (`'text'`, `'numeric'`, `'date'` or
+  `false`); `<app-data-table>` renders them as `<p-columnFilter … display="row" filterOn="input">`.
+  `filterOn="input"` is required — v21 defaults to `'enter'`, which would silently drop the
+  as-you-type behaviour the old floating filters had.
+- **The date-filter trap is handled by the component's default `filterValueGetter` for
+  `filter: 'date'`.** Date columns specify `filter: 'date'` in their `DataTableColDef`; the
+  component's default `filterValueGetter` (in `data-table.defaults.ts`) calls `parseIsoDate` on the
+  ISO string and returns a `Date` object to PrimeNG's date filter through the proxy. The visible
+  cell and sort still show/use the raw ISO string (lexicographic order is already chronological).
+  There is no `datum_date` any more.
+- `globalFilterFields` is computed by `<app-data-table>` from the column definitions
+  (one function per column with a `getQuickFilterText` lambda). Maintain the columns, and search
+  updates automatically.
+- A category change mutates the raw row's `umsatztyp_id` in place and then calls
+  `dataTable().refresh()`; the category column's `valueGetter` picks up the new name live. Never
+  replace the row object or the `value` array: PrimeNG resets the page to 1 whenever the bound
+  array's identity changes while a filter is active, and `filteredValue` holds the same (cached
+  proxy) references, so a replaced object would stay rendered stale.
 - **No ag-Grid Enterprise licence** is why this table is on PrimeNG at all: ag-Grid Community
   cannot do tree data and the Enterprise tier is a paid licence this project does not have. PrimeNG
   21 replaced it. **Stay on PrimeNG 21** — it is MIT-licensed; PrimeNG 22 moved to the commercial
@@ -98,10 +95,11 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
 1. `TransactionRow` in `packages/shared/src/contracts/transactions.d.ts` (DB name and nullability
    as in the table).
 2. The `SELECT` in `umsatz.ts` (the mapping stays absent — rows are returned as they come).
-3. The column in `transactions.component.html` (a `<th pSortableColumn>` in the label row, a
-   `<p-columnFilter>` in the filter row, a `<td>` in `#body`) and, if it is a looked-up value,
-   `TransactionViewRow`/`buildViewRow`/`globalFilterFields` in `transactions.component.ts`.
-   Translation keys in **both** `en.json` and `de.json`.
+3. One `DataTableColDef<TransactionRow>` entry in `transactions.component.ts`, at its display
+   position. If it is a lookup (account/category), use a `valueGetter` lambda; if it needs
+   special formatting or rendering, add a `valueFormatter` and/or a `cellRenderer` name with a
+   matching `appDataTableCell` template — only if the default dash text isn't enough. The header
+   translation key in **both** `en.json` and `de.json`.
 4. `testing/transaction-fixture.ts` and the specs that count columns/headers.
 5. `docs/architecture.md` if the contract or behaviour described there changes.
 6. Run `pnpm format:fix`, `pnpm format:check`, `pnpm lint`, `pnpm test`, `pnpm build`.

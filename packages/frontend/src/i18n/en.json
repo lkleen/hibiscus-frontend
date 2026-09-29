@@ -60,9 +60,11 @@
   "payees.error": "Could not load payees.",
   "payees.empty": "No payees found.",
 
+  "table.filterSearch": "Search",
+  "table.searchPlaceholder": "Search all columns…",
+  "table.pageReport": "{first} to {last} of {totalRecords}",
+
   "transactions.title": "Transactions",
-  "transactions.filterSearch": "Search",
-  "transactions.searchPlaceholder": "Search all columns…",
   "transactions.loading": "Loading transactions…",
   "transactions.error": "Could not load transactions.",
   "transactions.empty": "No transactions match these filters.",
@@ -85,7 +87,6 @@
   "transactions.colBalance": "Balance",
   "transactions.colCategory": "Category",
   "transactions.categoryUpdateError": "Could not save category",
-  "transactions.pageReport": "{first} to {last} of {totalRecords}",
 
   "primeng.startsWith": "Begins with",
   "primeng.contains": "Contains",

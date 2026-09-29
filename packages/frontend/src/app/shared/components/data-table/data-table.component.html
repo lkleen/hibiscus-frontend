@@ -1,0 +1,105 @@
+@if (quickFilterEnabled()) {
+  <form class="filters" (submit)="$event.preventDefault()">
+    <div class="filters__field filters__field--grow">
+      <label for="filter-search">{{ i18n.t('table.filterSearch') }}</label>
+      <input
+        id="filter-search"
+        type="search"
+        [placeholder]="i18n.t('table.searchPlaceholder')"
+        [value]="q()"
+        (input)="onSearchInput($event)"
+      />
+    </div>
+  </form>
+}
+
+<!--
+  stripedRows enables the zebra-stripe *class*; the stripe colour itself is theme-driven
+  (`--app-table-row-alt-bg`, transparent everywhere but greenbar — see _primeng-table.scss and
+  _theme-greenbar.scss). Without this input PrimeNG never emits the class and greenbar's striping
+  has nothing to render, even though the default theme shows no visible stripe either way.
+-->
+<p-table
+  #dt
+  class="data-table"
+  [value]="boundRows()"
+  [rowTrackBy]="rowTrackBy"
+  [paginator]="paginationEnabled()"
+  [rows]="pageSize()"
+  [rowsPerPageOptions]="rowsPerPageOptions()"
+  sortMode="multiple"
+  [customSort]="true"
+  (sortFunction)="onSortFunction($event)"
+  [multiSortMeta]="multiSortMeta()"
+  [globalFilterFields]="globalFilterFieldsForPrimeNg()"
+  [tableStyle]="tableStyle()"
+  [loading]="loading()"
+  [currentPageReportTemplate]="pageReportTemplate()"
+  [showCurrentPageReport]="true"
+  [stripedRows]="striped()"
+  [scrollable]="scrollable()"
+  [scrollHeight]="scrollHeight()"
+>
+  <ng-template #header>
+    <tr>
+      @for (column of visibleColumns(); track column.colId) {
+        @if (column.sortable === false) {
+          <th [class.data-table__col--end]="column.align === 'end'">
+            {{ i18n.t(column.headerKey) }}
+          </th>
+        } @else {
+          <th
+            [class.data-table__col--end]="column.align === 'end'"
+            [pSortableColumn]="column.colId"
+          >
+            {{ i18n.t(column.headerKey) }}
+            <p-sortIcon [field]="column.colId" />
+          </th>
+        }
+      }
+    </tr>
+    <tr>
+      @for (column of visibleColumns(); track column.colId) {
+        <th>
+          @if (column.filter !== false) {
+            <p-columnFilter
+              [type]="filterType(column)"
+              [field]="column.colId"
+              [matchMode]="filterType(column) === 'text' ? 'contains' : undefined"
+              display="row"
+              filterOn="input"
+            />
+          }
+        </th>
+      }
+    </tr>
+  </ng-template>
+  <ng-template #body let-row>
+    <tr>
+      @for (column of visibleColumns(); track column.colId) {
+        @let cell = cellView(column, row);
+        <td [class.data-table__col--end]="column.align === 'end'">
+          @if (column.cellRenderer) {
+            <ng-container
+              [ngTemplateOutlet]="templateFor(column.cellRenderer)"
+              [ngTemplateOutletContext]="{
+                $implicit: cell.raw,
+                value: cell.value,
+                valueFormatted: cell.formatted,
+              }"
+            />
+          } @else {
+            {{ cell.formatted }}
+          }
+        </td>
+      }
+    </tr>
+  </ng-template>
+  <ng-template #emptymessage>
+    <tr>
+      <td [attr.colspan]="emptyColspan()">
+        <p class="status-text">{{ i18n.t(emptyKey()) }}</p>
+      </td>
+    </tr>
+  </ng-template>
+</p-table>

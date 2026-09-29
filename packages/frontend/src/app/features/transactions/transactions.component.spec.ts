@@ -220,9 +220,7 @@ describe('TransactionsComponent', () => {
   it('gives a negative balance the same theme-driven amount styling as the amount', async () => {
     await load({ items: [transaction({ betrag: -5, saldo: -101.95 })] });
 
-    const cells = root.querySelectorAll(
-      '.transaction-table__col--numeric app-transaction-amount-cell',
-    );
+    const cells = root.querySelectorAll('.data-table__col--end app-transaction-amount-cell');
     expect(cells.length).toBe(2);
     for (const cell of Array.from(cells)) {
       expect(cell.classList).toContain('transaction-table__amount--negative');
@@ -250,7 +248,13 @@ describe('TransactionsComponent', () => {
       ],
     });
 
-    const header = root.querySelector<HTMLElement>('th[pSortableColumn="betrag"]');
+    // `<app-data-table>` binds `[pSortableColumn]="column.colId"` (it has to — the column list is
+    // data, not markup authored per column) rather than the old template's static
+    // `pSortableColumn="betrag"` attribute, so it isn't reflected onto the DOM element for an
+    // attribute selector to find; the amount column's known header position stands in for it.
+    const header = Array.from(root.querySelectorAll<HTMLElement>('thead tr:first-child th'))[
+      COL.betrag
+    ];
     if (!header) throw new Error('amount column header not rendered');
     header.click();
     await settle();
@@ -400,7 +404,7 @@ describe('TransactionsComponent', () => {
   it('keeps zebra striping enabled for greenbar', async () => {
     await load({ items: [transaction()] });
 
-    const table = root.querySelector('.transaction-table');
+    const table = root.querySelector('.data-table');
     expect(table?.classList).toContain('p-datatable-striped');
   });
 });
