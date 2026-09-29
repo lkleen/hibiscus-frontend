@@ -49,7 +49,7 @@ itself requires authentication too — there is no unauthenticated route in this
 |----------------------------------------|---------------------------------------------|
 | `GET /api/me`                          | Echoes the authenticated identity           |
 | `GET /api/accounts`                    | List `konto` rows, as stored (`AccountRow`) |
-| `GET /api/transactions`                | Every `umsatz` row, as stored (`TransactionRow[]`), unfiltered and unpaged |
+| `GET /api/transactions`                | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
 | `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`; answers `204` |
 | `GET /api/categories`                  | `umsatztyp` tree                           |
 | `POST /api/categories`                 | Create a category                          |
@@ -66,7 +66,11 @@ They are authored as `.d.ts` files, which TypeScript type-checks but never emits
 needs no build step and the backend's `dist/` layout is unchanged.
 
 `GET /api/transactions` returns the selected `umsatz` columns exactly as the DB has them
-(`TransactionRow`: `konto_id`, `empfaenger_name`, `betrag`, `zweck`, `umsatztyp_id`, …). The
+(`TransactionRow`: `konto_id`, `empfaenger_name`, `betrag`, `zweck`, `umsatztyp_id`, …). To keep
+the payload small it is columnar (`TransactionsResponse`): the column names once in `columns`, then
+each row as an array of its values in that order (`mysql2`'s `rowsAsArray`, so the backend does no
+per-row mapping; about 40% smaller than an array of objects). `ApiService.getTransactions()` turns
+it back into `TransactionRow` objects, so everything past the service sees plain rows. The
 backend neither renames nor derives anything — the DB layout is fixed for compatibility with the
 desktop client, and the API mirrors it one-to-one. The UI never displays a column name: every
 visible label (column headers included) comes from the translations.
@@ -81,8 +85,8 @@ time (bank/Hibiscus import formats), so the table does not interpret them.
 
 ### Transactions table
 
-The table loads **every** `umsatz` row in one request (about 10,000 rows, a few MB of JSON) as
-raw `TransactionRow` objects. The `<app-data-table>` component handles all client-side sorting
+The table loads **every** `umsatz` row in one request (about 10,000 rows, under 3 MB of columnar
+JSON) as raw `TransactionRow` objects. The `<app-data-table>` component handles all client-side sorting
 (newest booking first by default), column filtering (text, numeric and date per column), global
 search, and pagination (20 rows per page by default). The backend returns all rows `ORDER BY id`
 (deterministic only); it does not sort, filter or page. Column definitions include `valueGetter`

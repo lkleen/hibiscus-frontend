@@ -1,14 +1,36 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { CreateCategory, Category, UpdateCategory } from '../models/category.model';
 import { Me } from '../models/me.model';
 import { Payee } from '../models/payee.model';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   TransactionRow,
+  TransactionsResponse,
   UpdateTransactionCategory,
 } from '@hibiscus-frontend/shared/contracts/transactions';
+
+/**
+ * Turns the columnar `GET /api/transactions` payload back into raw rows, pairing each value with
+ * its column name. Throws on a row whose length does not match `columns` — a malformed payload is
+ * an error, never a partial row.
+ */
+export function toTransactionRows(response: TransactionsResponse): TransactionRow[] {
+  const { columns, rows } = response;
+  return rows.map((values: TransactionsResponse['rows'][number], index: number) => {
+    if (values.length !== columns.length) {
+      throw new Error(
+        `Transaction row ${index} has ${values.length} values for ${columns.length} columns`,
+      );
+    }
+    // The backend contract guarantees `columns` are exactly `TransactionRow`'s keys and each row
+    // holds their values in that order; this is the one place that relies on it.
+    return Object.fromEntries(
+      columns.map((column: keyof TransactionRow, i: number) => [column, values[i]]),
+    ) as unknown as TransactionRow;
+  });
+}
 
 /**
  * Thin wrapper around HttpClient for every `/api/*` endpoint documented in
@@ -28,7 +50,7 @@ export class ApiService {
   }
 
   getTransactions(): Observable<TransactionRow[]> {
-    return this.http.get<TransactionRow[]>('/api/transactions');
+    return this.http.get<TransactionsResponse>('/api/transactions').pipe(map(toTransactionRows));
   }
 
   /** The backend answers `204 No Content`; callers apply the change to their own copy of the row. */

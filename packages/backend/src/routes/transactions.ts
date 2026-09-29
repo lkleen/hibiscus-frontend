@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import type {
-  TransactionRow,
+  TransactionsResponse,
   UpdateTransactionCategory,
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import { z } from 'zod';
@@ -23,7 +23,7 @@ export function createTransactionsRouter(): Router {
   // `transactions-table` skill).
   router.get('/', (_req: Request, res: Response, next: NextFunction): void => {
     listTransactions()
-      .then((rows: TransactionRow[]) => res.json(rows))
+      .then((response: TransactionsResponse) => res.json(response))
       .catch(next);
   });
 

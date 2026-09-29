@@ -8,7 +8,7 @@ import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transac
 import type { Category } from '../../core/models/category.model';
 import { LocaleService } from '../../core/services/locale.service';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
-import { account, transaction } from './testing/transaction-fixture';
+import { account, transaction, transactionsResponse } from './testing/transaction-fixture';
 import { TransactionsComponent } from './transactions.component';
 
 registerLocaleData(localeDe);
@@ -69,7 +69,7 @@ describe('TransactionsComponent', () => {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush(accounts);
     httpMock.expectOne('/api/categories').flush(categories);
-    httpMock.expectOne('/api/transactions').flush(items);
+    httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));
     await settle();
   }
 

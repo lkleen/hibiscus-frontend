@@ -1,7 +1,15 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { ApiService } from './api.service';
+import type {
+  TransactionRow,
+  TransactionsResponse,
+} from '@hibiscus-frontend/shared/contracts/transactions';
+import {
+  transaction,
+  transactionsResponse,
+} from '../../features/transactions/testing/transaction-fixture';
+import { ApiService, toTransactionRows } from './api.service';
 
 describe('ApiService', () => {
   let service: ApiService;
@@ -41,7 +49,23 @@ describe('ApiService', () => {
     const req = httpMock.expectOne('/api/transactions');
     expect(req.request.method).toBe('GET');
     expect(req.request.params.keys()).toEqual([]);
-    req.flush([]);
+    req.flush({ columns: [], rows: [] });
+  });
+
+  it('decodes the columnar transactions payload into raw rows', () => {
+    const rows: TransactionRow[] = [transaction({ id: 1, zweck: 'A' }), transaction({ id: 2 })];
+    let received: TransactionRow[] = [];
+    service.getTransactions().subscribe((result: TransactionRow[]) => (received = result));
+
+    httpMock.expectOne('/api/transactions').flush(transactionsResponse(rows));
+
+    expect(received).toEqual(rows);
+  });
+
+  it('rejects a transaction row whose length does not match the columns', () => {
+    const response: TransactionsResponse = { columns: ['id', 'konto_id'], rows: [[1]] };
+
+    expect(() => toTransactionRows(response)).toThrow(/1 values for 2 columns/);
   });
 
   it('PATCHes a transaction category', () => {

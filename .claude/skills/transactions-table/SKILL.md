@@ -20,12 +20,17 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
 - Return every selected column **under its DB name with its DB value**: `konto_id`,
   `empfaenger_name`, `zweck3`, … — no camelCase renaming, no mapping function between row and
   response.
+- The response is **columnar** (`TransactionsResponse`): `columns` lists the DB column names once,
+  `rows` holds each row as its values in that order. `TRANSACTION_COLUMNS` in `umsatz.ts` is both
+  the `SELECT` list and `columns`; the query uses `rowsAsArray: true`, so the driver's arrays go
+  out untouched. `ApiService.getTransactions()` is the only place that turns them back into
+  `TransactionRow` objects — the table and its specs only ever see plain rows.
 - **Never** derive, merge, split, parse, trim, normalise, default or fix a column value
   (no "combine `zweck` + `zweck2` + `zweck3`", no "fall back to `zweck` when `empfaenger_name` is
   NULL", no repairing the broken umlauts in `art`). If a value looks wrong, it is shown wrong.
 - `TransactionRow` (shared package) mirrors the selected columns one-to-one and is declared once;
-  the backend types its query result as `TransactionRow & RowDataPacket`, the frontend imports the
-  same type. Never re-declare it, never add a second "view model" type for the API.
+  `TransactionColumn`/`TransactionValue`/`TransactionsResponse` are derived from it, and the
+  backend and frontend import the same types. Never re-declare it, never add a second "view model" type for the API.
 - Write scope stays as in `docs/architecture.md`: only `umsatz.umsatztyp_id` is written
   (`PATCH /api/transactions/:id`). Bank-imported fields are never edited.
 
@@ -94,12 +99,14 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
 
 1. `TransactionRow` in `packages/shared/src/contracts/transactions.d.ts` (DB name and nullability
    as in the table).
-2. The `SELECT` in `umsatz.ts` (the mapping stays absent — rows are returned as they come).
+2. `TRANSACTION_COLUMNS` in `umsatz.ts` — it is the `SELECT` list and the response's `columns`
+   (no mapping — rows are returned as the driver delivers them).
 3. One `DataTableColDef<TransactionRow>` entry in `transactions.component.ts`, at its display
    position. If it is a lookup (account/category), use a `valueGetter` lambda; if it needs
    special formatting or rendering, add a `valueFormatter` and/or a `cellRenderer` name with a
    matching `appDataTableCell` template — only if the default dash text isn't enough. The header
    translation key in **both** `en.json` and `de.json`.
-4. `testing/transaction-fixture.ts` and the specs that count columns/headers.
+4. `testing/transaction-fixture.ts` (`transaction()`; `transactionsResponse()` derives its columns
+   from it) and the specs that count columns/headers.
 5. `docs/architecture.md` if the contract or behaviour described there changes.
 6. Run `pnpm format:fix`, `pnpm format:check`, `pnpm lint`, `pnpm test`, `pnpm build`.

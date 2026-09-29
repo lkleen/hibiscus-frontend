@@ -1,5 +1,9 @@
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
-import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
+import type {
+  TransactionColumn,
+  TransactionRow,
+  TransactionsResponse,
+} from '@hibiscus-frontend/shared/contracts/transactions';
 
 /** A fully populated transaction; override only what a test cares about. */
 export function transaction(overrides: Partial<TransactionRow> = {}): TransactionRow {
@@ -22,6 +26,17 @@ export function transaction(overrides: Partial<TransactionRow> = {}): Transactio
     endtoendid: null,
     umsatztyp_id: null,
     ...overrides,
+  };
+}
+
+/** Encodes rows the way `GET /api/transactions` sends them (column names once, value arrays). */
+export function transactionsResponse(rows: TransactionRow[]): TransactionsResponse {
+  const columns: TransactionColumn[] = Object.keys(transaction()) as TransactionColumn[];
+  return {
+    columns,
+    rows: rows.map((row: TransactionRow) =>
+      columns.map((column: TransactionColumn) => row[column]),
+    ),
   };
 }
 

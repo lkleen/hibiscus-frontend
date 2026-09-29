@@ -1,20 +1,44 @@
 import type { RowDataPacket } from 'mysql2/promise';
-import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
+import type {
+  TransactionColumn,
+  TransactionValue,
+  TransactionsResponse,
+} from '@hibiscus-frontend/shared/contracts/transactions';
 import { getPool } from '../db/pool';
 
-type TransactionRowPacket = TransactionRow & RowDataPacket;
+type TransactionValuesPacket = TransactionValue[] & RowDataPacket;
 
-export async function listTransactions(): Promise<TransactionRow[]> {
+/** The selected `umsatz` columns, in response order — both the `SELECT` list and `columns`. */
+export const TRANSACTION_COLUMNS: TransactionColumn[] = [
+  'id',
+  'konto_id',
+  'empfaenger_konto',
+  'empfaenger_blz',
+  'empfaenger_name',
+  'empfaenger_name2',
+  'betrag',
+  'zweck',
+  'zweck2',
+  'zweck3',
+  'datum',
+  'valuta',
+  'saldo',
+  'art',
+  'gvcode',
+  'endtoendid',
+  'umsatztyp_id',
+];
+
+export async function listTransactions(): Promise<TransactionsResponse> {
   const pool = getPool();
-  // `ORDER BY id` only makes the response deterministic; the order the user sees is the grid's.
-  const [rows] = await pool.query<TransactionRowPacket[]>(
-    `SELECT id, konto_id, empfaenger_konto, empfaenger_blz, empfaenger_name, empfaenger_name2,
-            betrag, zweck, zweck2, zweck3, datum, valuta, saldo, art, gvcode, endtoendid,
-            umsatztyp_id
-     FROM umsatz
-     ORDER BY id`,
-  );
-  return rows;
+  // `rowsAsArray` makes the driver return each row as its values in `SELECT` order, so the
+  // response needs no per-row mapping. `ORDER BY id` only makes the response deterministic; the
+  // order the user sees is the grid's.
+  const [rows] = await pool.query<TransactionValuesPacket[]>({
+    sql: `SELECT ${TRANSACTION_COLUMNS.join(', ')} FROM umsatz ORDER BY id`,
+    rowsAsArray: true,
+  });
+  return { columns: TRANSACTION_COLUMNS, rows };
 }
 
 export async function updateTransactionCategory(

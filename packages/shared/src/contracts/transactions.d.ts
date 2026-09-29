@@ -29,6 +29,22 @@ export interface TransactionRow {
   umsatztyp_id: number | null;
 }
 
+/** A `TransactionRow` column name — the DB column name. */
+export type TransactionColumn = keyof TransactionRow;
+
+/** Any single `TransactionRow` column value. */
+export type TransactionValue = TransactionRow[TransactionColumn];
+
+/**
+ * Response of `GET /api/transactions`, columnar to keep the payload small: the column names once,
+ * then each row as its values in `columns` order. Names and values are exactly those of
+ * `TransactionRow`; only the transport shape differs.
+ */
+export interface TransactionsResponse {
+  columns: TransactionColumn[];
+  rows: TransactionValue[][];
+}
+
 /** Body of `PATCH /api/transactions/:id`; the endpoint answers `204 No Content`. */
 export interface UpdateTransactionCategory {
   categoryId: number | null;
