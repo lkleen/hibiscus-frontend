@@ -1,3 +1,12 @@
+// Fills `.app-main` (a flex column) below the header, and hands the rest of its height to the
+// table (`scrollHeight: 'flex'`).
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .status-text {
   color: var(--text-muted);
 

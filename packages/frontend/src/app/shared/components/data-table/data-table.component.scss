@@ -55,6 +55,25 @@
   margin-block-end: 1rem;
 }
 
+// `scrollHeight: 'flex'`: the component fills its (flex column) parent, and the table takes what
+// the search field leaves. PrimeNG's `.p-datatable-flex-scrollable` then fits its scroll container
+// between the header and the paginator.
+:host(.data-table-host--fill) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+
+  // `display`/`flex-direction` restate `.p-datatable-flex-scrollable`'s own, which the scoped
+  // `.data-table { display: block }` above would otherwise outrank.
+  .data-table {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+}
+
 .data-table__col--end {
   text-align: right;
   font-variant-numeric: tabular-nums;

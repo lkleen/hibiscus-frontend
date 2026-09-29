@@ -138,6 +138,7 @@ export class TransactionsComponent {
       { colId: 'id', order: -1 },
     ],
     minWidth: '82rem',
+    scrollHeight: 'flex',
     emptyKey: 'transactions.empty',
   };
 

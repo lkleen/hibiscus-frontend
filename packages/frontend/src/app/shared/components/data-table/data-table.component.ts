@@ -72,6 +72,7 @@ interface ResolvedSortKey {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TableModule, NgTemplateOutlet],
   providers: [FilterService],
+  host: { '[class.data-table-host--fill]': "scrollHeight() === 'flex'" },
 })
 export class DataTableComponent<Row extends object> {
   protected readonly i18n = inject(TranslationService);

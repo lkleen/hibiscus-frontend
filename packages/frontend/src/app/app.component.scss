@@ -1,16 +1,30 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   min-height: 100%;
 }
 
+// Fills the height app-root has left below the header. `width: 100%` is needed because the auto
+// inline margins would otherwise shrink the flex item to its content width instead of stretching.
+// A flex column itself, so a routed page can take `flex: 1` to fill it.
 .app-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
   max-width: var(--layout-max-width);
   margin-inline: auto;
   padding: 1.5rem var(--layout-padding-x);
 }
 
 // The transactions grid has many columns, so its page spans the full width instead of the
-// readable-content cap.
+// readable-content cap. It also fills exactly the viewport and scrolls inside its table, so the
+// shell gets a fixed height there (a `min-height` shell would grow with the table's rows).
+:host:has(app-transactions) {
+  height: 100%;
+}
+
 .app-main:has(app-transactions) {
   max-width: none;
+  min-height: 0;
 }

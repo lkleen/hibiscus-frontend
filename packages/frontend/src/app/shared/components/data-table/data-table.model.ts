@@ -135,7 +135,9 @@ export interface DataTableOptions<Row> {
   /** Initial `multiSortMeta`. May reference a `hide: true` column (a sort-only tie-break). */
   readonly defaultSort?: readonly DataTableSortModel[];
   readonly striped?: boolean;
-  /** `false` disables the table's own scroll container (no `scrollable`/`scrollHeight`). */
+  /** `false` disables the table's own scroll container (no `scrollable`/`scrollHeight`).
+   *  `'flex'` makes the table fill its parent instead of a fixed height; the parent must then be a
+   *  flex column with a bounded height (see `data-table.component.scss`). */
   readonly scrollHeight?: string | false;
   /** `undefined` sets no `min-width` on the table (natural sizing) — deliberately not defaulted;
    *  see `data-table.defaults.ts`. */
