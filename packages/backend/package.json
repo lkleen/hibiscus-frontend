@@ -13,6 +13,7 @@
     "format:check": "prettier --check src"
   },
   "dependencies": {
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "mysql2": "^3.11.0",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@eslint/js": "^9.26.0",
     "@hibiscus-frontend/shared": "workspace:*",
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.15.3",

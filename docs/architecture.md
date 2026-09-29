@@ -86,7 +86,8 @@ time (bank/Hibiscus import formats), so the table does not interpret them.
 ### Transactions table
 
 The table loads **every** `umsatz` row in one request (about 10,000 rows, under 3 MB of columnar
-JSON) as raw `TransactionRow` objects. The `<app-data-table>` component handles all client-side sorting
+JSON, about 530 KB on the wire — the backend gzips every response via the `compression`
+middleware) as raw `TransactionRow` objects. The `<app-data-table>` component handles all client-side sorting
 (newest booking first by default), column filtering (text, numeric and date per column), global
 search, and pagination (20 rows per page by default). The backend returns all rows `ORDER BY id`
 (deterministic only); it does not sort, filter or page. Column definitions include `valueGetter`

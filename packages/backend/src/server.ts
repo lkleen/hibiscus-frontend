@@ -1,3 +1,4 @@
+import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
@@ -20,6 +21,9 @@ function main(): void {
 
   // The proxy in front of this app is the real access control, not CORS — see
   // docs/architecture.md#authentication. Allowing all origins here is fine.
+  // gzip every response the client accepts it for — mostly for `GET /api/transactions`, which
+  // is several MB of JSON uncompressed. Registered first so it wraps every route below.
+  app.use(compression());
   app.use(cors());
   app.use(express.json());
 
