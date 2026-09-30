@@ -9,6 +9,7 @@
         class="header__nav-link"
         [routerLink]="['/', locale(), link.path]"
         routerLinkActive="header__nav-link--active"
+        ariaCurrentWhenActive="page"
       >
         {{ i18n.t(link.labelKey) }}
       </a>

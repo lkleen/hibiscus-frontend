@@ -1,4 +1,4 @@
-<h1>{{ i18n.t('transactions.title') }}</h1>
+<h1 class="visually-hidden">{{ i18n.t('transactions.title') }}</h1>
 
 <app-data-table [value]="items()" [columns]="columns" [options]="options" [loading]="loading()">
   <ng-template appDataTableCell="amount" let-value="value">
