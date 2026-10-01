@@ -172,7 +172,12 @@ export type DataTableAutoSizeStrategy =
   | { readonly type: 'fitCellContents' };
 
 /**
- * Grid-level options, modelled on ag-Grid's `GridOptions`. Every key is optional except
+ * Grid-level options, modelled on ag-Grid's `GridOptions`. Runtime-changing behaviour is not an
+ * option but a component input: see `DataTableComponent.externalFilter` (ag-Grid's external
+ * filter — a caller predicate on raw rows, applied before column/quick filters, sorting and
+ * paging; a change resets to page 1, `refresh()` keeps the page) and the
+ * `[appDataTableToolbar]` content slot projected into the filters form next to the search field.
+ * Every key is optional except
  * `getRowId` and `emptyKey`; the rest default from `DEFAULT_TABLE_OPTIONS` in
  * `data-table.defaults.ts` — see that file's comment for `minWidth`, the one optional key
  * deliberately *not* defaulted there, because no generic width would be honest for every table.

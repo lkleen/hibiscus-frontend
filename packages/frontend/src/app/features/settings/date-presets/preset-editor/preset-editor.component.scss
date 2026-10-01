@@ -1,0 +1,144 @@
+@use '../preset-buttons' as buttons;
+
+:host {
+  display: block;
+}
+
+// The inline editor hangs under its row, marked by an accent rule on the leading edge.
+.editor {
+  --editor-rule-color: var(--color-accent);
+  --editor-input-bg: var(--surface-card);
+  --editor-input-border-color: var(--surface-border);
+  --editor-hint-color: var(--text-muted);
+  --editor-error-color: var(--color-danger);
+
+  display: grid;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-inline-start: 2px solid var(--editor-rule-color);
+
+  @media (min-width: 640px) {
+    // --ds-breakpoint-sm
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  }
+}
+
+.editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+
+  &--wide {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  input[type='text'],
+  input[type='number'],
+  input[type='date'],
+  select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--editor-input-border-color);
+    border-radius: var(--radius-base);
+    background: var(--editor-input-bg);
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    min-width: 0;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    @media (pointer: coarse) {
+      min-block-size: 2.75rem;
+    }
+  }
+}
+
+.editor__hint {
+  color: var(--editor-hint-color);
+  font-size: var(--text-xs);
+}
+
+.editor__kind {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+
+  legend {
+    padding: 0;
+    margin-block-end: 0.25rem;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+}
+
+.editor__radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+  color: var(--text-color);
+
+  input {
+    accent-color: var(--color-accent);
+    margin: 0;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+}
+
+.editor__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.editor__error {
+  margin: 0;
+  color: var(--editor-error-color);
+  font-size: var(--text-sm);
+}
+
+.editor__preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.editor__preview-dates {
+  color: var(--text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.presets__btn {
+  @include buttons.preset-button;
+}

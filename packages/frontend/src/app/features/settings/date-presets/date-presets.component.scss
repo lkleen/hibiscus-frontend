@@ -1,0 +1,113 @@
+@use './preset-buttons' as buttons;
+
+:host {
+  display: block;
+}
+
+.presets__hint {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.presets__status {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+
+  &--error {
+    color: var(--color-danger);
+  }
+}
+
+// A plain ruled list rather than cards: rows are separated by a hairline only.
+.presets__list {
+  --presets-divider-color: var(--surface-border);
+
+  padding: 0;
+  margin: 0 0 1rem;
+  list-style: none;
+  border-block-start: 1px solid var(--presets-divider-color);
+}
+
+.presets__item {
+  border-block-end: 1px solid var(--presets-divider-color);
+}
+
+.presets__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  padding-block: 0.5rem;
+}
+
+.presets__label {
+  flex: 1;
+  min-width: 10rem;
+  color: var(--text-color);
+}
+
+.presets__default {
+  --presets-default-color: var(--color-accent);
+
+  margin-inline-start: 0.5rem;
+  color: var(--presets-default-color);
+  font-size: var(--text-xs);
+}
+
+// Same role as the user menu's item value: the muted, right-hand half of a label/value row.
+.presets__dates {
+  --presets-dates-color: var(--text-muted);
+
+  color: var(--presets-dates-color);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.presets__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  inline-size: 100%;
+
+  @media (min-width: 640px) {
+    // --ds-breakpoint-sm
+    inline-size: auto;
+  }
+}
+
+// Pushes Edit/Delete to the trailing end of the actions, away from the move arrows.
+.presets__edit {
+  margin-inline-start: auto;
+}
+
+@media (min-width: 640px) {
+  // --ds-breakpoint-sm
+  .presets__edit {
+    margin-inline-start: 0.5rem;
+  }
+}
+
+.presets__glyph {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.presets__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.presets__saving {
+  margin-inline-start: auto;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.presets__btn {
+  @include buttons.preset-button;
+}

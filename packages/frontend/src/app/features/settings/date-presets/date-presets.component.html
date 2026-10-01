@@ -1,0 +1,139 @@
+<p class="presets__hint">{{ i18n.t('settings.presets.hint') }}</p>
+
+@if (service.loadError()) {
+  <p class="presets__status presets__status--error" role="alert">
+    {{ i18n.t('settings.presets.loadError') }}
+  </p>
+} @else if (!service.loaded()) {
+  <p class="presets__status">{{ i18n.t('settings.presets.loading') }}</p>
+} @else {
+  @if (service.saveError()) {
+    <p class="presets__status presets__status--error" role="alert">
+      {{ i18n.t('settings.presets.saveError') }}
+    </p>
+  }
+
+  @if (rows().length === 0 && !isNew()) {
+    <p class="presets__status">{{ i18n.t('settings.presets.empty') }}</p>
+  }
+
+  <ul class="presets__list" [attr.aria-label]="i18n.t('settings.presets.listLabel')">
+    @for (row of rows(); track row.preset.id; let first = $first; let last = $last) {
+      <li class="presets__item">
+        <div class="presets__row">
+          <span class="presets__label">
+            {{ row.label }}
+            @if (first) {
+              <span class="presets__default">{{ i18n.t('settings.presets.default') }}</span>
+            }
+          </span>
+          <span class="presets__dates">{{ row.dates }}</span>
+          <span class="presets__actions">
+            <button
+              type="button"
+              class="presets__btn presets__btn--icon"
+              [disabled]="service.saving() || first"
+              [attr.aria-label]="i18n.t('settings.presets.moveUpAria', { name: row.label })"
+              (click)="move(row.preset, -1)"
+            >
+              <svg
+                class="presets__glyph"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m6 15 6-6 6 6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="presets__btn presets__btn--icon"
+              [disabled]="service.saving() || last"
+              [attr.aria-label]="i18n.t('settings.presets.moveDownAria', { name: row.label })"
+              (click)="move(row.preset, 1)"
+            >
+              <svg
+                class="presets__glyph"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="presets__btn presets__edit"
+              [disabled]="service.saving()"
+              [attr.aria-label]="i18n.t('settings.presets.editAria', { name: row.label })"
+              [attr.aria-expanded]="editingId() === row.preset.id"
+              (click)="startEdit(row.preset)"
+            >
+              {{ i18n.t('settings.presets.edit') }}
+            </button>
+            <button
+              type="button"
+              class="presets__btn presets__btn--danger presets__delete"
+              [disabled]="service.saving()"
+              [attr.aria-label]="i18n.t('settings.presets.deleteAria', { name: row.label })"
+              (click)="remove(row.preset)"
+            >
+              {{ i18n.t('settings.presets.delete') }}
+            </button>
+          </span>
+        </div>
+        @if (editingId() === row.preset.id) {
+          <app-preset-editor
+            [preset]="row.preset"
+            [disabled]="service.saving()"
+            (saved)="save($event)"
+            (cancelled)="closeEditor()"
+          />
+        }
+      </li>
+    }
+    @if (newPreset(); as draft) {
+      <li class="presets__item">
+        <app-preset-editor
+          [preset]="draft"
+          [disabled]="service.saving()"
+          (saved)="save($event)"
+          (cancelled)="closeEditor()"
+        />
+      </li>
+    }
+  </ul>
+
+  <div class="presets__footer">
+    <button
+      type="button"
+      class="presets__btn presets__btn--primary presets__add"
+      [disabled]="service.saving() || atLimit() || isNew()"
+      (click)="startAdd()"
+    >
+      {{ i18n.t('settings.presets.add') }}
+    </button>
+    <button
+      type="button"
+      class="presets__btn presets__restore"
+      [disabled]="service.saving()"
+      (click)="restoreDefaults()"
+    >
+      {{ i18n.t('settings.presets.restore') }}
+    </button>
+    @if (service.saving()) {
+      <span class="presets__saving" role="status">{{ i18n.t('settings.presets.saving') }}</span>
+    }
+  </div>
+  @if (atLimit()) {
+    <p class="presets__status">{{ i18n.t('settings.presets.limit', { max: maxPresets }) }}</p>
+  }
+}

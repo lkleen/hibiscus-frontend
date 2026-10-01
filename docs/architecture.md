@@ -12,8 +12,11 @@
   evaluated live, never materialised onto rows. Column sizing via `autoSizeStrategy`
   (`fitGridWidth` / `fitProvidedWidth` / `fitCellContents`) and drag-resize (default on, 'expand'
   mode) are done in pure CSS. Columns can be reordered by dragging their header (default on,
-  `columnReorder` option), order kept for the session only. Features are added to the component,
-  never implemented per table. Theming goes through the CSS bridge in `styles/_primeng-table.scss`.
+  `columnReorder` option), order kept for the session only. The component offers an ag-Grid-style
+  `externalFilter` input (a caller-supplied predicate applied before table filters, resetting to
+  page 1 on change) and a `[appDataTableToolbar]` projection slot for additional filters next to
+  the search field. Features are added to the component, never implemented per table. Theming goes
+  through the CSS bridge in `styles/_primeng-table.scss`.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
@@ -21,7 +24,8 @@
 
 Backed by a MariaDB database matching the schema Hibiscus (the desktop Jameica/Hibiscus
 home-banking client) creates via its own `mysql-create.sql`. This repo never owns or migrates
-that schema — it only reads/writes against tables that already exist.
+that schema — it only reads/writes against tables that already exist, with one exception: the
+app-owned `hf_user_setting` table for per-user settings (see below).
 
 Tables this app uses:
 
@@ -31,15 +35,17 @@ Tables this app uses:
 | `umsatz`    | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
 | `umsatztyp` | Categories — self-referencing tree via `parent_id`, has a `color` column |
 | `empfaenger`| Payee/counterparty address book                                          |
+| `hf_user_setting` | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`.
 
-Write scope is deliberately narrow: this app can create/rename/delete/re-parent categories and
-change which category a transaction belongs to (`umsatz.umsatztyp_id`). It does not edit
-bank-imported transaction fields (amount, date, counterparty) — those are synced from the bank
-by the desktop client and are not this app's data to change.
+Write scope includes categories, transactions, and per-user settings. This app can
+create/rename/delete/re-parent categories; change which category a transaction belongs to
+(`umsatz.umsatztyp_id`); and write per-user settings (date range presets) to `hf_user_setting`.
+It does not edit bank-imported transaction fields (amount, date, counterparty) — those are
+synced from the bank by the desktop client and are not this app's data to change.
 
 ## API (v1)
 
@@ -57,6 +63,9 @@ itself requires authentication too — there is no unauthenticated route in this
 | `PATCH /api/categories/:id`            | Rename / re-parent / recolor a category    |
 | `DELETE /api/categories/:id`           | Delete a category                          |
 | `GET /api/payees`                      | List/search `empfaenger`                   |
+| `GET /api/settings/date-presets`       | User's date presets; defaults if not stored |
+| `PUT /api/settings/date-presets`       | Save whole preset list (zod-validated); answers `204` |
+| `DELETE /api/settings/date-presets`    | Restore defaults; answers `204`            |
 
 ### Shared contracts
 
@@ -84,6 +93,17 @@ values it resolves: `konto_id` to the account's holder, BIC, account number and 
 columns looked up from `/api/accounts`) and `umsatztyp_id` to the category. What the text columns contain differs by account and over
 time (bank/Hibiscus import formats), so the table does not interpret them.
 
+### User settings
+
+Per-user settings are keyed by the forward-auth identity and stored in `hf_user_setting`. The
+shared contract `@hibiscus-frontend/shared/contracts/user-settings` defines the setting types;
+date presets are the first (relative units like "current month" or fixed date ranges, each named
+or auto-generated, the first preset auto-selected on page load). Defaults live only in the backend
+(`DEFAULT_DATE_PRESETS`); the user is never "no presets", they always have at least the defaults.
+Reads and writes go through `DatePresetService`, which loads presets once at app startup, queues
+all writes through a single serial channel (so the server receives them in order), and only
+surfaces confirmed state to the UI (unsaved changes are not displayed).
+
 ### Transactions table
 
 The table loads **every** `umsatz` row in one request (about 10,000 rows, under 3 MB of columnar
@@ -95,7 +115,9 @@ search, and pagination (20 rows per page by default). The backend returns all ro
 lambdas for resolving `konto_id` to account details (holder, BIC, account number, label) and
 `umsatztyp_id` to the category name; all values are computed live, not materialised onto rows.
 The table uses `autoSizeStrategy: fitCellContents` with an 82rem minimum width, so cells are
-single-line and the table scrolls horizontally.
+single-line and the table scrolls horizontally. A `<app-date-range-filter>` in the table's
+toolbar filters on `datum` (booking date), inclusive; it starts on the user's first date preset
+and persists within the session only.
 A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
 is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
 filters. See the `transactions-table` skill for column definitions and the refresh contract.
@@ -184,6 +206,14 @@ user data and is shown as-is.
 Adding a locale: add it to `SUPPORTED_LOCALES` (`core/models/locale.model.ts`), create its
 dictionary, register it in `DICTIONARIES` (`core/models/translation.model.ts`), register its Angular
 locale data in `app.config.ts`, and add a `locale.<code>` label to every dictionary.
+
+## Settings
+
+Per-user settings are accessed via a route-based tab interface at `/:locale/settings/<tab>`,
+with all tabs defined in a single source (`SETTINGS_TABS` in `settings-tabs.ts`). The route
+structure is: root shell component loads the active tab child route lazily. The first tab is
+the default. Settings are reachable from the user menu. Currently implemented: date range
+presets (see User settings above).
 
 ## Local development
 

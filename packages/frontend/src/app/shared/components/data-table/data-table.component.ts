@@ -77,6 +77,10 @@ interface DataTableColReorderEvent {
  * lambda evaluated live (see `data-table.model.ts`), and every feature is switchable off with a
  * replaceable default lambda (see `data-table.defaults.ts`).
  *
+ * Besides the `p-table` features it also offers an ag-Grid-style external filter
+ * (`externalFilter`) and a toolbar slot: elements marked `appDataTableToolbar` are projected into
+ * the filters form next to the search field (see the template).
+ *
  * `sortMode="multiple"` and `customSort` are fixed, not configurable — the whole point of this
  * component is that sorting always goes through column `comparator`s (`onSortFunction` below), so
  * there is no supported "let PrimeNG sort raw values" mode to switch to.
@@ -108,6 +112,20 @@ export class DataTableComponent<Row extends object> {
   readonly options = input.required<DataTableOptions<Row>>();
   readonly loading = input<boolean>(false);
 
+  /**
+   * ag-Grid's external filter: a caller-owned predicate applied *before* the table's own column
+   * filters, quick filter, sorting and paging — a row it rejects is simply not part of the table's
+   * data (so the page report counts only the rows that pass, and the empty message shows when none
+   * does). An `input`, not part of `options`: `options` is static configuration, whereas this
+   * changes at runtime (e.g. a date-range picker in the toolbar slot). `null` shows every row.
+   *
+   * Contract: it is re-evaluated only when `value()` or `externalFilter()` changes — never on
+   * `refresh()`. It must therefore depend on fields the caller does not mutate in place; a caller
+   * whose predicate reads mutable state must pass a *new function* whenever that state changes.
+   * Called with the *raw* row, like every other caller-supplied lambda.
+   */
+  readonly externalFilter = input<((row: Row) => boolean) | null>(null);
+
   private readonly cellTemplates = contentChildren(DataTableCellDirective<Row>);
   private readonly table = viewChild<Table<Row>>('dt');
 
@@ -115,12 +133,24 @@ export class DataTableComponent<Row extends object> {
 
   private readonly proxyFactory = createColumnAccessorProxyFactory<Row>(() => this.columns());
 
-  /** New only when `value()` itself changes; proxies are reused from the factory's `WeakMap`, so
-   *  their identity — and therefore PrimeNG's `filteredValue`/paging — stays stable across an
-   *  in-place mutation of a raw row followed by `refresh()`. */
-  protected readonly boundRows = computed<Row[]>(() =>
-    this.value().map((row) => this.proxyFactory.getProxy(row)),
-  );
+  /** New only when `value()` or `externalFilter()` changes; proxies are reused from the factory's
+   *  `WeakMap`, so their identity — and therefore PrimeNG's `filteredValue`/paging — stays stable
+   *  across an in-place mutation of a raw row followed by `refresh()` (which recomputes nothing
+   *  here, so an unchanged external filter keeps the user's page).
+   *
+   *  The external filter runs on the *raw* rows, before proxying: it is a caller lambda and, like
+   *  every other one, takes raw rows. Only the survivors are mapped to proxies, and those still
+   *  come from the `WeakMap` factory, so a row that stays visible across a filter change keeps its
+   *  proxy identity. A filter change deliberately yields a new array identity: PrimeNG treats a new
+   *  `[value]` as a new result set and resets to page 1, which is the wanted behaviour (the old
+   *  page number is meaningless against different rows). Quick filter and column filters need no
+   *  adaptation: PrimeNG applies them to this array, i.e. on top of the external filter. */
+  protected readonly boundRows = computed<Row[]>(() => {
+    const externalFilter: ((row: Row) => boolean) | null = this.externalFilter();
+    const rows: readonly Row[] = this.value();
+    const visible: readonly Row[] = externalFilter ? rows.filter(externalFilter) : rows;
+    return visible.map((row) => this.proxyFactory.getProxy(row));
+  });
 
   // `isVisibleColumn` is a type guard (`data-table.model.ts`), so this narrows to
   // `DataTableVisibleColDef` — every rendered-columns-only code path (the header row, this array's

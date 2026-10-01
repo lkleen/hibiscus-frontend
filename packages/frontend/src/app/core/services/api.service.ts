@@ -4,6 +4,7 @@ import { Observable, map } from 'rxjs';
 import { CreateCategory, Category, UpdateCategory } from '../models/category.model';
 import { Me } from '../models/me.model';
 import { Payee } from '../models/payee.model';
+import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   TransactionRow,
@@ -80,5 +81,20 @@ export class ApiService {
       params = params.set('q', q);
     }
     return this.http.get<Payee[]>('/api/payees', { params });
+  }
+
+  /** The backend answers the stored list, or the defaults when the user has none stored. */
+  getDatePresets(): Observable<DatePresetList> {
+    return this.http.get<DatePresetList>('/api/settings/date-presets');
+  }
+
+  /** Replaces the whole list; the backend answers `204 No Content`. */
+  saveDatePresets(presets: DatePresetList): Observable<void> {
+    return this.http.put<void>('/api/settings/date-presets', presets);
+  }
+
+  /** Deletes the stored list so the defaults apply again; answers `204 No Content`. */
+  resetDatePresets(): Observable<void> {
+    return this.http.delete<void>('/api/settings/date-presets');
   }
 }

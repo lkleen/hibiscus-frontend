@@ -1,0 +1,77 @@
+// Button look shared by the list and the inline editor; each component includes it because
+// emulated view encapsulation scopes the rules per component.
+@mixin preset-button {
+  --presets-btn-bg: transparent;
+  --presets-btn-color: var(--text-muted);
+  --presets-btn-hover-bg: var(--surface-hover);
+  --presets-btn-hover-color: var(--text-color);
+  --presets-btn-border-color: transparent;
+  --presets-btn-radius: var(--radius-base);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.6rem;
+  background: var(--presets-btn-bg);
+  border: 1px solid var(--presets-btn-border-color);
+  border-radius: var(--presets-btn-radius);
+  color: var(--presets-btn-color);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--presets-btn-hover-bg);
+    color: var(--presets-btn-hover-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    // Visibly dimmer than the (already muted) enabled state. There is no disabled-text token;
+    // the border colour is the faintest foreground every theme defines, and disabled controls are
+    // exempt from WCAG contrast.
+    --presets-btn-color: var(--surface-border);
+
+    cursor: not-allowed;
+    text-decoration: line-through;
+  }
+
+  &--icon:disabled {
+    text-decoration: none;
+  }
+
+  &--icon {
+    padding: 0.35rem;
+  }
+
+  &--danger {
+    --presets-btn-hover-color: var(--color-danger);
+  }
+
+  &--primary {
+    --presets-btn-bg: var(--color-accent);
+    --presets-btn-color: var(--text-on-accent);
+    --presets-btn-hover-bg: var(--color-accent-hover);
+    --presets-btn-hover-color: var(--text-on-accent);
+
+    &:disabled {
+      --presets-btn-bg: var(--surface-subtle);
+      --presets-btn-color: var(--text-muted);
+    }
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      background var(--transition-duration) ease,
+      color var(--transition-duration) ease;
+  }
+}

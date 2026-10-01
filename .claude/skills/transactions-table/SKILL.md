@@ -56,6 +56,11 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   client-side. The backend route does not sort, filter or page for the table's sake, and gains no
   `limit`/`offset`, filter or sort parameters on `GET /api/transactions`. The frontend does not
   re-implement any of this with hand-rolled state.
+- **Date range filtering** is the generic external filter mechanism: `<app-date-range-filter>`
+  in the toolbar passes a `DateRange` predicate to the table's `externalFilter` input, filtering
+  on `datum` (booking date), client-side, inclusive on both ends. The date range picker starts on
+  the user's first date preset and persists within the session only (no persistence between
+  sessions).
 - Before writing any table code, follow the `angular-primeng-table` skill. Use `<app-data-table>`
   in `transactions.component.html` — it wraps PrimeNG's `p-table` with column-owned lambdas and
   raw rows. It follows the active theme through the CSS bridge in `src/styles/_primeng-table.scss`.

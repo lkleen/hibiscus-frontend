@@ -9,6 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { Locale, SUPPORTED_LOCALES } from '../../models/locale.model';
 import { SUPPORTED_THEMES, ThemeName } from '../../models/theme.model';
@@ -27,7 +28,7 @@ import { TranslationService } from '../../services/translation.service';
   templateUrl: './user-menu.component.html',
   styleUrl: './user-menu.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CdkMenu, CdkMenuItem, CdkMenuItemRadio, CdkMenuTrigger],
+  imports: [CdkMenu, CdkMenuItem, CdkMenuItemRadio, CdkMenuTrigger, RouterLink],
 })
 export class UserMenuComponent {
   private readonly api = inject(ApiService);

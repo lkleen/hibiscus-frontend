@@ -11,11 +11,14 @@ import { createAccountsRouter } from './routes/accounts';
 import { createCategoriesRouter } from './routes/categories';
 import { createMeRouter } from './routes/me';
 import { createPayeesRouter } from './routes/payees';
+import { createSettingsRouter } from './routes/settings';
 import { createTransactionsRouter } from './routes/transactions';
+import { ensureUserSettingTable } from './repositories/user-setting';
 
-function main(): void {
+async function main(): Promise<void> {
   const config = loadConfig();
   initPool(config);
+  await ensureUserSettingTable();
 
   const app = express();
 
@@ -38,6 +41,7 @@ function main(): void {
   api.use('/transactions', createTransactionsRouter());
   api.use('/categories', createCategoriesRouter());
   api.use('/payees', createPayeesRouter());
+  api.use('/settings', createSettingsRouter());
   app.use('/api', api);
 
   // A path under /api that didn't match any route above is a real 404 — it must not fall
@@ -74,9 +78,7 @@ function main(): void {
   });
 }
 
-try {
-  main();
-} catch (err) {
+main().catch((err: unknown) => {
   console.error('[hibiscus-backend] Fatal startup error:', err);
   process.exit(1);
-}
+});

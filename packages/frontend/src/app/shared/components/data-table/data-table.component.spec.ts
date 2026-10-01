@@ -41,7 +41,14 @@ function toyRow(overrides: Partial<ToyRow> = {}): ToyRow {
 @Component({
   selector: 'app-test-data-table-host',
   template: `
-    <app-data-table [value]="rows()" [columns]="columns()" [options]="options()" [loading]="false">
+    <app-data-table
+      [value]="rows()"
+      [columns]="columns()"
+      [options]="options()"
+      [externalFilter]="externalFilter()"
+      [loading]="false"
+    >
+      <span appDataTableToolbar class="toolbar-probe">toolbar</span>
       <ng-template
         appDataTableCell="custom"
         let-row
@@ -98,6 +105,7 @@ class TestHostComponent {
     }),
   ]);
   readonly columns = signal<readonly DataTableColDef<ToyRow, unknown>[]>([]);
+  readonly externalFilter = signal<((row: ToyRow) => boolean) | null>(null);
   readonly options = signal<DataTableOptions<ToyRow>>({
     getRowId: (row: ToyRow): number => row.id,
     emptyKey: 'transactions.empty',
@@ -903,5 +911,62 @@ describe('DataTableComponent', () => {
     resizer.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     expect(th.draggable).toBe(false);
+  });
+
+  it('25. externalFilter hides non-matching rows, updates on change, and null shows all', async () => {
+    host.rows.set([
+      toyRow({ id: 1, name: 'Alpha', tag: 'a' }),
+      toyRow({ id: 2, name: 'Beta', tag: 'b' }),
+      toyRow({ id: 3, name: 'Gamma', tag: 'a' }),
+    ]);
+    host.externalFilter.set((row: ToyRow): boolean => row.tag === 'a');
+    await settle();
+    expect(bodyRows().map((row) => cellText(row, 0))).toEqual(['Alpha', 'Gamma']);
+
+    host.externalFilter.set((row: ToyRow): boolean => row.tag === 'b');
+    await settle();
+    expect(bodyRows().map((row) => cellText(row, 0))).toEqual(['Beta']);
+
+    host.externalFilter.set(null);
+    await settle();
+    expect(bodyRows().length).toBe(3);
+  });
+
+  it('26. projected [appDataTableToolbar] content renders inside the filters form', async () => {
+    await settle();
+    const probe = root.querySelector<HTMLElement>('form.filters .toolbar-probe');
+    expect(probe?.textContent).toBe('toolbar');
+  });
+
+  it('27. a filter change resets to page 1; in-place mutation + refresh() keeps the page', async () => {
+    const rows: ToyRow[] = Array.from({ length: 8 }, (_, i) =>
+      toyRow({ id: i + 1, name: `Item ${i + 1}`, tag: 'a' }),
+    );
+    host.rows.set(rows);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      pagination: { pageSize: 2, pageSizes: [2] },
+    });
+    host.externalFilter.set((row: ToyRow): boolean => row.id <= 6);
+    await settle();
+
+    const nextButton = root.querySelector<HTMLButtonElement>('.p-paginator-next');
+    if (!nextButton) throw new Error('paginator next button not rendered');
+    nextButton.click();
+    await settle();
+    expect(cellText(bodyRows()[0], 0)).toBe('Item 3');
+
+    // In-place mutation of a field the (unchanged) filter does not read: the page is kept.
+    (rows[2] as { name: string | null }).name = 'Updated Item 3';
+    const tableDebug = fixture.debugElement.query(By.directive(DataTableComponent));
+    (tableDebug.componentInstance as DataTableComponent<ToyRow>).refresh();
+    await settle();
+    expect(cellText(bodyRows()[0], 0)).toBe('Updated Item 3');
+
+    // A new filter is a new result set: back to page 1.
+    host.externalFilter.set((row: ToyRow): boolean => row.id <= 5);
+    await settle();
+    expect(cellText(bodyRows()[0], 0)).toBe('Item 1');
   });
 });

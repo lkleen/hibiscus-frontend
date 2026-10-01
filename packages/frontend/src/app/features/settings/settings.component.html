@@ -1,0 +1,16 @@
+<h1 class="settings__title">{{ i18n.t('settings.title') }}</h1>
+
+<nav class="settings__tabs" [attr.aria-label]="i18n.t('settings.tabs.label')">
+  @for (tab of tabs; track tab.path) {
+    <a
+      class="settings__tab"
+      [routerLink]="['/', locale(), 'settings', tab.path]"
+      routerLinkActive="settings__tab--active"
+      ariaCurrentWhenActive="page"
+    >
+      {{ i18n.t(tab.labelKey) }}
+    </a>
+  }
+</nav>
+
+<router-outlet />

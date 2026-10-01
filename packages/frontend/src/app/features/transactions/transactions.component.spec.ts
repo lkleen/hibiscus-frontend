@@ -67,6 +67,8 @@ describe('TransactionsComponent', () => {
   /** Starts the component, answers its three requests and lets the table render. */
   async function load({ accounts = [], categories = [], items = [] }: Loaded = {}): Promise<void> {
     fixture.detectChanges();
+    // No presets, so the date filter stays on "All dates" and every row is visible.
+    httpMock.expectOne('/api/settings/date-presets').flush([]);
     httpMock.expectOne('/api/accounts').flush(accounts);
     httpMock.expectOne('/api/categories').flush(categories);
     httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));

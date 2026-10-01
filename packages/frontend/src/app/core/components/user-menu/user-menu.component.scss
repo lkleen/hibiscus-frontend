@@ -142,3 +142,8 @@
   color: var(--user-menu-item-value-color);
   font-size: var(--text-xs);
 }
+
+.user-menu__settings-link {
+  text-decoration: none;
+  color: inherit;
+}

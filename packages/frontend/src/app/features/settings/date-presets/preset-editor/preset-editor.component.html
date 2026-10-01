@@ -1,0 +1,99 @@
+<form class="editor" [formGroup]="form" (ngSubmit)="submit()">
+  <div class="editor__field editor__field--wide">
+    <label for="preset-name">{{ i18n.t('settings.presets.editor.name') }}</label>
+    <input id="preset-name" type="text" formControlName="name" [placeholder]="autoName()" />
+    <span class="editor__hint">{{ i18n.t('settings.presets.editor.nameHint') }}</span>
+  </div>
+
+  <fieldset class="editor__kind">
+    <legend>{{ i18n.t('settings.presets.editor.kind') }}</legend>
+    <label class="editor__radio">
+      <input type="radio" formControlName="kind" value="relative" />
+      {{ i18n.t('settings.presets.editor.kindRelative') }}
+    </label>
+    <label class="editor__radio">
+      <input type="radio" formControlName="kind" value="fixed" />
+      {{ i18n.t('settings.presets.editor.kindFixed') }}
+    </label>
+  </fieldset>
+
+  @if (form.controls.kind.value === 'relative') {
+    <div class="editor__field">
+      <label for="preset-unit">{{ i18n.t('settings.presets.editor.unit') }}</label>
+      <select id="preset-unit" formControlName="unit">
+        @for (unit of units; track unit) {
+          <option [value]="unit">{{ unitLabel(unit) }}</option>
+        }
+      </select>
+    </div>
+    <div class="editor__field">
+      <label for="preset-count">{{ i18n.t('settings.presets.editor.count') }}</label>
+      <input
+        id="preset-count"
+        type="number"
+        inputmode="numeric"
+        formControlName="count"
+        [min]="countRange.min"
+        [max]="countRange.max"
+        aria-describedby="preset-count-hint"
+      />
+      <span id="preset-count-hint" class="editor__hint">{{
+        i18n.t('settings.presets.editor.countHint', countRange)
+      }}</span>
+    </div>
+    <div class="editor__field">
+      <label for="preset-ago">{{ i18n.t('settings.presets.editor.ago') }}</label>
+      <input
+        id="preset-ago"
+        type="number"
+        inputmode="numeric"
+        formControlName="ago"
+        [min]="agoRange.min"
+        [max]="agoRange.max"
+        aria-describedby="preset-ago-hint"
+      />
+      <span id="preset-ago-hint" class="editor__hint">{{
+        i18n.t('settings.presets.editor.agoHint')
+      }}</span>
+    </div>
+  } @else {
+    <div class="editor__field">
+      <label for="preset-from">{{ i18n.t('settings.presets.editor.from') }}</label>
+      <input id="preset-from" type="date" formControlName="from" />
+    </div>
+    <div class="editor__field">
+      <label for="preset-to">{{ i18n.t('settings.presets.editor.to') }}</label>
+      <input id="preset-to" type="date" formControlName="to" />
+    </div>
+  }
+
+  <div class="editor__messages editor__field--wide" aria-live="polite">
+    @for (error of errors(); track error) {
+      <p class="editor__error">{{ errorText(error) }}</p>
+    }
+    @if (preview(); as dates) {
+      <p class="editor__preview">
+        <span>{{ i18n.t('settings.presets.editor.preview') }}</span>
+        <span class="editor__preview-dates">{{ dates }}</span>
+      </p>
+    }
+  </div>
+
+  <div class="editor__actions editor__field--wide">
+    <button
+      type="submit"
+      class="presets__btn presets__btn--primary editor__save"
+      [disabled]="!canSave()"
+    >
+      {{ i18n.t('settings.presets.editor.save') }}
+    </button>
+    <button
+      type="button"
+      class="presets__btn editor__cancel"
+      [disabled]="disabled()"
+      (click)="cancelled.emit()"
+    >
+      {{ i18n.t('settings.presets.editor.cancel') }}
+    </button>
+  </div>
+</form>

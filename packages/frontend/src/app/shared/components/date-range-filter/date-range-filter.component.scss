@@ -1,0 +1,176 @@
+// Structural rules only; every visual value is a `--date-range-filter-*` token that defaults to a
+// global token, so the five themes restyle the picker without touching this file. The panel is
+// rendered in a CDK overlay, outside `.date-range-filter`, so it declares its own tokens.
+:host {
+  display: contents;
+}
+
+.date-range-filter {
+  --date-range-filter-field-bg: var(--surface-card);
+  --date-range-filter-field-color: var(--text-color);
+  --date-range-filter-field-border-color: var(--surface-border);
+  --date-range-filter-label-color: var(--text-muted);
+  --date-range-filter-radius: var(--radius-base);
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+  min-width: 0;
+}
+
+// Same anatomy as the data table's search field: small muted label above the control.
+.date-range-filter__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+
+  label {
+    font-size: var(--text-xs);
+    color: var(--date-range-filter-label-color);
+  }
+
+  input,
+  .date-range-filter__trigger {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--date-range-filter-field-border-color);
+    border-radius: var(--date-range-filter-radius);
+    background: var(--date-range-filter-field-bg);
+    color: var(--date-range-filter-field-color);
+    font-family: inherit;
+    font-size: var(--text-sm);
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    @media (pointer: coarse) {
+      min-block-size: 2.75rem;
+    }
+  }
+}
+
+.date-range-filter__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 11rem;
+  text-align: start;
+  cursor: pointer;
+
+  &[aria-expanded='true'] {
+    --date-range-filter-field-bg: var(--surface-hover);
+  }
+}
+
+.date-range-filter__trigger-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.date-range-filter__chevron {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--date-range-filter-label-color);
+}
+
+.date-range-filter__panel {
+  --date-range-filter-panel-bg: var(--surface-overlay);
+  --date-range-filter-panel-shadow: var(--shadow-overlay);
+  --date-range-filter-panel-radius: var(--radius-base);
+  --date-range-filter-muted-color: var(--text-muted);
+
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--date-range-filter-panel-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--date-range-filter-panel-radius);
+  box-shadow: var(--date-range-filter-panel-shadow);
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.date-range-filter__error {
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.date-range-filter__separator {
+  margin-block: 0.25rem;
+  border-block-start: 1px solid var(--surface-border);
+}
+
+.date-range-filter__item {
+  --date-range-filter-item-bg: transparent;
+  --date-range-filter-item-color: var(--text-color);
+
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 16rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--date-range-filter-item-bg);
+  border: none;
+  border-radius: var(--date-range-filter-panel-radius);
+  color: var(--date-range-filter-item-color);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    --date-range-filter-item-bg: var(--surface-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background var(--transition-duration) ease;
+  }
+}
+
+// Fixed-width leading slot keeps labels aligned whether or not a row is selected.
+.date-range-filter__item-lead {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.date-range-filter__glyph {
+  inline-size: 100%;
+  block-size: 100%;
+  color: var(--color-accent);
+}
+
+.date-range-filter__item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+// The one memorable element: the dates the preset resolves to today, right-aligned and muted.
+// Tabular figures keep the ISO dates lined up row over row.
+.date-range-filter__item-dates {
+  margin-inline-start: 1rem;
+  color: var(--date-range-filter-muted-color);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}

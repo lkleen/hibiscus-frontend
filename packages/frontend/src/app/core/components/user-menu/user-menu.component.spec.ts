@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { LocaleService } from '../../services/locale.service';
 import { ThemeService } from '../../services/theme.service';
 import { installLocalStorageMock } from '../../utils/testing/local-storage-mock';
@@ -18,7 +19,7 @@ describe('UserMenuComponent', () => {
 
     TestBed.configureTestingModule({
       imports: [UserMenuComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     fixture = TestBed.createComponent(UserMenuComponent);
     httpMock = TestBed.inject(HttpTestingController);
@@ -155,5 +156,13 @@ describe('UserMenuComponent', () => {
         'Angemeldet als lars@kleen.email',
       );
     });
+  });
+
+  it('includes a settings link that navigates to the settings page', () => {
+    openPanel();
+
+    const settingsLink = document.querySelector<HTMLAnchorElement>('.user-menu__settings-link');
+    expect(settingsLink).toBeTruthy();
+    expect(settingsLink?.getAttribute('href')).toMatch(/\/settings$/);
   });
 });

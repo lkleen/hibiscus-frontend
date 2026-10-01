@@ -16,6 +16,14 @@
   align-items: end;
   gap: 1rem;
   margin: 1rem 0 1.5rem;
+
+  // The form is always rendered (it hosts the projected toolbar), so with neither a search field
+  // nor toolbar content it would still add its margins. `:empty` can't detect that — Angular leaves
+  // whitespace text and comment nodes in the form — whereas `:has(*)` looks at element children
+  // only. Projected toolbar content is elements by definition (`[appDataTableToolbar]`).
+  &:not(:has(*)) {
+    display: none;
+  }
 }
 
 .filters__field {

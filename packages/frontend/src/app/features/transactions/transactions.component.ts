@@ -20,6 +20,8 @@ import {
   type DataTableColDef,
   type DataTableOptions,
 } from '../../shared/components/data-table/data-table.model';
+import { DateRange, isInRange } from '../../core/utils/date-range';
+import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
 import { AmountCellComponent } from './cells/amount-cell/amount-cell.component';
 import { CategoryCellComponent } from './cells/category-cell/category-cell.component';
 
@@ -34,7 +36,13 @@ import { CategoryCellComponent } from './cells/category-cell/category-cell.compo
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DataTableComponent, DataTableCellDirective, AmountCellComponent, CategoryCellComponent],
+  imports: [
+    DataTableComponent,
+    DataTableCellDirective,
+    DateRangeFilterComponent,
+    AmountCellComponent,
+    CategoryCellComponent,
+  ],
 })
 export class TransactionsComponent {
   private readonly api = inject(ApiService);
@@ -48,6 +56,15 @@ export class TransactionsComponent {
   protected readonly loading = signal(true);
   protected readonly error = signal(false);
   protected readonly categoryUpdateErrorId = signal<number | null>(null);
+
+  /** Session-only; the date filter picks its initial value (the first preset) itself. */
+  protected readonly range = signal<DateRange | null>(null);
+
+  /** Filters on the booking date. `null` (no range) lets every row through. */
+  protected readonly dateFilter = computed<((row: TransactionRow) => boolean) | null>(() => {
+    const range: DateRange | null = this.range();
+    return range === null ? null : (row: TransactionRow): boolean => isInRange(row.datum, range);
+  });
 
   private readonly accountsById = computed(
     () => new Map(this.accounts().map((account) => [account.id, account])),

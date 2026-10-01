@@ -1,5 +1,10 @@
-@if (quickFilterEnabled()) {
-  <form class="filters" (submit)="$event.preventDefault()">
+<!--
+  Always rendered (ng-content cannot live inside an `@if`), with only the search field conditional.
+  A form with no search field and no projected toolbar content has no element children and is
+  hidden by `.filters:not(:has(*))` (see the scss) — whitespace/comment nodes don't count there.
+-->
+<form class="filters" (submit)="$event.preventDefault()">
+  @if (quickFilterEnabled()) {
     <div class="filters__field filters__field--grow">
       <label for="filter-search">{{ i18n.t('table.filterSearch') }}</label>
       <input
@@ -10,8 +15,9 @@
         (input)="onSearchInput($event)"
       />
     </div>
-  </form>
-}
+  }
+  <ng-content select="[appDataTableToolbar]" />
+</form>
 
 <!--
   stripedRows enables the zebra-stripe *class*; the stripe colour itself is theme-driven

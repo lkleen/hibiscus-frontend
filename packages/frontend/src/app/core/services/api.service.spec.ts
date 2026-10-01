@@ -5,6 +5,7 @@ import type {
   TransactionRow,
   TransactionsResponse,
 } from '@hibiscus-frontend/shared/contracts/transactions';
+import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
 import {
   transaction,
   transactionsResponse,
@@ -100,5 +101,33 @@ describe('ApiService', () => {
     const req = httpMock.expectOne((r) => r.url === '/api/payees');
     expect(req.request.params.get('q')).toBe('acme');
     req.flush([]);
+  });
+
+  it('requests the date presets', () => {
+    service.getDatePresets().subscribe();
+
+    const req = httpMock.expectOne('/api/settings/date-presets');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('puts the whole date preset list', () => {
+    const presets: DatePresetList = [
+      { id: 'a', name: null, kind: 'relative', unit: 'month', offset: 0, count: 1 },
+    ];
+    service.saveDatePresets(presets).subscribe();
+
+    const req = httpMock.expectOne('/api/settings/date-presets');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(presets);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('deletes the stored date presets', () => {
+    service.resetDatePresets().subscribe();
+
+    const req = httpMock.expectOne('/api/settings/date-presets');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null, { status: 204, statusText: 'No Content' });
   });
 });

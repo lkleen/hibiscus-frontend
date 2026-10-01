@@ -1,6 +1,13 @@
 <h1 class="visually-hidden">{{ i18n.t('transactions.title') }}</h1>
 
-<app-data-table [value]="items()" [columns]="columns" [options]="options" [loading]="loading()">
+<app-data-table
+  [value]="items()"
+  [columns]="columns"
+  [options]="options"
+  [loading]="loading()"
+  [externalFilter]="dateFilter()"
+>
+  <app-date-range-filter appDataTableToolbar [(range)]="range" />
   <ng-template appDataTableCell="amount" let-value="value">
     <app-transaction-amount-cell [amount]="asAmount(value)" />
   </ng-template>

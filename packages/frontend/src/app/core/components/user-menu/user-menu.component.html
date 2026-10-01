@@ -83,6 +83,17 @@
       <span class="user-menu__item-label">{{ i18n.t('userMenu.language') }}</span>
       <span class="user-menu__item-value">{{ localeLabel(locale()) }}</span>
     </button>
+
+    <div class="user-menu__separator" role="separator"></div>
+
+    <a
+      class="user-menu__item user-menu__settings-link"
+      cdkMenuItem
+      [routerLink]="['/', locale(), 'settings']"
+    >
+      <span class="user-menu__item-lead"></span>
+      <span class="user-menu__item-label">{{ i18n.t('userMenu.settings') }}</span>
+    </a>
   </div>
 </ng-template>
 
