@@ -9,8 +9,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import { Category } from '../../core/models/category.model';
 import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { DataTableCellDirective } from '../../shared/components/data-table/data-table-cell.directive';
@@ -50,7 +50,7 @@ export class TransactionsComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly accounts = signal<AccountRow[]>([]);
-  protected readonly categories = signal<Category[]>([]);
+  protected readonly categories = signal<CategoryRow[]>([]);
 
   protected readonly items = signal<TransactionRow[]>([]);
   protected readonly loading = signal(true);

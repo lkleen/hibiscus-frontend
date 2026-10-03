@@ -17,14 +17,14 @@
   padding: 1.5rem var(--layout-padding-x);
 }
 
-// The transactions grid has many columns, so its page spans the full width instead of the
-// readable-content cap. It also fills exactly the viewport and scrolls inside its table, so the
-// shell gets a fixed height there (a `min-height` shell would grow with the table's rows).
-:host:has(app-transactions) {
+// The transactions and categories tables have many columns, so their pages span the full width
+// instead of the readable-content cap. They also fill exactly the viewport and scroll inside their
+// table, so the shell gets a fixed height there (a `min-height` shell would grow with the rows).
+:host:has(app-transactions, app-categories) {
   height: 100%;
 }
 
-.app-main:has(app-transactions) {
+.app-main:has(app-transactions, app-categories) {
   max-width: none;
   min-height: 0;
 }

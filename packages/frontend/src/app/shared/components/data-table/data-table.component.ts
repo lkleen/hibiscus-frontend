@@ -13,7 +13,10 @@ import {
   viewChild,
 } from '@angular/core';
 import { FilterMatchMode, FilterService } from 'primeng/api';
+import type { TreeNode } from 'primeng/api';
 import { Table, TableModule } from 'primeng/table';
+import { TreeTable, TreeTableModule } from 'primeng/treetable';
+import type { TreeTableSortEvent } from 'primeng/treetable';
 import type { TranslationKey } from '../../../core/models/translation.model';
 import { TranslationService } from '../../../core/services/translation.service';
 import { getRawRow, createColumnAccessorProxyFactory } from './column-accessor-proxy';
@@ -24,12 +27,20 @@ import {
   defaultComparator,
   defaultValueGetter,
 } from './data-table.defaults';
+import {
+  DEFAULT_GROUP_EXPANDED,
+  requireNodeData,
+  sortTreeNodes,
+  toTreeNodes,
+  validateTreeMode,
+} from './data-table-tree';
 import { isVisibleColumn } from './data-table.model';
 import type {
   DataTableAutoSizeStrategy,
   DataTableColDef,
   DataTableFilterType,
   DataTableOptions,
+  DataTableTreeOptions,
   DataTableVisibleColDef,
 } from './data-table.model';
 
@@ -46,8 +57,23 @@ interface DataTableSortFunctionEvent<Row> {
   readonly data: Row[];
   readonly mode: 'single' | 'multiple';
   readonly field?: string;
-  readonly order?: 1 | -1;
-  readonly multiSortMeta?: readonly { readonly field: string; readonly order: 1 | -1 }[];
+  readonly order?: number;
+  readonly multiSortMeta?: readonly { readonly field: string; readonly order: number }[];
+}
+
+/** The serialized node PrimeNG's TreeTable hands to `rowTrackBy` and the `#body` template (its
+ *  `.d.ts` types the latter wrongly; verified in `primeng-treetable.mjs` `serializeNodes`). */
+export interface DataTableTreeRowNode<Row> {
+  readonly node: TreeNode<Row>;
+  readonly parent: TreeNode<Row> | null;
+  readonly level: number;
+  readonly visible: boolean;
+}
+
+/** Whether tree nodes start fully expanded or collapsed after `expandAll()`/`collapseAll()`; a new
+ *  object per call so setting the same level twice still rebuilds the nodes. */
+interface TreeExpansion {
+  readonly level: number;
 }
 
 /** A sort key resolved to this component's own vocabulary (`colId`, not PrimeNG's `field`). */
@@ -71,11 +97,16 @@ interface DataTableColReorderEvent {
 }
 
 /**
- * The project's one generic table component — every flat table goes through this, never
+ * The project's one generic table component — every table goes through this, never
  * `<p-table>` directly (see `CLAUDE.md` and the `angular-primeng-table` skill). Modelled on
  * ag-Grid's `ColDef`/`GridOptions`/grid API: rows stay raw, every computed value is a column
  * lambda evaluated live (see `data-table.model.ts`), and every feature is switchable off with a
  * replaceable default lambda (see `data-table.defaults.ts`).
+ *
+ * Setting `options.treeData` switches the same component to ag-Grid-style tree data, rendered by
+ * `<p-treetable>` instead of `<p-table>` (see `DataTableTreeOptions` for what it supports and
+ * `data-table-tree.ts` for the pure helpers); everything not tree-specific — cell rendering,
+ * comparators, quick filter, column order/resize — is shared between the two paths.
  *
  * Besides the `p-table` features it also offers an ag-Grid-style external filter
  * (`externalFilter`) and a toolbar slot: elements marked `appDataTableToolbar` are projected into
@@ -98,7 +129,7 @@ interface DataTableColReorderEvent {
   templateUrl: './data-table.component.html',
   styleUrl: './data-table.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TableModule, NgTemplateOutlet],
+  imports: [TableModule, TreeTableModule, NgTemplateOutlet],
   providers: [FilterService],
   host: { '[class.data-table-host--fill]': "scrollHeight() === 'flex'" },
 })
@@ -128,6 +159,7 @@ export class DataTableComponent<Row extends object> {
 
   private readonly cellTemplates = contentChildren(DataTableCellDirective<Row>);
   private readonly table = viewChild<Table<Row>>('dt');
+  private readonly treeTable = viewChild<TreeTable>('tt');
 
   protected readonly q = signal('');
 
@@ -150,6 +182,56 @@ export class DataTableComponent<Row extends object> {
     const rows: readonly Row[] = this.value();
     const visible: readonly Row[] = externalFilter ? rows.filter(externalFilter) : rows;
     return visible.map((row) => this.proxyFactory.getProxy(row));
+  });
+
+  /** The validated tree options, or `null` for a flat table. Reading it is what throws on an
+   *  unsupported tree-mode combination (see `validateTreeMode`), on first render. */
+  private readonly treeOptions = computed<DataTableTreeOptions<Row> | null>(() => {
+    const options: DataTableOptions<Row> = this.options();
+    if (options.treeData === undefined) return null;
+    validateTreeMode({
+      options,
+      columns: this.columns(),
+      externalFilter: this.externalFilter(),
+    });
+    return options;
+  });
+
+  protected readonly treeMode = computed<boolean>(() => this.treeOptions() !== null);
+
+  protected readonly treeGroupColId = computed<string>(
+    () => this.requireTreeOptions().treeData.groupColId,
+  );
+
+  /** ag-Grid's `groupDefaultExpanded`, re-derived from the options; `expandAll()`/`collapseAll()`
+   *  overwrite it until the options change. A `linkedSignal` for the same reason as
+   *  `visibleColumns`: user-set session state on top of a derived default. */
+  private readonly expansion = linkedSignal<TreeExpansion>(() => ({
+    level: this.treeOptions()?.treeData.groupDefaultExpanded ?? DEFAULT_GROUP_EXPANDED,
+  }));
+
+  /**
+   * The tree for `<p-treetable>`. `node.data` is the column-accessor proxy of the raw row — the
+   * same objects the flat path binds — so PrimeNG's filter reads `colId` through the proxy. New
+   * only when `value()`, the options/columns or the expansion state change; PrimeNG then re-sorts,
+   * re-filters and re-serializes it. A manual toggle mutates `node.expanded` in place and so is
+   * kept across `refresh()`, but not across a rebuild (new rows, `expandAll()`/`collapseAll()`).
+   */
+  protected readonly treeNodes = computed<TreeNode<Row>[]>(() => {
+    const options: DataTableTreeOptions<Row> = this.requireTreeOptions();
+    return toTreeNodes(this.value(), {
+      getId: options.getRowId,
+      getParentId: options.treeData.getParentId,
+      getData: (row: Row): Row => this.proxyFactory.getProxy(row),
+      groupDefaultExpanded: this.expansion().level,
+    });
+  });
+
+  /** Tree mode's `scrollHeight`: a CSS length becomes the wrapper's `max-height`; `'flex'` is
+   *  handled by the host class, `false` leaves the wrapper unbounded. */
+  protected readonly treeMaxHeight = computed<string | null>(() => {
+    const height: string | undefined = this.scrollHeight();
+    return height === undefined || height === 'flex' ? null : height;
   });
 
   // `isVisibleColumn` is a type guard (`data-table.model.ts`), so this narrows to
@@ -336,6 +418,11 @@ export class DataTableComponent<Row extends object> {
   protected readonly rowTrackBy = (_index: number, row: Row): string | number =>
     this.options().getRowId(getRawRow(row));
 
+  protected readonly treeRowTrackBy = (
+    _index: number,
+    serialized: DataTableTreeRowNode<Row>,
+  ): string | number => this.options().getRowId(getRawRow(requireNodeData(serialized.node)));
+
   private readonly cellTemplatesByRenderer = computed<
     ReadonlyMap<string, TemplateRef<DataTableCellContext<Row>>>
   >(
@@ -387,7 +474,38 @@ export class DataTableComponent<Row extends object> {
   protected onSearchInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.q.set(value);
-    this.table()?.filterGlobal(value, this.quickFilterMatchMode());
+    const table: Table<Row> | TreeTable | undefined = this.treeMode()
+      ? this.treeTable()
+      : this.table();
+    if (!table) throw new Error('data-table: search input used before the table was rendered');
+    table.filterGlobal(value, this.quickFilterMatchMode());
+  }
+
+  /** Tree mode's column filter (PrimeNG's TreeTable has no filter component): a plain text input
+   *  per column that calls the table's own `filter()` — debounced by PrimeNG, `contains`, applied
+   *  through the column-accessor proxy exactly like the flat path's text filter. */
+  protected onTreeColumnFilter(event: Event, column: DataTableColDef<Row, unknown>): void {
+    const table: TreeTable | undefined = this.treeTable();
+    if (!table) throw new Error('data-table: column filter used outside tree mode');
+    table.filter((event.target as HTMLInputElement).value, column.colId, FilterMatchMode.CONTAINS);
+  }
+
+  /** ag-Grid's `expandAll()`: rebuilds the nodes with every level expanded. Tree mode only. */
+  expandAll(): void {
+    this.requireTreeOptions();
+    this.expansion.set({ level: -1 });
+  }
+
+  /** ag-Grid's `collapseAll()`: rebuilds the nodes with every level collapsed. Tree mode only. */
+  collapseAll(): void {
+    this.requireTreeOptions();
+    this.expansion.set({ level: 0 });
+  }
+
+  private requireTreeOptions(): DataTableTreeOptions<Row> {
+    const options: DataTableTreeOptions<Row> | null = this.treeOptions();
+    if (!options) throw new Error('data-table: tree mode is not enabled (options.treeData)');
+    return options;
   }
 
   /** ag-Grid-style `refreshCells()`: repaints without rebuilding anything. A feature that mutates
@@ -431,7 +549,10 @@ export class DataTableComponent<Row extends object> {
     if (!this.reorderEnabled() || !(event.target instanceof Element)) return;
     const th = event.target.closest('th');
     if (!th) return;
-    th.draggable = !event.target.closest('[data-pc-column-resizer="true"], input, textarea');
+    // `p-table` marks its resize handle `data-pc-column-resizer`, `p-treetable` `data-pc-section`.
+    th.draggable = !event.target.closest(
+      '[data-pc-column-resizer="true"], [data-pc-section="columnresizer"], input, textarea',
+    );
   }
 
   /**
@@ -473,14 +594,38 @@ export class DataTableComponent<Row extends object> {
     event.data.sort((a, b) => this.compareRows(a, b, sortMeta));
   }
 
-  private resolveSortMeta(event: DataTableSortFunctionEvent<Row>): readonly ResolvedSortKey[] {
+  /** `(sortFunction)` of `<p-treetable>`: sorts the whole tree within each level, with the same
+   *  comparators as the flat path. */
+  protected onTreeSortFunction(event: TreeTableSortEvent): void {
+    // In multiple mode PrimeNG hands over the *root* array on every emission (children never
+    // arrive), so the whole tree is sorted from it; see `sortTreeNodes`.
+    if (!event.data) throw new Error('data-table: tree sortFunction event has no data');
+    const sortMeta: readonly ResolvedSortKey[] = this.resolveSortMeta(event);
+    sortTreeNodes(event.data, (a: Row, b: Row) => this.compareRows(a, b, sortMeta));
+  }
+
+  private resolveSortMeta(event: {
+    readonly field?: string;
+    readonly order?: number;
+    readonly multiSortMeta?: readonly { readonly field: string; readonly order: number }[] | null;
+  }): readonly ResolvedSortKey[] {
     if (event.multiSortMeta) {
-      return event.multiSortMeta.map((meta) => ({ colId: meta.field, order: meta.order }));
+      return event.multiSortMeta.map((meta) => ({
+        colId: meta.field,
+        order: this.toSortOrder(meta.order),
+      }));
     }
     if (event.field && event.order) {
-      return [{ colId: event.field, order: event.order }];
+      return [{ colId: event.field, order: this.toSortOrder(event.order) }];
     }
     throw new Error('data-table: sortFunction event has neither field nor multiSortMeta');
+  }
+
+  private toSortOrder(order: number): 1 | -1 {
+    if (order !== 1 && order !== -1) {
+      throw new Error(`data-table: sort order must be 1 or -1, got ${order}`);
+    }
+    return order;
   }
 
   // Mirrors PrimeNG's own `multisortField` tie-breaking: move to the next sort key whenever the

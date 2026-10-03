@@ -1,0 +1,11 @@
+@let css = cssColor();
+@if (css !== null) {
+  <span
+    class="category-color-cell__swatch"
+    [style.background-color]="css"
+    aria-hidden="true"
+  ></span>
+  <span class="category-color-cell__value">{{ stored() }}</span>
+} @else {
+  <span class="category-color-cell__none">—</span>
+}

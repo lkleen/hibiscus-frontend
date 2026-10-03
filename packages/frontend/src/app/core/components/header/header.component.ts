@@ -25,5 +25,6 @@ export class HeaderComponent {
   protected readonly navLinks: readonly NavLink[] = [
     { path: 'accounts', labelKey: 'nav.accounts' },
     { path: 'transactions', labelKey: 'nav.transactions' },
+    { path: 'categories', labelKey: 'nav.categories' },
   ];
 }

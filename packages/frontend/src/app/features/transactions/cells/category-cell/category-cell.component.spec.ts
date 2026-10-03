@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { Category } from '../../../../core/models/category.model';
+import { categoryRow } from '../../../../core/utils/testing/category-row-fixture';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { CategoryPickerComponent } from '../../category-picker/category-picker.component';
 import { CategoryCellComponent } from './category-cell.component';
 
@@ -8,7 +9,7 @@ describe('CategoryCellComponent', () => {
   let fixture: ComponentFixture<CategoryCellComponent>;
   let categoryChange: ReturnType<typeof vi.fn<(categoryId: number | null) => void>>;
 
-  const categories: Category[] = [{ id: 7, name: 'Groceries', parentId: null, color: null }];
+  const categories: CategoryRow[] = [categoryRow({ id: 7, name: 'Groceries' })];
 
   beforeEach(() => {
     categoryChange = vi.fn<(categoryId: number | null) => void>();
@@ -39,7 +40,7 @@ describe('CategoryCellComponent', () => {
     expect(categoryChange).toHaveBeenCalledWith(null);
   });
 
-  it('shows the save error only when failedUpdateId matches this cell’s transactionId', () => {
+  it("shows the save error only when failedUpdateId matches this cell's transactionId", () => {
     const errorText = (): boolean =>
       ((fixture.nativeElement as HTMLElement).textContent ?? '').includes(
         'Could not save category',
@@ -54,5 +55,18 @@ describe('CategoryCellComponent', () => {
     fixture.componentRef.setInput('failedUpdateId', 42);
     fixture.detectChanges();
     expect(errorText()).toBe(true);
+  });
+
+  it('renders an "r,g,b" custom color as rgb() CSS value', () => {
+    const categoriesWithColor = [
+      categoryRow({ id: 7, name: 'Groceries', color: '47,111,79', customcolor: 1 }),
+    ];
+
+    fixture.componentRef.setInput('categoryId', 7);
+    fixture.componentRef.setInput('categories', categoriesWithColor);
+    fixture.detectChanges();
+
+    const swatch = fixture.nativeElement.querySelector('.category-picker__swatch');
+    expect(swatch?.style.background).toBe('rgb(47 111 79)');
   });
 });

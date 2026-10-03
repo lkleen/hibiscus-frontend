@@ -8,7 +8,7 @@
 >
   <span
     class="category-picker__swatch"
-    [style.background]="selectedCategory()?.color ?? 'transparent'"
+    [style.background]="selectedCategoryColor() ?? 'transparent'"
     aria-hidden="true"
   ></span>
   <span class="category-picker__label">{{
@@ -34,22 +34,22 @@
     >
       {{ i18n.t('categoryPicker.uncategorized') }}
     </button>
-    @for (option of flatOptions(); track option.category.id) {
+    @for (option of flatOptions(); track option.row.id) {
       <button
         type="button"
         class="category-picker__option"
-        [class.category-picker__option--selected]="selectedCategoryId() === option.category.id"
+        [class.category-picker__option--selected]="selectedCategoryId() === option.row.id"
         [style.padding-inline-start.px]="12 + option.depth * 16"
         role="option"
-        [attr.aria-selected]="selectedCategoryId() === option.category.id"
-        (click)="select(option.category.id)"
+        [attr.aria-selected]="selectedCategoryId() === option.row.id"
+        (click)="select(option.row.id)"
       >
         <span
           class="category-picker__swatch"
-          [style.background]="option.category.color ?? 'var(--surface-border)'"
+          [style.background]="option.cssColor ?? 'var(--surface-border)'"
           aria-hidden="true"
         ></span>
-        {{ option.category.name }}
+        {{ option.row.name }}
       </button>
     }
   </div>

@@ -57,6 +57,39 @@
   }
 }
 
+// Tree mode's expand/collapse-all buttons: a trailing group in the filters form, styled like the
+// form's inputs so the toolbar reads as one row.
+.filters__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.filters__action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-base);
+  background: var(--surface-card);
+  color: var(--text-color);
+  font-size: var(--text-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
+}
+
 // Keeps the table clear of the search field above and the status text below.
 .data-table {
   display: block;
@@ -114,5 +147,67 @@
       width: 100%;
       min-width: 0;
     }
+  }
+}
+
+// --- Tree mode (`<p-treetable>`, see `options.treeData`) ---
+// The TreeTable is deliberately not `scrollable`: PrimeNG would then split header and body into two
+// tables (and need a colgroup for resizing). Instead its own wrapper scrolls, and the header rows
+// stay pinned inside it. PrimeNG's wrapper/thead/tbody carry no encapsulation attribute, hence the
+// `::ng-deep`s, nested under this component's own class to keep them scoped.
+.data-table--tree {
+  ::ng-deep .p-treetable-wrapper {
+    overflow: auto;
+    max-height: var(--data-table-tree-max-height, none);
+  }
+
+  // Both header rows (titles and filters) stick together; `th`s of a sticky `thead` paint over rows.
+  ::ng-deep thead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+  }
+
+  // PrimeNG's multi-sort badge (the sort position number) has no switch in TreeTable.
+  ::ng-deep .p-sortable-column-badge {
+    display: none;
+  }
+
+  // TreeTable has no `stripedRows`; the colour is the same theme token (`--app-table-row-alt-bg`).
+  &.data-table--striped ::ng-deep tbody > tr:nth-child(even) {
+    background: var(--app-table-row-alt-bg);
+  }
+}
+
+// `scrollHeight: 'flex'`: the wrapper takes whatever the search field leaves (the host/`.data-table`
+// flex rules above make the table itself fill the component).
+:host(.data-table-host--fill) .data-table--tree ::ng-deep .p-treetable-wrapper {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+// The group column: toggler (PrimeNG indents it 16px per level) and the cell content on one line.
+.data-table__group-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+// Tree mode's own column-filter input (there is no `p-columnFilter` for TreeTable).
+.data-table__tree-filter {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-base);
+  background: var(--surface-card);
+  color: var(--text-color);
+  font-size: var(--text-sm);
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 }

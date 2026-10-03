@@ -17,113 +17,234 @@
     </div>
   }
   <ng-content select="[appDataTableToolbar]" />
+  @if (treeMode()) {
+    <div class="filters__actions">
+      <button type="button" class="filters__action" (click)="expandAll()">
+        {{ i18n.t('table.expandAll') }}
+      </button>
+      <button type="button" class="filters__action" (click)="collapseAll()">
+        {{ i18n.t('table.collapseAll') }}
+      </button>
+    </div>
+  }
 </form>
 
-<!--
-  stripedRows enables the zebra-stripe *class*; the stripe colour itself is theme-driven
-  (`--app-table-row-alt-bg`, transparent everywhere but greenbar — see _primeng-table.scss and
-  _theme-greenbar.scss). Without this input PrimeNG never emits the class and greenbar's striping
-  has nothing to render, even though the default theme shows no visible stripe either way.
--->
-<p-table
-  #dt
-  class="data-table"
-  [class.data-table--fit-contents]="fitContents()"
-  [value]="boundRows()"
-  [rowTrackBy]="rowTrackBy"
-  [paginator]="paginationEnabled()"
-  [rows]="pageSize()"
-  [rowsPerPageOptions]="rowsPerPageOptions()"
-  sortMode="multiple"
-  [customSort]="true"
-  (sortFunction)="onSortFunction($event)"
-  [multiSortMeta]="multiSortMeta()"
-  [globalFilterFields]="globalFilterFieldsForPrimeNg()"
-  [tableStyle]="tableStyle()"
-  [loading]="loading()"
-  [currentPageReportTemplate]="pageReportTemplate()"
-  [showCurrentPageReport]="true"
-  [stripedRows]="striped()"
-  [scrollable]="scrollable()"
-  [scrollHeight]="scrollHeight()"
-  [resizableColumns]="resizeEnabled()"
-  [columnResizeMode]="resizeMode()"
-  [reorderableColumns]="reorderEnabled()"
-  (onColReorder)="onColReorder($event)"
-  [showInitialSortBadge]="false"
->
-  <ng-template #header>
-    <tr (mousedown)="onHeaderMouseDown($event)">
-      @for (column of visibleColumns(); track column.colId) {
-        @if (column.sortable === false) {
-          <th
-            pResizableColumn
-            [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
-            pReorderableColumn
-            [pReorderableColumnDisabled]="!reorderEnabled()"
-            [style.min-width.px]="headerMinWidth(column)"
-            [class.data-table__col--end]="column.align === 'end'"
-          >
-            {{ i18n.t(column.headerKey) }}
-          </th>
-        } @else {
-          <th
-            pResizableColumn
-            [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
-            pReorderableColumn
-            [pReorderableColumnDisabled]="!reorderEnabled()"
-            [style.min-width.px]="headerMinWidth(column)"
-            [class.data-table__col--end]="column.align === 'end'"
-            [pSortableColumn]="column.colId"
-          >
-            {{ i18n.t(column.headerKey) }}
-            <p-sortIcon [field]="column.colId" />
+@if (treeMode()) {
+  <!-- Tree mode: `<p-treetable>`, not scrollable (our scss scrolls its wrapper and pins the header). -->
+  <p-treetable
+    #tt
+    class="data-table data-table--tree"
+    [class.data-table--fit-contents]="fitContents()"
+    [class.data-table--striped]="striped()"
+    [style.--data-table-tree-max-height]="treeMaxHeight()"
+    [value]="treeNodes()"
+    [rowTrackBy]="treeRowTrackBy"
+    sortMode="multiple"
+    [customSort]="true"
+    (sortFunction)="onTreeSortFunction($event)"
+    [multiSortMeta]="multiSortMeta()"
+    [globalFilterFields]="globalFilterFieldsForPrimeNg()"
+    [tableStyle]="tableStyle()"
+    [loading]="loading()"
+    [scrollable]="false"
+    [autoLayout]="true"
+    [resizableColumns]="resizeEnabled()"
+    [columnResizeMode]="resizeMode()"
+    [reorderableColumns]="reorderEnabled()"
+    (onColReorder)="onColReorder($event)"
+  >
+    <ng-template #header>
+      <tr (mousedown)="onHeaderMouseDown($event)">
+        @for (column of visibleColumns(); track column.colId) {
+          @if (column.sortable === false) {
+            <th
+              ttResizableColumn
+              [ttResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+              ttReorderableColumn
+              [ttReorderableColumnDisabled]="!reorderEnabled()"
+              [style.min-width.px]="headerMinWidth(column)"
+              [class.data-table__col--end]="column.align === 'end'"
+            >
+              {{ i18n.t(column.headerKey) }}
+            </th>
+          } @else {
+            <th
+              ttResizableColumn
+              [ttResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+              ttReorderableColumn
+              [ttReorderableColumnDisabled]="!reorderEnabled()"
+              [style.min-width.px]="headerMinWidth(column)"
+              [class.data-table__col--end]="column.align === 'end'"
+              [ttSortableColumn]="column.colId"
+            >
+              {{ i18n.t(column.headerKey) }}
+              <p-treeTableSortIcon [field]="column.colId" />
+            </th>
+          }
+        }
+      </tr>
+      <tr>
+        @for (column of visibleColumns(); track column.colId) {
+          <th class="data-table__filter-cell">
+            @if (column.filter !== false) {
+              <input
+                class="data-table__tree-filter"
+                type="text"
+                [attr.aria-label]="i18n.t(column.headerKey)"
+                (input)="onTreeColumnFilter($event, column)"
+              />
+            }
           </th>
         }
-      }
-    </tr>
-    <tr>
-      @for (column of visibleColumns(); track column.colId) {
-        <th class="data-table__filter-cell">
-          @if (column.filter !== false) {
-            <p-columnFilter
-              [type]="filterType(column)"
-              [field]="column.colId"
-              [matchMode]="filterType(column) === 'text' ? 'contains' : undefined"
-              display="row"
-              filterOn="input"
-            />
-          }
-        </th>
-      }
-    </tr>
-  </ng-template>
-  <ng-template #body let-row>
-    <tr>
-      @for (column of visibleColumns(); track column.colId) {
-        @let cell = cellView(column, row);
-        <td [class.data-table__col--end]="column.align === 'end'">
-          @if (column.cellRenderer) {
-            <ng-container
-              [ngTemplateOutlet]="templateFor(column.cellRenderer)"
-              [ngTemplateOutletContext]="{
-                $implicit: cell.raw,
-                value: cell.value,
-                valueFormatted: cell.formatted,
-              }"
-            />
-          } @else {
-            {{ cell.formatted }}
-          }
+      </tr>
+    </ng-template>
+    <ng-template #body let-serialized>
+      <tr [ttRow]="serialized">
+        @for (column of visibleColumns(); track column.colId) {
+          <td [class.data-table__col--end]="column.align === 'end'">
+            @if (column.colId === treeGroupColId()) {
+              <span class="data-table__group-cell">
+                <p-treeTableToggler [rowNode]="serialized" />
+                <ng-container
+                  [ngTemplateOutlet]="cellContent"
+                  [ngTemplateOutletContext]="{ column: column, row: serialized.node.data }"
+                />
+              </span>
+            } @else {
+              <ng-container
+                [ngTemplateOutlet]="cellContent"
+                [ngTemplateOutletContext]="{ column: column, row: serialized.node.data }"
+              />
+            }
+          </td>
+        }
+      </tr>
+    </ng-template>
+    <ng-template #emptymessage>
+      <tr>
+        <td [attr.colspan]="emptyColspan()">
+          <p class="status-text">{{ i18n.t(emptyKey()) }}</p>
         </td>
-      }
-    </tr>
-  </ng-template>
-  <ng-template #emptymessage>
-    <tr>
-      <td [attr.colspan]="emptyColspan()">
-        <p class="status-text">{{ i18n.t(emptyKey()) }}</p>
-      </td>
-    </tr>
-  </ng-template>
-</p-table>
+      </tr>
+    </ng-template>
+  </p-treetable>
+} @else {
+  <!--
+    stripedRows enables the zebra-stripe *class*; the stripe colour itself is theme-driven
+    (`--app-table-row-alt-bg`, transparent everywhere but greenbar — see _primeng-table.scss and
+    _theme-greenbar.scss). Without this input PrimeNG never emits the class and greenbar's striping
+    has nothing to render, even though the default theme shows no visible stripe either way.
+  -->
+  <p-table
+    #dt
+    class="data-table"
+    [class.data-table--fit-contents]="fitContents()"
+    [value]="boundRows()"
+    [rowTrackBy]="rowTrackBy"
+    [paginator]="paginationEnabled()"
+    [rows]="pageSize()"
+    [rowsPerPageOptions]="rowsPerPageOptions()"
+    sortMode="multiple"
+    [customSort]="true"
+    (sortFunction)="onSortFunction($event)"
+    [multiSortMeta]="multiSortMeta()"
+    [globalFilterFields]="globalFilterFieldsForPrimeNg()"
+    [tableStyle]="tableStyle()"
+    [loading]="loading()"
+    [currentPageReportTemplate]="pageReportTemplate()"
+    [showCurrentPageReport]="true"
+    [stripedRows]="striped()"
+    [scrollable]="scrollable()"
+    [scrollHeight]="scrollHeight()"
+    [resizableColumns]="resizeEnabled()"
+    [columnResizeMode]="resizeMode()"
+    [reorderableColumns]="reorderEnabled()"
+    (onColReorder)="onColReorder($event)"
+    [showInitialSortBadge]="false"
+  >
+    <ng-template #header>
+      <tr (mousedown)="onHeaderMouseDown($event)">
+        @for (column of visibleColumns(); track column.colId) {
+          @if (column.sortable === false) {
+            <th
+              pResizableColumn
+              [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+              pReorderableColumn
+              [pReorderableColumnDisabled]="!reorderEnabled()"
+              [style.min-width.px]="headerMinWidth(column)"
+              [class.data-table__col--end]="column.align === 'end'"
+            >
+              {{ i18n.t(column.headerKey) }}
+            </th>
+          } @else {
+            <th
+              pResizableColumn
+              [pResizableColumnDisabled]="!resizeEnabled() || column.resizable === false"
+              pReorderableColumn
+              [pReorderableColumnDisabled]="!reorderEnabled()"
+              [style.min-width.px]="headerMinWidth(column)"
+              [class.data-table__col--end]="column.align === 'end'"
+              [pSortableColumn]="column.colId"
+            >
+              {{ i18n.t(column.headerKey) }}
+              <p-sortIcon [field]="column.colId" />
+            </th>
+          }
+        }
+      </tr>
+      <tr>
+        @for (column of visibleColumns(); track column.colId) {
+          <th class="data-table__filter-cell">
+            @if (column.filter !== false) {
+              <p-columnFilter
+                [type]="filterType(column)"
+                [field]="column.colId"
+                [matchMode]="filterType(column) === 'text' ? 'contains' : undefined"
+                display="row"
+                filterOn="input"
+              />
+            }
+          </th>
+        }
+      </tr>
+    </ng-template>
+    <ng-template #body let-row>
+      <tr>
+        @for (column of visibleColumns(); track column.colId) {
+          <td [class.data-table__col--end]="column.align === 'end'">
+            <ng-container
+              [ngTemplateOutlet]="cellContent"
+              [ngTemplateOutletContext]="{ column: column, row: row }"
+            />
+          </td>
+        }
+      </tr>
+    </ng-template>
+    <ng-template #emptymessage>
+      <tr>
+        <td [attr.colspan]="emptyColspan()">
+          <p class="status-text">{{ i18n.t(emptyKey()) }}</p>
+        </td>
+      </tr>
+    </ng-template>
+  </p-table>
+}
+
+<!-- One cell's content, shared by the flat and the tree body: the caller's renderer or the
+     formatted value. `row` is the bound row (a column-accessor proxy); the renderer gets the raw
+     one. -->
+<ng-template #cellContent let-column="column" let-row="row">
+  @let cell = cellView(column, row);
+  @if (column.cellRenderer) {
+    <ng-container
+      [ngTemplateOutlet]="templateFor(column.cellRenderer)"
+      [ngTemplateOutletContext]="{
+        $implicit: cell.raw,
+        value: cell.value,
+        valueFormatted: cell.formatted,
+      }"
+    />
+  } @else {
+    {{ cell.formatted }}
+  }
+</ng-template>

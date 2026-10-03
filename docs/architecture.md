@@ -16,7 +16,11 @@
   `externalFilter` input (a caller-supplied predicate applied before table filters, resetting to
   page 1 on change) and a `[appDataTableToolbar]` projection slot for additional filters next to
   the search field. Features are added to the component, never implemented per table. Theming goes
-  through the CSS bridge in `styles/_primeng-table.scss`.
+  through the CSS bridge in `styles/_primeng-table.scss`. The component optionally renders a tree
+  via the `treeData` option (self-referencing parent-id style, built by `buildTree`); it renders
+  PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
+  fully expanded by default with expand-all/collapse-all controls; the quick filter is lenient
+  (keeping ancestors of matches), sorting and resizing work, and pagination is not available.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
@@ -57,7 +61,7 @@ itself requires authentication too — there is no unauthenticated route in this
 | `GET /api/accounts`                    | List `konto` rows, as stored (`AccountRow`) |
 | `GET /api/transactions`                | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
 | `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`; answers `204` |
-| `GET /api/categories`                  | `umsatztyp` tree                           |
+| `GET /api/categories`                  | List `umsatztyp` rows, as stored (`CategoryRow`) |
 | `GET /api/settings/date-presets`       | User's date presets; defaults if not stored |
 | `PUT /api/settings/date-presets`       | Save whole preset list (zod-validated); answers `204` |
 | `DELETE /api/settings/date-presets`    | Restore defaults; answers `204`            |
@@ -65,10 +69,15 @@ itself requires authentication too — there is no unauthenticated route in this
 ### Shared contracts
 
 `packages/shared` declares the API request/response types once
-(`@hibiscus-frontend/shared/contracts/transactions`, `…/accounts`); the backend routes and
-repositories and the frontend `ApiService` both import them, so the two sides cannot drift apart.
-They are authored as `.d.ts` files, which TypeScript type-checks but never emits, so the package
-needs no build step and the backend's `dist/` layout is unchanged.
+(`@hibiscus-frontend/shared/contracts/transactions`, `…/accounts`, `…/categories`); the backend
+routes and repositories and the frontend `ApiService` both import them, so the two sides cannot
+drift apart. They are authored as `.d.ts` files, which TypeScript type-checks but never emits, so
+the package needs no build step and the backend's `dist/` layout is unchanged.
+
+`GET /api/categories` returns `CategoryRow` rows: the `umsatztyp` columns as stored. The `color`
+column is stored as `"r,g,b"` (comma-separated bytes, as Hibiscus writes it); rows edited by this
+app's former categories page may hold `#rrggbb` instead. The colour is displayed only when `customcolor = 1`. The frontend
+converts both formats to CSS via `toCssColor()` (`core/utils/category-color.ts`).
 
 `GET /api/transactions` returns the selected `umsatz` columns exactly as the DB has them
 (`TransactionRow`: `konto_id`, `empfaenger_name`, `betrag`, `zweck`, `umsatztyp_id`, …). To keep
@@ -116,6 +125,15 @@ and persists within the session only.
 A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
 is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
 filters. See the `transactions-table` skill for column definitions and the refresh contract.
+
+### Categories page
+
+A read-only `/:locale/categories` page in the navigation shows the entire `umsatztyp` tree as a
+table with expand-all/collapse-all controls. Every column is rendered as stored: `type` is
+translated (`0` = expense, `1` = income, `2` or `NULL` = any), `konto_id` is resolved to the
+account label via `/api/accounts`, and the `flags` column's bit 1 (`FLAG_SKIP_REPORTS = 1`)
+indicates "skip in reports". The `color` column uses the same `toCssColor` rendering as the
+category picker. Category editing is planned as a later step.
 
 ## Authentication
 

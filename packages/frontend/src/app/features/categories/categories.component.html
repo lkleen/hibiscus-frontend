@@ -1,0 +1,11 @@
+<h1 class="visually-hidden">{{ i18n.t('categories.title') }}</h1>
+
+<app-data-table [value]="items()" [columns]="columns" [options]="options" [loading]="loading()">
+  <ng-template appDataTableCell="color" let-row let-value="value">
+    <app-category-color-cell [cssColor]="asCssColor(value)" [stored]="row.color" />
+  </ng-template>
+</app-data-table>
+
+@if (error()) {
+  <p class="status-text status-text--error">{{ i18n.t('categories.error') }}</p>
+}

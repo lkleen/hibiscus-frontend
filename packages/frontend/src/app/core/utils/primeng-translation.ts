@@ -30,7 +30,7 @@ const PRIMENG_TRANSLATION_KEYS = [
   'removeRule',
 ] as const;
 
-/** The `Translation.aria` keys the table and paginator actually read; same compile-error guard. */
+/** The `Translation.aria` keys the table, tree table and paginator actually read; same compile-error guard. */
 const PRIMENG_ARIA_KEYS = [
   'firstPageLabel',
   'lastPageLabel',
@@ -43,6 +43,8 @@ const PRIMENG_ARIA_KEYS = [
   'hideFilterMenu',
   'filterOperator',
   'filterConstraint',
+  'expandRow',
+  'collapseRow',
 ] as const;
 
 /**

@@ -1,0 +1,23 @@
+:host {
+  --category-color-cell-border-color: var(--surface-border);
+  --category-color-cell-radius: var(--radius-base);
+  --category-color-cell-value-color: var(--text-muted);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.category-color-cell__swatch {
+  flex: none;
+  inline-size: 1em;
+  block-size: 1em;
+  border: 1px solid var(--category-color-cell-border-color);
+  border-radius: var(--category-color-cell-radius);
+}
+
+.category-color-cell__value {
+  color: var(--category-color-cell-value-color);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

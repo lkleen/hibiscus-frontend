@@ -16,20 +16,29 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Category, CategoryTreeNode } from '../../../core/models/category.model';
-import { buildCategoryTree } from '../../../core/utils/category-tree';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import { buildTree, type TreeBranch } from '../../../core/utils/build-tree';
+import { toCssColor } from '../../../core/utils/category-color';
 import { TranslationService } from '../../../core/services/translation.service';
 
 interface FlatCategoryOption {
-  category: Category;
+  row: CategoryRow;
   depth: number;
+  cssColor: string | null;
 }
 
-function flattenTree(nodes: readonly CategoryTreeNode[], depth = 0): FlatCategoryOption[] {
+function flattenTree(
+  branches: readonly TreeBranch<CategoryRow>[],
+  depth = 0,
+): FlatCategoryOption[] {
   const result: FlatCategoryOption[] = [];
-  for (const node of nodes) {
-    result.push({ category: node, depth });
-    result.push(...flattenTree(node.children, depth + 1));
+  for (const branch of branches) {
+    result.push({
+      row: branch.row,
+      depth,
+      cssColor: toCssColor(branch.row),
+    });
+    result.push(...flattenTree(branch.children, depth + 1));
   }
   return result;
 }
@@ -53,7 +62,7 @@ export class CategoryPickerComponent {
   private readonly viewContainerRef = inject(ViewContainerRef);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly categories = input.required<Category[]>();
+  readonly categories = input.required<CategoryRow[]>();
   readonly selectedCategoryId = input<number | null>(null);
   readonly categoryChange = output<number | null>();
 
@@ -61,11 +70,21 @@ export class CategoryPickerComponent {
   private readonly panelTemplate = viewChild.required<TemplateRef<unknown>>('panelTemplate');
 
   protected readonly isOpen = signal(false);
-  protected readonly flatOptions = computed(() =>
-    flattenTree(buildCategoryTree(this.categories())),
-  );
-  protected readonly selectedCategory = computed(
-    () => this.categories().find((c) => c.id === this.selectedCategoryId()) ?? null,
+  protected readonly flatOptions = computed(() => {
+    const tree: TreeBranch<CategoryRow>[] = buildTree(this.categories(), {
+      getId: (r: CategoryRow) => r.id,
+      getParentId: (r: CategoryRow) => r.parent_id,
+    });
+    return flattenTree(tree);
+  });
+  protected readonly selectedCategory = computed(() => {
+    const categoryId: number | null = this.selectedCategoryId();
+    return categoryId === null
+      ? null
+      : (this.categories().find((c) => c.id === categoryId) ?? null);
+  });
+  protected readonly selectedCategoryColor = computed(() =>
+    toCssColor(this.selectedCategory() ?? { color: null, customcolor: null }),
   );
 
   private overlayRef: OverlayRef | null = null;

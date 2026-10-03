@@ -1,34 +1,34 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { getPool } from '../db/pool';
 
-export interface Category {
-  id: number;
-  name: string;
-  parentId: number | null;
-  color: string | null;
-}
+type CategoryRowPacket = CategoryRow & RowDataPacket;
 
-interface CategoryRow extends RowDataPacket {
-  id: number;
-  name: string;
-  parent_id: number | null;
-  color: string | null;
-}
+/** The selected `umsatztyp` columns, in response order (the `SELECT` list). */
+export const CATEGORY_COLUMNS: (keyof CategoryRow)[] = [
+  'id',
+  'name',
+  'nummer',
+  'pattern',
+  'isregex',
+  'umsatztyp',
+  'parent_id',
+  'color',
+  'customcolor',
+  'kommentar',
+  'konto_id',
+  'konto_kategorie',
+  'flags',
+];
 
-function toCategory(row: CategoryRow): Category {
-  return {
-    id: row.id,
-    name: row.name,
-    parentId: row.parent_id,
-    color: row.color,
-  };
-}
-
-/** Flat list, ordered by name — building the parent/child tree is a frontend concern. */
-export async function listCategories(): Promise<Category[]> {
+/**
+ * Every row of `umsatztyp` exactly as stored. Rows are served unmodified; building the
+ * parent/child tree is a frontend concern.
+ */
+export async function listCategories(): Promise<CategoryRow[]> {
   const pool = getPool();
-  const [rows] = await pool.query<CategoryRow[]>(
-    `SELECT id, name, parent_id, color FROM umsatztyp ORDER BY name`,
+  const [rows] = await pool.query<CategoryRowPacket[]>(
+    `SELECT ${CATEGORY_COLUMNS.join(', ')} FROM umsatztyp ORDER BY name, id`,
   );
-  return rows.map(toCategory);
+  return rows;
 }

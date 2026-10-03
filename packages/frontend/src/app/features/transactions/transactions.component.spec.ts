@@ -4,8 +4,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import type { Category } from '../../core/models/category.model';
+import { categoryRow } from '../../core/utils/testing/category-row-fixture';
 import { LocaleService } from '../../core/services/locale.service';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
 import { account, transaction, transactionsResponse } from './testing/transaction-fixture';
@@ -19,7 +20,7 @@ function wait(ms: number): Promise<void> {
 
 interface Loaded {
   accounts?: AccountRow[];
-  categories?: Category[];
+  categories?: CategoryRow[];
   items?: TransactionRow[];
 }
 
@@ -115,7 +116,7 @@ describe('TransactionsComponent', () => {
   it('renders the transactions, with their account and category resolved', async () => {
     await load({
       accounts: [account({ id: 1, bezeichnung: 'Checking' })],
-      categories: [{ id: 1, name: 'Groceries', parentId: null, color: '#2f6f4f' }],
+      categories: [categoryRow({ id: 1, name: 'Groceries', color: '#2f6f4f', customcolor: 1 })],
       items: [
         transaction({
           empfaenger_name: 'Supermarket',
@@ -331,7 +332,7 @@ describe('TransactionsComponent', () => {
       transaction({ id: i + 1, datum: '2026-01-01', zweck: String(i + 1) }),
     );
     await load({
-      categories: [{ id: 7, name: 'Groceries', parentId: null, color: '#2f6f4f' }],
+      categories: [categoryRow({ id: 7, name: 'Groceries', color: '#2f6f4f', customcolor: 1 })],
       items,
     });
 
@@ -371,7 +372,7 @@ describe('TransactionsComponent', () => {
     // stale object sitting in `filteredValue`, invisible to this test unless a filter narrows
     // the rendered set first.
     await load({
-      categories: [{ id: 7, name: 'Groceries', parentId: null, color: '#2f6f4f' }],
+      categories: [categoryRow({ id: 7, name: 'Groceries', color: '#2f6f4f', customcolor: 1 })],
       items: [
         transaction({ id: 1, zweck: 'target-row', umsatztyp_id: null }),
         transaction({ id: 2, zweck: 'other-row', umsatztyp_id: null }),

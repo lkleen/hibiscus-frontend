@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { Category } from '../../../../core/models/category.model';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CategoryPickerComponent } from '../../category-picker/category-picker.component';
 
@@ -25,7 +25,7 @@ export class CategoryCellComponent {
 
   readonly transactionId = input.required<number>();
   readonly categoryId = input.required<number | null>();
-  readonly categories = input<Category[]>([]);
+  readonly categories = input<CategoryRow[]>([]);
   /** Id of the transaction whose last category update failed, if any. */
   readonly failedUpdateId = input<number | null>(null);
   readonly categoryChange = output<number | null>();

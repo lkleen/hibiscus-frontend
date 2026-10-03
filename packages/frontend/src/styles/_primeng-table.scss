@@ -31,8 +31,9 @@
 //     styles.scss) through ordinary CSS inheritance — overriding the global token would reach every
 //     PrimeNG component, not just the table, so it is deliberately left alone here.
 //   - Aura's treetable preset has no `row.stripedBackground` token at all (datatable has one). The
-//     greenbar zebra-striping bridge below is therefore meaningful for `p-table` only; a future
-//     `p-treetable` would need its own striping approach.
+//     greenbar zebra-striping bridge below is therefore meaningful for `p-table` only; the tree
+//     mode of `<app-data-table>` stripes with a CSS `nth-child` rule on the same
+//     `--app-table-row-alt-bg` token (see `data-table.component.scss`).
 
 :root {
   // --- Layer 1: component tokens, each defaulting to a global token (ported 1:1 from the deleted
@@ -117,9 +118,9 @@ app-data-table {
   --p-paginator-nav-button-selected-background: var(--app-table-accent);
   --p-paginator-nav-button-selected-color: var(--text-on-accent);
 
-  // --- Layer 2: treetable counterparts, kept brief — no tree table exists yet, but when one
-  // arrives it should already follow every theme identity without this bridge needing rediscovery.
-  // Same groups as datatable minus striping (Aura's treetable preset has no striped-row token). ---
+  // --- Layer 2: treetable counterparts, for the tree mode of `<app-data-table>`. Same groups as
+  // datatable minus striping (Aura's treetable preset has no striped-row token; the tree mode
+  // stripes in `data-table.component.scss` with `--app-table-row-alt-bg` instead). ---
   --p-treetable-border-color: var(--app-table-border-color);
 
   --p-treetable-row-background: var(--app-table-bg);
@@ -135,6 +136,10 @@ app-data-table {
   --p-treetable-header-cell-background: var(--app-table-header-bg);
   --p-treetable-header-cell-color: var(--app-table-header-color);
   --p-treetable-header-cell-border-color: var(--app-table-border-color);
+  --p-treetable-header-cell-hover-background: var(--app-table-row-hover-bg);
+  --p-treetable-header-cell-hover-color: var(--app-table-header-color);
+  --p-treetable-header-cell-selected-background: var(--color-accent-subtle);
+  --p-treetable-header-cell-selected-color: var(--app-table-header-color);
   --p-treetable-header-cell-padding: 0.5rem var(--app-table-cell-padding-x);
   --p-treetable-header-padding: 0.5rem var(--app-table-cell-padding-x);
 
@@ -145,6 +150,21 @@ app-data-table {
 
   --p-treetable-sort-icon-color: var(--app-table-header-color);
   --p-treetable-sort-icon-hover-color: var(--app-table-accent);
+
+  // The column drag-resize indicator line.
+  --p-treetable-resize-indicator-color: var(--app-table-resize-indicator-color);
+
+  // The row expand/collapse chevron, in the group column.
+  --p-treetable-node-toggle-button-color: var(--app-table-header-color);
+  --p-treetable-node-toggle-button-hover-background: var(--app-table-row-hover-bg);
+  --p-treetable-node-toggle-button-hover-color: var(--app-table-color);
+  --p-treetable-node-toggle-button-selected-hover-background: var(--color-accent-subtle);
+  --p-treetable-node-toggle-button-selected-hover-color: var(--app-table-color);
+
+  // Keyboard focus rings (the tree rows and header cells are focusable, the toggler is not).
+  --p-treetable-node-toggle-button-focus-ring-color: var(--color-accent);
+  --p-treetable-row-focus-ring-color: var(--color-accent);
+  --p-treetable-header-cell-focus-ring-color: var(--color-accent);
 
   --p-treetable-paginator-top-border-color: var(--app-table-border-color);
   --p-treetable-paginator-bottom-border-color: var(--app-table-border-color);

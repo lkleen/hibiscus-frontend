@@ -182,9 +182,7 @@ export type DataTableAutoSizeStrategy =
  * `data-table.defaults.ts` — see that file's comment for `minWidth`, the one optional key
  * deliberately *not* defaulted there, because no generic width would be honest for every table.
  */
-export interface DataTableOptions<Row> {
-  readonly pagination?:
-    false | { readonly pageSize: number; readonly pageSizes: readonly number[] };
+interface DataTableOptionsBase<Row> {
   readonly quickFilter?: false | { readonly matcher?: (text: string, query: string) => boolean };
   /** Initial `multiSortMeta`. May reference a `hide: true` column (a sort-only tie-break). */
   readonly defaultSort?: readonly DataTableSortModel[];
@@ -225,3 +223,44 @@ export interface DataTableOptions<Row> {
    *  called with the *raw* row. */
   readonly getRowId: (row: Row) => string | number;
 }
+
+/** Pagination settings of a flat table. */
+export interface DataTablePagination {
+  readonly pageSize: number;
+  readonly pageSizes: readonly number[];
+}
+
+/**
+ * ag-Grid's `treeData` for a self-referencing row set (`parent_id`-style): the table renders the
+ * rows as a tree built by `buildTree` (`core/utils/build-tree.ts`), identified by
+ * `options.getRowId`. A dangling parent id makes the row a root; a duplicate id or a cycle throws.
+ */
+export interface DataTableTreeData<Row> {
+  /** The row's parent id, `null` for a root. Always called with the *raw* row. */
+  readonly getParentId: (row: Row) => string | number | null;
+  /** Column that carries the expand/collapse toggler and the indentation. Must be a visible
+   *  column (ag-Grid's group column). */
+  readonly groupColId: string;
+  /** ag-Grid's `groupDefaultExpanded`: `-1` expands every level, `0` none, `n` the first `n`
+   *  levels. Also what `collapseAll()`/`expandAll()` are relative to. Default `-1`. */
+  readonly groupDefaultExpanded?: number;
+}
+
+/** The default table: a flat list, optionally paginated. */
+export interface DataTableFlatOptions<Row> extends DataTableOptionsBase<Row> {
+  readonly pagination?: false | DataTablePagination;
+  readonly treeData?: undefined;
+}
+
+/**
+ * Tree mode (`treeData` set). Supports quick filter, sorting, resizing, reordering, striping and
+ * `scrollHeight`; a column filter row is text-only (a visible column with `filter: 'numeric' |
+ * 'date'` throws). Pagination is not available (PrimeNG's TreeTable paginates root nodes only),
+ * and the `externalFilter` input must stay `null`. Both throw at render time.
+ */
+export interface DataTableTreeOptions<Row> extends DataTableOptionsBase<Row> {
+  readonly pagination?: false;
+  readonly treeData: DataTableTreeData<Row>;
+}
+
+export type DataTableOptions<Row> = DataTableFlatOptions<Row> | DataTableTreeOptions<Row>;

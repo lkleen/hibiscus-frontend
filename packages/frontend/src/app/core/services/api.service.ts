@@ -1,10 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
-import { Category } from '../models/category.model';
 import { Me } from '../models/me.model';
 import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type {
   TransactionRow,
   TransactionsResponse,
@@ -58,8 +58,8 @@ export class ApiService {
     return this.http.patch<void>(`/api/transactions/${id}`, body);
   }
 
-  getCategories(): Observable<Category[]> {
-    return this.http.get<Category[]>('/api/categories');
+  getCategories(): Observable<CategoryRow[]> {
+    return this.http.get<CategoryRow[]>('/api/categories');
   }
 
   /** The backend answers the stored list, or the defaults when the user has none stored. */
