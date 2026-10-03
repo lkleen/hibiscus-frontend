@@ -51,7 +51,13 @@
   --app-table-cell-padding-x: 0.75rem;
   --app-table-resize-indicator-color: var(--color-accent);
   --app-table-drop-point-color: var(--color-accent);
+}
 
+// Layer 2 is declared again on every `<app-data-table>` so its `var(--app-table-*)` references
+// resolve there, not only at `:root`: a feature can then restyle one table by overriding a layer-1
+// token on an ancestor (e.g. `--app-table-font-size` on its `:host`) without touching `--p-*`.
+:root,
+app-data-table {
   // --- Layer 2: PrimeNG's datatable tokens, mapped onto layer 1 ---
   --p-datatable-border-color: var(--app-table-border-color);
 
