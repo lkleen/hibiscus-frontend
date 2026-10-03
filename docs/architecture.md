@@ -34,16 +34,15 @@ Tables this app uses:
 | `konto`     | Bank accounts — name, IBAN/BIC, currency, current balance                |
 | `umsatz`    | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
 | `umsatztyp` | Categories — self-referencing tree via `parent_id`, has a `color` column |
-| `empfaenger`| Payee/counterparty address book                                          |
 | `hf_user_setting` | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
-`reminder`, `systemnachricht`.
+`reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope includes categories, transactions, and per-user settings. This app can
-create/rename/delete/re-parent categories; change which category a transaction belongs to
-(`umsatz.umsatztyp_id`); and write per-user settings (date range presets) to `hf_user_setting`.
+Write scope is limited to two things: which category a transaction belongs to
+(`umsatz.umsatztyp_id`) and per-user settings (date range presets) in `hf_user_setting`.
+Categories themselves are read-only (`GET /api/categories`).
 It does not edit bank-imported transaction fields (amount, date, counterparty) — those are
 synced from the bank by the desktop client and are not this app's data to change.
 
@@ -59,10 +58,6 @@ itself requires authentication too — there is no unauthenticated route in this
 | `GET /api/transactions`                | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
 | `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`; answers `204` |
 | `GET /api/categories`                  | `umsatztyp` tree                           |
-| `POST /api/categories`                 | Create a category                          |
-| `PATCH /api/categories/:id`            | Rename / re-parent / recolor a category    |
-| `DELETE /api/categories/:id`           | Delete a category                          |
-| `GET /api/payees`                      | List/search `empfaenger`                   |
 | `GET /api/settings/date-presets`       | User's date presets; defaults if not stored |
 | `PUT /api/settings/date-presets`       | Save whole preset list (zod-validated); answers `204` |
 | `DELETE /api/settings/date-presets`    | Restore defaults; answers `204`            |

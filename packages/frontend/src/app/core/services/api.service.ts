@@ -1,9 +1,8 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
-import { CreateCategory, Category, UpdateCategory } from '../models/category.model';
+import { Category } from '../models/category.model';
 import { Me } from '../models/me.model';
-import { Payee } from '../models/payee.model';
 import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
@@ -61,26 +60,6 @@ export class ApiService {
 
   getCategories(): Observable<Category[]> {
     return this.http.get<Category[]>('/api/categories');
-  }
-
-  createCategory(body: CreateCategory): Observable<Category> {
-    return this.http.post<Category>('/api/categories', body);
-  }
-
-  updateCategory(id: number, body: UpdateCategory): Observable<Category> {
-    return this.http.patch<Category>(`/api/categories/${id}`, body);
-  }
-
-  deleteCategory(id: number): Observable<void> {
-    return this.http.delete<void>(`/api/categories/${id}`);
-  }
-
-  getPayees(q?: string): Observable<Payee[]> {
-    let params = new HttpParams();
-    if (q) {
-      params = params.set('q', q);
-    }
-    return this.http.get<Payee[]>('/api/payees', { params });
   }
 
   /** The backend answers the stored list, or the defaults when the user has none stored. */

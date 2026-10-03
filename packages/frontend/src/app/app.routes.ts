@@ -26,16 +26,6 @@ export const routes: Routes = [
           ),
       },
       {
-        path: 'categories',
-        loadComponent: () =>
-          import('./features/categories/categories.component').then((m) => m.CategoriesComponent),
-      },
-      {
-        path: 'payees',
-        loadComponent: () =>
-          import('./features/payees/payees.component').then((m) => m.PayeesComponent),
-      },
-      {
         path: 'settings',
         loadChildren: () =>
           import('./features/settings/settings.routes').then((m) => m.SETTINGS_ROUTES),

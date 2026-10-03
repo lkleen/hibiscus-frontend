@@ -78,31 +78,6 @@ describe('ApiService', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
-  it('POSTs a new category', () => {
-    service.createCategory({ name: 'Groceries', parentId: null, color: '#2f6f4f' }).subscribe();
-
-    const req = httpMock.expectOne('/api/categories');
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ name: 'Groceries', parentId: null, color: '#2f6f4f' });
-    req.flush({ id: 1, name: 'Groceries', parentId: null, color: '#2f6f4f' });
-  });
-
-  it('DELETEs a category', () => {
-    service.deleteCategory(9).subscribe();
-
-    const req = httpMock.expectOne('/api/categories/9');
-    expect(req.request.method).toBe('DELETE');
-    req.flush(null);
-  });
-
-  it('requests /api/payees with an optional search term', () => {
-    service.getPayees('acme').subscribe();
-
-    const req = httpMock.expectOne((r) => r.url === '/api/payees');
-    expect(req.request.params.get('q')).toBe('acme');
-    req.flush([]);
-  });
-
   it('requests the date presets', () => {
     service.getDatePresets().subscribe();
 
