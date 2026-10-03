@@ -27,24 +27,14 @@
 
   <div class="date-range-filter__field">
     <label [for]="id + '-from'">{{ i18n.t('dateRangeFilter.from') }}</label>
-    <input
-      type="date"
-      [id]="id + '-from'"
-      [value]="range()?.from ?? ''"
-      [max]="range()?.to ?? ''"
-      (input)="onFromInput($event)"
-    />
+    <!-- No [value]/[min]/[max] bindings: the component writes these itself, never into the field
+         being typed in (see `typedRange`). -->
+    <input #fromInput type="date" [id]="id + '-from'" (input)="onFromInput($event)" />
   </div>
 
   <div class="date-range-filter__field">
     <label [for]="id + '-to'">{{ i18n.t('dateRangeFilter.to') }}</label>
-    <input
-      type="date"
-      [id]="id + '-to'"
-      [value]="range()?.to ?? ''"
-      [min]="range()?.from ?? ''"
-      (input)="onToInput($event)"
-    />
+    <input #toInput type="date" [id]="id + '-to'" (input)="onToInput($event)" />
   </div>
 </div>
 

@@ -118,6 +118,55 @@ describe('DateRangeFilterComponent', () => {
     expect(input('from').max).toBe('');
   });
 
+  it('never writes into a date field while the user types a year digit by digit', async () => {
+    await loadPresets();
+    const from: HTMLInputElement = input('from');
+    // Chrome reports every digit of a year as a complete date. A write to `value` in between would
+    // reset its segment typing, so each intermediate value must stay exactly as Chrome left it.
+    const writes: string[] = [];
+    const descriptor: PropertyDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    ) as PropertyDescriptor;
+    Object.defineProperty(from, 'value', {
+      configurable: true,
+      get: (): string => descriptor.get?.call(from) as string,
+      set: (value: string): void => {
+        writes.push(value);
+        descriptor.set?.call(from, value);
+      },
+    });
+    for (const value of ['0002-06-01', '0020-06-01', '0202-06-01', '2025-06-01']) {
+      type(from, value);
+    }
+    await fixture.whenStable();
+    fixture.detectChanges();
+    // Only the test's own four writes — none from the component.
+    expect(writes).toEqual(['0002-06-01', '0020-06-01', '0202-06-01', '2025-06-01']);
+    expect(fixture.componentInstance.range()).toEqual({ from: '2025-06-01', to: '2026-12-31' });
+  });
+
+  it('does not filter on a year that is still being typed', async () => {
+    await loadPresets();
+    type(input('to'), '0002-12-31');
+    expect(fixture.componentInstance.range()).toEqual({ from: '2026-01-01', to: '2026-12-31' });
+    type(input('to'), '2025-12-31');
+    expect(fixture.componentInstance.range()).toEqual({ from: '2026-01-01', to: '2025-12-31' });
+    expect(input('from').max).toBe('2025-12-31');
+  });
+
+  it('fills both fields again when a preset is chosen after typing', async () => {
+    await loadPresets();
+    type(input('from'), '2020-01-01');
+    const items: HTMLButtonElement[] = await openMenu();
+    items[0].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(input('from').value).toBe('2026-01-01');
+    expect(input('to').value).toBe('2026-12-31');
+    expect(input('to').min).toBe('2026-01-01');
+  });
+
   it('sets the range to null for All dates', async () => {
     await loadPresets();
     const items: HTMLButtonElement[] = await openMenu();

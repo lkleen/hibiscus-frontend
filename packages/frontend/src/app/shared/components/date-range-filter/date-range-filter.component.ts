@@ -3,6 +3,7 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   Signal,
   computed,
   effect,
@@ -10,6 +11,7 @@ import {
   model,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import type { DatePreset } from '@hibiscus-frontend/shared/contracts/user-settings';
 import { DatePresetService } from '../../../core/services/date-preset.service';
@@ -91,7 +93,30 @@ export class DateRangeFilterComponent {
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
   ];
 
+  private readonly fromInput = viewChild.required<ElementRef<HTMLInputElement>>('fromInput');
+  private readonly toInput = viewChild.required<ElementRef<HTMLInputElement>>('toInput');
+
+  /**
+   * The range the user last produced by typing (`undefined` = none since the last preset/All
+   * dates). The date inputs are deliberately *not* bound with `[value]`: writing `value` into a
+   * native date field resets Chrome's segment typing, so typing a year digit by digit ("2", "20",
+   * "202", "2025" — each a valid date to Chrome, years 0002…2025) would restart at every digit and
+   * end on a wrong year. The fields are written only when the range comes from elsewhere.
+   */
+  private typedRange: DateRange | null | undefined = undefined;
+
   constructor() {
+    // Mirrors every range that did not come from typing (preset, All dates, the parent) into the
+    // fields, including their mutual `min`/`max`.
+    effect((): void => {
+      const range: DateRange | null = this.range();
+      if (range === this.typedRange) return;
+      this.writeField(this.fromInput().nativeElement, range?.from ?? null);
+      this.writeField(this.toInput().nativeElement, range?.to ?? null);
+      this.fromInput().nativeElement.max = range?.to ?? '';
+      this.toInput().nativeElement.min = range?.from ?? '';
+    });
+
     // The initial preset is decided exactly once, when the presets arrive. After that — or once
     // the user touched the picker, or the parent set a range — nothing here may overwrite it.
     effect((): void => {
@@ -113,34 +138,56 @@ export class DateRangeFilterComponent {
   protected selectPreset(preset: DatePreset): void {
     this.touched.set(true);
     this.selectedPresetId.set(preset.id);
+    this.typedRange = undefined;
     this.range.set(resolvePreset(preset, new Date()));
   }
 
   protected selectAllDates(): void {
     this.touched.set(true);
     this.selectedPresetId.set(null);
+    this.typedRange = undefined;
     this.range.set(null);
   }
 
   protected onFromInput(event: Event): void {
-    this.editRange({ from: this.valueOf(event), to: this.range()?.to ?? null });
+    const from: string | null | undefined = this.valueOf(event);
+    if (from === undefined) return;
+    // Only the *other* field's limit is updated: touching the field being typed in would reset it.
+    this.toInput().nativeElement.min = from ?? '';
+    this.editRange({ from, to: this.range()?.to ?? null });
   }
 
   protected onToInput(event: Event): void {
-    this.editRange({ from: this.range()?.from ?? null, to: this.valueOf(event) });
+    const to: string | null | undefined = this.valueOf(event);
+    if (to === undefined) return;
+    this.fromInput().nativeElement.max = to ?? '';
+    this.editRange({ from: this.range()?.from ?? null, to });
   }
 
   /** A hand-edited range belongs to no preset; clearing both ends is the same as no range. */
   private editRange(range: DateRange): void {
     this.touched.set(true);
     this.selectedPresetId.set(null);
-    this.range.set(range.from === null && range.to === null ? null : range);
+    const next: DateRange | null = range.from === null && range.to === null ? null : range;
+    this.typedRange = next;
+    this.range.set(next);
   }
 
-  /** An empty `<input type="date">` is an open end. */
-  private valueOf(event: Event): string | null {
+  /**
+   * An empty `<input type="date">` is an open end (`null`). `undefined` means the user is still
+   * typing the year: Chrome reports each digit as a full date (0002, 0020, 0202), and filtering on
+   * those would empty the table mid-typing, so a year below 1000 is not applied yet.
+   */
+  private valueOf(event: Event): string | null | undefined {
     const target: EventTarget | null = event.target;
     if (!(target instanceof HTMLInputElement)) throw new Error('expected a date input event');
-    return target.value === '' ? null : target.value;
+    if (target.value === '') return null;
+    return Number(target.value.slice(0, 4)) < 1000 ? undefined : target.value;
+  }
+
+  /** Writes only on an actual change, so an unchanged field keeps the user's caret/segment. */
+  private writeField(input: HTMLInputElement, value: string | null): void {
+    const next: string = value ?? '';
+    if (input.value !== next) input.value = next;
   }
 }
