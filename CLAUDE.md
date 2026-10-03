@@ -27,6 +27,7 @@ Load context files on demand based on the task. All paths are relative to the pr
 | Transactions table — columns, `/api/transactions`, grid sort/filter/group | `transactions-table` skill (`.claude/skills/transactions-table`)                        |
 | Any table or grid work (`p-table`, `p-treetable`)         | `angular-primeng-table` skill (`.claude/skills/angular-primeng-table`)                 |
 | Planning / plan mode (writing or updating a plan)          | @../claude-config/plan-mode.md                                                        |
+| Executing an approved plan                                 | `plan-execution` skill (`.claude/skills/plan-execution`)                              |
 
 **No Angular Material.** This project uses `@angular/cdk` primitives plus the custom token/component
 system described in `frontend-theming.md`/`frontend-theming-custom.md` — do not add
