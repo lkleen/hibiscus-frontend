@@ -5,18 +5,27 @@ import {
   Component,
   ElementRef,
   Signal,
+  WritableSignal,
   computed,
   effect,
   inject,
+  linkedSignal,
   model,
   signal,
   untracked,
   viewChild,
 } from '@angular/core';
-import type { DatePreset } from '@hibiscus-frontend/shared/contracts/user-settings';
+import type { DatePreset, DatePresetUnit } from '@hibiscus-frontend/shared/contracts/user-settings';
 import { DatePresetService } from '../../../core/services/date-preset.service';
+import { TranslationKey } from '../../../core/models/translation.model';
 import { TranslationService } from '../../../core/services/translation.service';
-import { DateRange, formatRange, resolvePreset } from '../../../core/utils/date-range';
+import {
+  DATE_PRESET_UNITS,
+  DateRange,
+  adjacentPeriod,
+  formatRange,
+  resolvePreset,
+} from '../../../core/utils/date-range';
 
 /** A menu row: the preset and the dates it resolves to on the day the menu was opened. */
 export interface DateRangePresetItem {
@@ -75,6 +84,18 @@ export class DateRangeFilterComponent {
       this.presetService.presets().find((p: DatePreset) => p.id === this.selectedPresetId()) ??
       null,
   );
+
+  /** Unit of the previous/next buttons: follows a relative preset, otherwise keeps its last value. */
+  protected readonly stepUnit: WritableSignal<DatePresetUnit> = linkedSignal<
+    DatePreset | null,
+    DatePresetUnit
+  >({
+    source: this.selectedPreset,
+    computation: (preset: DatePreset | null, previous): DatePresetUnit =>
+      preset?.kind === 'relative' ? preset.unit : (previous?.value ?? 'month'),
+  });
+
+  protected readonly units: readonly DatePresetUnit[] = DATE_PRESET_UNITS;
 
   protected readonly allDatesSelected: Signal<boolean> = computed(
     (): boolean => this.range() === null && this.selectedPreset() === null,
@@ -147,6 +168,29 @@ export class DateRangeFilterComponent {
     this.selectedPresetId.set(null);
     this.typedRange = undefined;
     this.range.set(null);
+  }
+
+  /** Moves the range to the whole period before/after the current one, in the chosen unit. */
+  protected step(direction: -1 | 1): void {
+    this.touched.set(true);
+    this.selectedPresetId.set(null);
+    this.typedRange = undefined;
+    this.range.set(adjacentPeriod(this.range(), { unit: this.stepUnit(), direction }, new Date()));
+  }
+
+  protected onStepUnitChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (!(target instanceof HTMLSelectElement)) throw new Error('expected a select event');
+    const unit: DatePresetUnit | undefined = DATE_PRESET_UNITS.find(
+      (u: DatePresetUnit): boolean => u === target.value,
+    );
+    if (!unit) throw new Error(`unknown step unit: ${target.value}`);
+    this.stepUnit.set(unit);
+  }
+
+  protected unitLabel(unit: DatePresetUnit): string {
+    const key: TranslationKey = `settings.unit.${unit}`;
+    return this.i18n.t(key);
   }
 
   protected onFromInput(event: Event): void {

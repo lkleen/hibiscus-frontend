@@ -10,6 +10,31 @@ export interface DateRange {
   readonly to: string | null;
 }
 
+/** All preset units, in ascending order of length. */
+export const DATE_PRESET_UNITS: readonly DatePresetUnit[] = [
+  'day',
+  'week',
+  'month',
+  'quarter',
+  'year',
+];
+
+/** The period definition of a relative preset, without its identity. */
+export type RelativePeriod = Pick<RelativeDatePreset, 'unit' | 'offset' | 'count'>;
+
+/** One step to the previous (-1) or next (+1) whole calendar period of `unit`. */
+export interface PeriodStep {
+  readonly unit: DatePresetUnit;
+  readonly direction: -1 | 1;
+}
+
+/** Parses a local-calendar ISO `YYYY-MM-DD` date; throws on anything else. */
+export function parseIsoDate(iso: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) throw new Error(`Invalid ISO date: ${iso}`);
+  const [year, month, day]: number[] = iso.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 /** Local calendar date, not `toISOString()` — that is UTC and shifts the day around midnight. */
 export function toIsoDate(date: Date): string {
   const year: string = String(date.getFullYear()).padStart(4, '0');
@@ -23,8 +48,8 @@ export function toIsoDate(date: Date): string {
  * the previous month, month 12 = January next year) and is immune to DST shifts, unlike adding
  * milliseconds.
  */
-function resolveRelative(preset: RelativeDatePreset, today: Date): DateRange {
-  const { unit, offset, count }: { unit: DatePresetUnit; offset: number; count: number } = preset;
+function resolveRelative(preset: RelativePeriod, today: Date): DateRange {
+  const { unit, offset, count }: RelativePeriod = preset;
   if (!Number.isInteger(offset))
     throw new Error(`Date preset offset must be an integer: ${offset}`);
   if (!Number.isInteger(count) || count < 1) {
@@ -80,6 +105,21 @@ export function resolvePreset(preset: DatePreset, today: Date): DateRange {
       throw new Error(`Unknown date preset kind: ${JSON.stringify(unreachable)}`);
     }
   }
+}
+
+/**
+ * The whole calendar period of `step.unit` before (-1) or after (+1) the range. Anchors on the
+ * range's `from` when stepping back and on its `to` when stepping forward (falling back to the
+ * other end, then to `today`).
+ */
+export function adjacentPeriod(range: DateRange | null, step: PeriodStep, today: Date): DateRange {
+  const preferred: string | null =
+    step.direction === -1 ? (range?.from ?? null) : (range?.to ?? null);
+  const fallback: string | null =
+    step.direction === -1 ? (range?.to ?? null) : (range?.from ?? null);
+  const anchorIso: string | null = preferred ?? fallback;
+  const anchor: Date = anchorIso === null ? today : parseIsoDate(anchorIso);
+  return resolveRelative({ unit: step.unit, offset: step.direction, count: 1 }, anchor);
 }
 
 /** ISO dates sort lexically, so plain string comparison is a correct date comparison. */

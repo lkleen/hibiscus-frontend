@@ -121,7 +121,11 @@ lambdas for resolving `konto_id` to account details (holder, BIC, account number
 The table uses `autoSizeStrategy: fitCellContents` with an 82rem minimum width, so cells are
 single-line and the table scrolls horizontally. A `<app-date-range-filter>` in the table's
 toolbar filters on `datum` (booking date), inclusive; it starts on the user's first date preset
-and persists within the session only.
+and persists within the session only. Its ◀/▶ buttons jump to the previous/next whole calendar
+period (`adjacentPeriod()` in `core/utils/date-range.ts`) of a step unit chosen next to them
+(day, week, month, quarter, year): ◀ steps from `from`, ▶ from `to`, an open end falls back to the
+other end, and "all dates" to today. The step unit follows the selected relative preset's unit and
+is otherwise session-only state of the filter.
 A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
 is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
 filters. See the `transactions-table` skill for column definitions and the refresh contract.

@@ -3,7 +3,7 @@
     <label [for]="id + '-preset'">{{ i18n.t('dateRangeFilter.period') }}</label>
     <button
       type="button"
-      class="date-range-filter__trigger"
+      class="date-range-filter__control date-range-filter__trigger"
       [id]="id + '-preset'"
       [cdkMenuTriggerFor]="panelTemplate"
       [cdkMenuPosition]="panelPositions"
@@ -29,12 +29,77 @@
     <label [for]="id + '-from'">{{ i18n.t('dateRangeFilter.from') }}</label>
     <!-- No [value]/[min]/[max] bindings: the component writes these itself, never into the field
          being typed in (see `typedRange`). -->
-    <input #fromInput type="date" [id]="id + '-from'" (input)="onFromInput($event)" />
+    <input
+      class="date-range-filter__control"
+      #fromInput
+      type="date"
+      [id]="id + '-from'"
+      (input)="onFromInput($event)"
+    />
   </div>
 
   <div class="date-range-filter__field">
     <label [for]="id + '-to'">{{ i18n.t('dateRangeFilter.to') }}</label>
-    <input #toInput type="date" [id]="id + '-to'" (input)="onToInput($event)" />
+    <input
+      class="date-range-filter__control"
+      #toInput
+      type="date"
+      [id]="id + '-to'"
+      (input)="onToInput($event)"
+    />
+  </div>
+
+  <div class="date-range-filter__field">
+    <label [for]="id + '-step'">{{ i18n.t('dateRangeFilter.step') }}</label>
+    <div class="date-range-filter__stepper">
+      <button
+        type="button"
+        class="date-range-filter__control date-range-filter__step-button"
+        [attr.aria-label]="i18n.t('dateRangeFilter.previous')"
+        (click)="step(-1)"
+      >
+        <svg
+          class="date-range-filter__chevron"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      </button>
+      <select
+        class="date-range-filter__control"
+        [id]="id + '-step'"
+        (change)="onStepUnitChange($event)"
+      >
+        @for (unit of units; track unit) {
+          <option [value]="unit" [selected]="unit === stepUnit()">{{ unitLabel(unit) }}</option>
+        }
+      </select>
+      <button
+        type="button"
+        class="date-range-filter__control date-range-filter__step-button"
+        [attr.aria-label]="i18n.t('dateRangeFilter.next')"
+        (click)="step(1)"
+      >
+        <svg
+          class="date-range-filter__chevron"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </button>
+    </div>
   </div>
 </div>
 

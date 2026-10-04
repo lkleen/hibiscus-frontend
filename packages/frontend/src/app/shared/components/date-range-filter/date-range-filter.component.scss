@@ -30,25 +30,25 @@
     font-size: var(--text-xs);
     color: var(--date-range-filter-label-color);
   }
+}
 
-  input,
-  .date-range-filter__trigger {
-    padding: 0.45rem 0.6rem;
-    border: 1px solid var(--date-range-filter-field-border-color);
-    border-radius: var(--date-range-filter-radius);
-    background: var(--date-range-filter-field-bg);
-    color: var(--date-range-filter-field-color);
-    font-family: inherit;
-    font-size: var(--text-sm);
+// Every control in the bar (trigger, date inputs, step buttons, unit select) shares one look.
+.date-range-filter__control {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--date-range-filter-field-border-color);
+  border-radius: var(--date-range-filter-radius);
+  background: var(--date-range-filter-field-bg);
+  color: var(--date-range-filter-field-color);
+  font-family: inherit;
+  font-size: var(--text-sm);
 
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 
-    @media (pointer: coarse) {
-      min-block-size: 2.75rem;
-    }
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
   }
 }
 
@@ -61,6 +61,31 @@
   cursor: pointer;
 
   &[aria-expanded='true'] {
+    --date-range-filter-field-bg: var(--surface-hover);
+  }
+}
+
+.date-range-filter__stepper {
+  display: flex;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.date-range-filter__step-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  @media (pointer: coarse) {
+    min-inline-size: 2.75rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background var(--transition-duration) ease;
+  }
+
+  &:hover {
     --date-range-filter-field-bg: var(--surface-hover);
   }
 }

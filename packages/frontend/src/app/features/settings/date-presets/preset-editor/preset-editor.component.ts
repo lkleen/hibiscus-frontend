@@ -15,7 +15,12 @@ import { map, startWith } from 'rxjs';
 import { TranslationKey } from '../../../../core/models/translation.model';
 import { DatePresetService } from '../../../../core/services/date-preset.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { formatRange, resolvePreset, toIsoDate } from '../../../../core/utils/date-range';
+import {
+  DATE_PRESET_UNITS,
+  formatRange,
+  resolvePreset,
+  toIsoDate,
+} from '../../../../core/utils/date-range';
 import { DATE_PRESET_LIMITS } from '../date-preset-limits';
 
 const MIN_AGO = 0;
@@ -100,7 +105,7 @@ export class PresetEditorComponent implements OnInit {
     min: MIN_AGO,
     max: DATE_PRESET_LIMITS.maxAgo,
   };
-  protected readonly units: readonly DatePresetUnit[] = ['day', 'week', 'month', 'quarter', 'year'];
+  protected readonly units: readonly DatePresetUnit[] = DATE_PRESET_UNITS;
 
   private readonly today: Date = new Date();
 

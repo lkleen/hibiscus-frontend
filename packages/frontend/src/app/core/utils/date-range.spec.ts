@@ -1,5 +1,81 @@
 import type { DatePreset, DatePresetUnit } from '@hibiscus-frontend/shared/contracts/user-settings';
-import { DateRange, isInRange, resolvePreset, toIsoDate } from './date-range';
+import {
+  adjacentPeriod,
+  DateRange,
+  isInRange,
+  parseIsoDate,
+  resolvePreset,
+  toIsoDate,
+} from './date-range';
+
+function step(unit: DatePresetUnit, direction: -1 | 1, range: DateRange | null): DateRange {
+  return adjacentPeriod(range, { unit, direction }, new Date(2026, 9, 4));
+}
+
+describe('parseIsoDate', () => {
+  it('parses a local calendar date', () => {
+    const date: Date = parseIsoDate('2028-02-29');
+    expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([2028, 1, 29]);
+  });
+  it('throws on malformed input', () => {
+    expect(() => parseIsoDate('2026-1-05')).toThrow();
+    expect(() => parseIsoDate('2026-01-05T00:00')).toThrow();
+    expect(() => parseIsoDate('')).toThrow();
+  });
+});
+
+describe('adjacentPeriod', () => {
+  it('steps a day', () => {
+    const r: DateRange = { from: '2026-03-01', to: '2026-03-01' };
+    expect(step('day', -1, r)).toEqual({ from: '2026-02-28', to: '2026-02-28' });
+    expect(step('day', 1, r)).toEqual({ from: '2026-03-02', to: '2026-03-02' });
+  });
+  it('steps Monday-based weeks across a year boundary', () => {
+    const r: DateRange = { from: '2026-12-28', to: '2027-01-03' };
+    expect(step('week', -1, r)).toEqual({ from: '2026-12-21', to: '2026-12-27' });
+    expect(step('week', 1, r)).toEqual({ from: '2027-01-04', to: '2027-01-10' });
+  });
+  it('steps months from the 31st and through leap-year February', () => {
+    expect(step('month', 1, { from: '2026-10-31', to: '2026-10-31' })).toEqual({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    });
+    expect(step('month', -1, { from: '2028-03-31', to: '2028-03-31' })).toEqual({
+      from: '2028-02-01',
+      to: '2028-02-29',
+    });
+  });
+  it('steps quarters', () => {
+    const r: DateRange = { from: '2026-04-01', to: '2026-06-30' };
+    expect(step('quarter', -1, r)).toEqual({ from: '2026-01-01', to: '2026-03-31' });
+    expect(step('quarter', 1, r)).toEqual({ from: '2026-07-01', to: '2026-09-30' });
+  });
+  it('steps years', () => {
+    const r: DateRange = { from: '2026-01-01', to: '2026-12-31' };
+    expect(step('year', -1, r)).toEqual({ from: '2025-01-01', to: '2025-12-31' });
+    expect(step('year', 1, r)).toEqual({ from: '2027-01-01', to: '2027-12-31' });
+  });
+  it('anchors a custom range on from (back) and to (forward)', () => {
+    const r: DateRange = { from: '2026-08-15', to: '2026-10-31' };
+    expect(step('month', -1, r)).toEqual({ from: '2026-07-01', to: '2026-07-31' });
+    expect(step('month', 1, r)).toEqual({ from: '2026-11-01', to: '2026-11-30' });
+  });
+  it('falls back to the other end of a half-open range', () => {
+    const onlyFrom: DateRange = { from: '2026-08-15', to: null };
+    const onlyTo: DateRange = { from: null, to: '2026-10-31' };
+    expect(step('month', -1, onlyFrom)).toEqual({ from: '2026-07-01', to: '2026-07-31' });
+    expect(step('month', 1, onlyFrom)).toEqual({ from: '2026-09-01', to: '2026-09-30' });
+    expect(step('month', -1, onlyTo)).toEqual({ from: '2026-09-01', to: '2026-09-30' });
+    expect(step('month', 1, onlyTo)).toEqual({ from: '2026-11-01', to: '2026-11-30' });
+  });
+  it('anchors on today without a range', () => {
+    expect(step('month', -1, null)).toEqual({ from: '2026-09-01', to: '2026-09-30' });
+    expect(step('month', 1, { from: null, to: null })).toEqual({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    });
+  });
+});
 
 function relative(unit: DatePresetUnit, offset: number, count: number): DatePreset {
   return { id: 'x', name: null, kind: 'relative', unit, offset, count };

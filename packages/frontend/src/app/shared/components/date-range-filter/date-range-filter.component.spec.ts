@@ -31,6 +31,7 @@ describe('DateRangeFilterComponent', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     fixture.destroy();
     httpMock.verify();
     vi.unstubAllGlobals();
@@ -185,5 +186,68 @@ describe('DateRangeFilterComponent', () => {
     const items: HTMLButtonElement[] = await openMenu();
     expect(items).toHaveLength(1);
     expect(document.querySelector('.date-range-filter__error')).not.toBeNull();
+  });
+
+  describe('stepping', () => {
+    const MONTH_ONLY: DatePresetList = [PRESETS[1]];
+
+    function stepButton(which: 'previous' | 'next'): HTMLButtonElement {
+      const buttons: NodeListOf<HTMLButtonElement> = root.querySelectorAll(
+        '.date-range-filter__step-button',
+      );
+      return buttons[which === 'previous' ? 0 : 1];
+    }
+
+    /** Loads the presets, then freezes "today" and re-applies the first preset under it. */
+    async function loadAtFixedToday(): Promise<void> {
+      await loadPresets(MONTH_ONLY);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 9, 4));
+      const items: HTMLButtonElement[] = await openMenu();
+      items[0].click();
+      fixture.detectChanges();
+    }
+
+    function stepSelect(): HTMLSelectElement {
+      return root.querySelector<HTMLSelectElement>('select') as HTMLSelectElement;
+    }
+
+    it('steps to the previous month and shows it in the fields', async () => {
+      await loadAtFixedToday();
+      expect(stepSelect().value).toBe('month');
+      stepButton('previous').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.range()).toEqual({ from: '2026-09-01', to: '2026-09-30' });
+      expect(input('from').value).toBe('2026-09-01');
+      expect(input('to').value).toBe('2026-09-30');
+      expect(trigger().textContent).toContain('Custom range');
+    });
+
+    it('steps to the next month', async () => {
+      await loadAtFixedToday();
+      stepButton('next').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.range()).toEqual({ from: '2026-11-01', to: '2026-11-30' });
+    });
+
+    it('uses the unit chosen in the select', async () => {
+      await loadAtFixedToday();
+      stepSelect().value = 'year';
+      stepSelect().dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+      stepButton('previous').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.range()).toEqual({ from: '2025-01-01', to: '2025-12-31' });
+    });
+
+    it('anchors on today after All dates', async () => {
+      await loadAtFixedToday();
+      const items: HTMLButtonElement[] = await openMenu();
+      items[1].click();
+      fixture.detectChanges();
+      stepButton('previous').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.range()).toEqual({ from: '2026-09-01', to: '2026-09-30' });
+    });
   });
 });
