@@ -3,6 +3,7 @@ import { colDef } from './data-table.model';
 import type { DataTableColDef, DataTableTreeData, DataTableTreeOptions } from './data-table.model';
 import {
   computeTreeAggregates,
+  indexTreeNodes,
   sortTreeNodes,
   toTreeNodes,
   validateNoAggFuncOutsideTreeMode,
@@ -28,12 +29,17 @@ const ITEMS: readonly Item[] = [
   item(5, null, 'Z'),
 ];
 
-function nodes(groupDefaultExpanded: number, rows: readonly Item[] = ITEMS): TreeNode<Item>[] {
+function nodes(
+  groupDefaultExpanded: number,
+  rows: readonly Item[] = ITEMS,
+  previous: ReadonlyMap<string, TreeNode<Item>> = new Map<string, TreeNode<Item>>(),
+): TreeNode<Item>[] {
   return toTreeNodes<Item, Item>(rows, {
     getId: (row: Item): number => row.id,
     getParentId: (row: Item): number | null => row.parentId,
     getData: (row: Item): Item => row,
     groupDefaultExpanded,
+    previous,
   });
 }
 
@@ -46,6 +52,38 @@ function expandedByName(list: readonly TreeNode<Item>[]): Record<string, boolean
   list.forEach(visit);
   return result;
 }
+
+describe('toTreeNodes reconciliation', () => {
+  it('reuses the node of a surviving key, keeps expanded and updates data and children', () => {
+    const first: TreeNode<Item>[] = nodes(-1);
+    const alpha: TreeNode<Item> = first[0];
+    const bravo: TreeNode<Item> = alpha.children?.[0] ?? first[0];
+    alpha.expanded = false;
+    const renamed: Item = item(1, null, 'A2');
+    const next: TreeNode<Item>[] = nodes(
+      -1,
+      [renamed, item(2, 1, 'B'), item(5, null, 'Z')],
+      indexTreeNodes(first),
+    );
+    expect(next[0]).toBe(alpha);
+    expect(next[0].expanded).toBe(false);
+    expect(next[0].data).toBe(renamed);
+    expect(next[0].children).toHaveLength(1);
+    expect(next[0].children?.[0]).toBe(bravo);
+    expect(next[0].children?.[0].children).toEqual([]);
+  });
+
+  it('gives a new key the depth default and does not resurrect a removed one', () => {
+    const first: TreeNode<Item>[] = nodes(1);
+    const removed: TreeNode<Item> = first[0];
+    removed.expanded = false;
+    const without: TreeNode<Item>[] = nodes(1, [item(5, null, 'Z')], indexTreeNodes(first));
+    expect(without).toHaveLength(1);
+    const back: TreeNode<Item>[] = nodes(1, ITEMS, indexTreeNodes(without));
+    expect(back[0]).not.toBe(removed);
+    expect(expandedByName(back)).toEqual({ A: true, B: false, D: false, C: false, Z: true });
+  });
+});
 
 describe('toTreeNodes', () => {
   it('builds roots and children in input order, with the row as node data and the id as key', () => {
@@ -230,6 +268,7 @@ describe('computeTreeAggregates', () => {
       getParentId: (row: Priced): number | null => row.parentId,
       getData: (row: Priced): Priced => row,
       groupDefaultExpanded: -1,
+      previous: new Map<string, TreeNode<Priced>>(),
     });
   }
 

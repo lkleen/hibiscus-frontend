@@ -159,7 +159,7 @@ describe('DataTableComponent tree mode', () => {
     expect(hidden.length).toBe(3); // Delta, Charlie, Zulu
   });
 
-  it('collapse all and expand all rebuild the tree', async () => {
+  it('collapse all and expand all work', async () => {
     await settle();
     actionButtons()[1].click();
     await settle();
@@ -168,6 +168,40 @@ describe('DataTableComponent tree mode', () => {
     actionButtons()[0].click();
     await settle();
     expect(names()).toEqual(['Alpha', 'Bravo', 'Delta', 'Charlie', 'Zulu']);
+  });
+
+  it('keeps a toggled node expanded across a new value with the same ids', async () => {
+    host.options.set(
+      treeOptions({
+        treeData: {
+          getParentId: (row: Node): number | null => row.parentId,
+          groupColId: 'name',
+          groupDefaultExpanded: 0,
+        },
+      }),
+    );
+    await settle();
+    expect(names()).toEqual(['Alpha', 'Zulu']);
+    const toggler = root.querySelector<HTMLElement>(
+      'p-treetabletoggler button, p-treeTableToggler button',
+    );
+    if (!toggler) throw new Error('no toggler');
+    toggler.click(); // expand Alpha
+    await settle();
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie', 'Zulu']);
+
+    host.rows.set(nodes().map((row: Node) => ({ ...row, amount: row.amount + 1 })));
+    await settle();
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie', 'Zulu']);
+  });
+
+  it('keeps collapse all across a new value', async () => {
+    await settle();
+    actionButtons()[1].click();
+    await settle();
+    host.rows.set(nodes().map((row: Node) => ({ ...row })));
+    await settle();
+    expect(names()).toEqual(['Alpha', 'Zulu']);
   });
 
   it('honours groupDefaultExpanded', async () => {

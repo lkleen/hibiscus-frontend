@@ -15,6 +15,9 @@ export interface TreeNodesConfig<Row, Data> {
   readonly getParentId: (row: Row) => string | number | null;
   readonly getData: (row: Row) => Data;
   readonly groupDefaultExpanded: number;
+  /** The nodes of the previous build by key (`indexTreeNodes`; empty on the first build). A row
+   *  whose key is in it reuses that node object instead of getting a new one. */
+  readonly previous: ReadonlyMap<string, TreeNode<Data>>;
 }
 
 /** Everything `validateTreeMode` checks a tree-mode table against. */
@@ -29,22 +32,57 @@ export function isExpandedAtDepth(groupDefaultExpanded: number, depth: number): 
   return groupDefaultExpanded === -1 || depth < groupDefaultExpanded;
 }
 
+/** Every node of the forest by its `key`, for the next `toTreeNodes` pass. Throws on a node
+ *  without a key. */
+export function indexTreeNodes<Data>(
+  roots: readonly TreeNode<Data>[],
+): Map<string, TreeNode<Data>> {
+  const index = new Map<string, TreeNode<Data>>();
+  const visit = (node: TreeNode<Data>): void => {
+    if (node.key === undefined) throw new Error('data-table: tree node without key');
+    index.set(node.key, node);
+    node.children?.forEach(visit);
+  };
+  roots.forEach(visit);
+  return index;
+}
+
 /**
  * Builds PrimeNG `TreeNode`s from flat rows through `buildTree` (dangling parent → root; throws on
  * a duplicate id or a cycle). Roots and siblings keep the input order. The row itself never lands
  * on the node as a copy: `getData` decides what `node.data` is (the table passes a column-accessor
  * proxy of the raw row).
+ *
+ * Reconciles by key against `config.previous` (ag-Grid's `getRowId` update model): a key present
+ * before keeps its node object, with `data` and `children` replaced and `expanded` untouched (it is
+ * the node's own state, which PrimeNG mutates on toggle); a new key gets a new node with the
+ * `groupDefaultExpanded` default for its depth; a key that is gone is simply not in the result. The
+ * previous nodes are mutated, and every `children` array is rebuilt, so the caller may sort the
+ * returned forest in place.
  */
 export function toTreeNodes<Row, Data>(
   rows: readonly Row[],
   config: TreeNodesConfig<Row, Data>,
 ): TreeNode<Data>[] {
-  const toNode = (branch: TreeBranch<Row>, depth: number): TreeNode<Data> => ({
-    key: String(config.getId(branch.row)),
-    data: config.getData(branch.row),
-    expanded: isExpandedAtDepth(config.groupDefaultExpanded, depth),
-    children: branch.children.map((child: TreeBranch<Row>) => toNode(child, depth + 1)),
-  });
+  const toNode = (branch: TreeBranch<Row>, depth: number): TreeNode<Data> => {
+    const key = String(config.getId(branch.row));
+    const data: Data = config.getData(branch.row);
+    const children: TreeNode<Data>[] = branch.children.map((child: TreeBranch<Row>) =>
+      toNode(child, depth + 1),
+    );
+    const existing: TreeNode<Data> | undefined = config.previous.get(key);
+    if (existing) {
+      existing.data = data;
+      existing.children = children;
+      return existing;
+    }
+    return {
+      key,
+      data,
+      expanded: isExpandedAtDepth(config.groupDefaultExpanded, depth),
+      children,
+    };
+  };
   return buildTree(rows, config).map((root: TreeBranch<Row>) => toNode(root, 0));
 }
 

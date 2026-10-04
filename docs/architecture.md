@@ -19,7 +19,7 @@
   through the CSS bridge in `styles/_primeng-table.scss`. The component optionally renders a tree
   via the `treeData` option (self-referencing parent-id style, built by `buildTree`); it renders
   PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
-  fully expanded by default with expand-all/collapse-all controls; the quick filter is lenient
+  fully expanded by default with expand-all/collapse-all controls (nodes are updated in place by row id when `value` changes, so expansion survives data changes); the quick filter is lenient
   (keeping ancestors of matches), sorting and resizing work, and pagination is not available.
   In tree mode a column may set `aggFunc: 'sum'`: group nodes then show and sort by the sum of their
   descendant leaves' values (computed once per tree rebuild; throws outside tree mode). The pure

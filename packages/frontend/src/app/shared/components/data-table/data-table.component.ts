@@ -31,6 +31,7 @@ import {
   DEFAULT_GROUP_EXPANDED,
   requireNodeData,
   computeTreeAggregates,
+  indexTreeNodes,
   sortTreeNodes,
   toTreeNodes,
   validateNoAggFuncOutsideTreeMode,
@@ -71,12 +72,6 @@ export interface DataTableTreeRowNode<Row> {
   readonly parent: TreeNode<Row> | null;
   readonly level: number;
   readonly visible: boolean;
-}
-
-/** Whether tree nodes start fully expanded or collapsed after `expandAll()`/`collapseAll()`; a new
- *  object per call so setting the same level twice still rebuilds the nodes. */
-interface TreeExpansion {
-  readonly level: number;
 }
 
 /** A sort key resolved to this component's own vocabulary (`colId`, not PrimeNG's `field`). */
@@ -208,32 +203,37 @@ export class DataTableComponent<Row extends object> {
     () => this.requireTreeOptions().treeData.groupColId,
   );
 
-  /** ag-Grid's `groupDefaultExpanded`, re-derived from the options; `expandAll()`/`collapseAll()`
-   *  overwrite it until the options change. A `linkedSignal` for the same reason as
-   *  `visibleColumns`: user-set session state on top of a derived default. */
-  private readonly expansion = linkedSignal<TreeExpansion>(() => ({
-    level: this.treeOptions()?.treeData.groupDefaultExpanded ?? DEFAULT_GROUP_EXPANDED,
-  }));
-
   /**
    * The tree for `<p-treetable>`. `node.data` is the column-accessor proxy of the raw row — the
-   * same objects the flat path binds — so PrimeNG's filter reads `colId` through the proxy. New
-   * only when `value()`, the options/columns or the expansion state change; PrimeNG then re-sorts,
-   * re-filters and re-serializes it. A manual toggle mutates `node.expanded` in place and so is
-   * kept across `refresh()`, but not across a rebuild (new rows, `expandAll()`/`collapseAll()`).
+   * same objects the flat path binds — so PrimeNG's filter reads `colId` through the proxy.
+   *
+   * A new `value()` does not create fresh nodes: `toTreeNodes` reconciles against the previous
+   * nodes by row id, reusing their objects, so `node.expanded` (the user's toggles, `expandAll()`/
+   * `collapseAll()`) survives data changes; `groupDefaultExpanded` only seeds new nodes. Each update
+   * still yields a new root array, so PrimeNG re-sorts, re-filters and re-serializes. Changed tree
+   * options start from scratch (no previous nodes).
    */
-  protected readonly treeNodes = computed<TreeNode<Row>[]>(() => {
-    const options: DataTableTreeOptions<Row> = this.requireTreeOptions();
-    return toTreeNodes(this.value(), {
-      getId: options.getRowId,
-      getParentId: options.treeData.getParentId,
-      getData: (row: Row): Row => this.proxyFactory.getProxy(row),
-      groupDefaultExpanded: this.expansion().level,
-    });
+  protected readonly treeNodes = linkedSignal<
+    { readonly rows: readonly Row[]; readonly options: DataTableTreeOptions<Row> },
+    TreeNode<Row>[]
+  >({
+    source: () => ({ rows: this.value(), options: this.requireTreeOptions() }),
+    computation: (source, previous) =>
+      toTreeNodes(source.rows, {
+        getId: source.options.getRowId,
+        getParentId: source.options.treeData.getParentId,
+        getData: (row: Row): Row => this.proxyFactory.getProxy(row),
+        groupDefaultExpanded:
+          source.options.treeData.groupDefaultExpanded ?? DEFAULT_GROUP_EXPANDED,
+        previous:
+          previous && previous.source.options === source.options
+            ? indexTreeNodes(previous.value)
+            : new Map<string, TreeNode<Row>>(),
+      }),
   });
 
   /** `aggFunc` aggregates of the current `treeNodes` (empty when no column aggregates); recomputed
-   *  exactly when the tree is rebuilt. */
+   *  on every `treeNodes` update (each yields a new root array). */
   private readonly treeAggregates = computed<TreeAggregates<Row>>(() =>
     computeTreeAggregates(this.treeNodes(), this.columns()),
   );
@@ -501,16 +501,27 @@ export class DataTableComponent<Row extends object> {
     table.filter((event.target as HTMLInputElement).value, column.colId, FilterMatchMode.CONTAINS);
   }
 
-  /** ag-Grid's `expandAll()`: rebuilds the nodes with every level expanded. Tree mode only. */
+  /** ag-Grid's `expandAll()`: expands every node in place. Tree mode only. */
   expandAll(): void {
-    this.requireTreeOptions();
-    this.expansion.set({ level: -1 });
+    this.setAllExpanded(true);
   }
 
-  /** ag-Grid's `collapseAll()`: rebuilds the nodes with every level collapsed. Tree mode only. */
+  /** ag-Grid's `collapseAll()`: collapses every node in place. Tree mode only. */
   collapseAll(): void {
+    this.setAllExpanded(false);
+  }
+
+  /** Mutates `expanded` on the current nodes (later data updates reuse them, so the state holds),
+   *  then publishes a new root array so PrimeNG re-serializes. */
+  private setAllExpanded(expanded: boolean): void {
     this.requireTreeOptions();
-    this.expansion.set({ level: 0 });
+    const roots: TreeNode<Row>[] = this.treeNodes();
+    const visit = (node: TreeNode<Row>): void => {
+      node.expanded = expanded;
+      node.children?.forEach(visit);
+    };
+    roots.forEach(visit);
+    this.treeNodes.set([...roots]);
   }
 
   private requireTreeOptions(): DataTableTreeOptions<Row> {
