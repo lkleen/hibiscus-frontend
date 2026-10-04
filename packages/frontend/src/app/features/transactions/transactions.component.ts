@@ -5,11 +5,9 @@ import {
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
-import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
@@ -24,7 +22,6 @@ import { DateRange, isInRange } from '../../core/utils/date-range';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
 import { AccountFilterComponent } from './account-filter/account-filter.component';
 import { AmountCellComponent } from './cells/amount-cell/amount-cell.component';
-import { CategoryCellComponent } from './cells/category-cell/category-cell.component';
 
 /**
  * The transactions table. The API serves every `umsatz` row as stored, all of them in one
@@ -43,7 +40,6 @@ import { CategoryCellComponent } from './cells/category-cell/category-cell.compo
     DateRangeFilterComponent,
     AccountFilterComponent,
     AmountCellComponent,
-    CategoryCellComponent,
   ],
 })
 export class TransactionsComponent {
@@ -52,12 +48,10 @@ export class TransactionsComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly accounts = signal<AccountRow[]>([]);
-  protected readonly categories = signal<CategoryRow[]>([]);
 
   protected readonly items = signal<TransactionRow[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal(false);
-  protected readonly categoryUpdateErrorId = signal<number | null>(null);
 
   /** Session-only; the date filter picks its initial value (the first preset) itself. */
   protected readonly range = signal<DateRange | null>(null);
@@ -80,19 +74,13 @@ export class TransactionsComponent {
   private readonly accountsById = computed(
     () => new Map(this.accounts().map((account) => [account.id, account])),
   );
-  private readonly categoriesById = computed(
-    () => new Map(this.categories().map((category) => [category.id, category])),
-  );
 
-  private readonly dataTable =
-    viewChild.required<DataTableComponent<TransactionRow>>(DataTableComponent);
-
-  // Every lookup below is a `valueGetter` calling straight into the live `accountsById()`/
-  // `categoriesById()` signals rather than a snapshot captured once — the row stays raw (skill
+  // Every lookup below is a `valueGetter` calling straight into the live `accountsById()`
+  // signal rather than a snapshot captured once — the row stays raw (skill
   // §2/§3), and the table only ever sees the id-resolved *name*, never the id itself. Reading a
   // signal from inside a `valueGetter` closure that runs during `<app-data-table>`'s own change
   // detection still registers as one of *that* render's dependencies, so a late-arriving
-  // account/category list repaints the table once it loads. This array itself reads no signal —
+  // account list repaints the table once it loads. This array itself reads no signal —
   // only the closures do, lazily, when the table calls them — so it's a plain field, built once,
   // not a `computed` that would never re-run.
   protected readonly columns: readonly DataTableColDef<TransactionRow>[] = [
@@ -141,15 +129,6 @@ export class TransactionsComponent {
       align: 'end',
       filter: 'numeric',
     },
-    colDef<TransactionRow, string | null>({
-      colId: 'category_name',
-      headerKey: 'transactions.colCategory',
-      valueGetter: (row) =>
-        row.umsatztyp_id === null
-          ? null
-          : (this.categoriesById().get(row.umsatztyp_id)?.name ?? null),
-      cellRenderer: 'category',
-    }),
     {
       // The column exists only to carry the id tie-break for `options.defaultSort` below.
       colId: 'id',
@@ -178,11 +157,6 @@ export class TransactionsComponent {
       .subscribe((accounts) => this.accounts.set(accounts));
 
     this.api
-      .getCategories()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((categories) => this.categories.set(categories));
-
-    this.api
       .getTransactions()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -207,33 +181,5 @@ export class TransactionsComponent {
   protected asAmount(value: unknown): number | null {
     if (value === null || typeof value === 'number') return value;
     throw new Error(`amount cell expects number | null, got ${typeof value}`);
-  }
-
-  protected onCategoryChange(transactionId: number, categoryId: number | null): void {
-    this.categoryUpdateErrorId.set(null);
-    this.api
-      .updateTransactionCategory(transactionId, { categoryId })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.applyCategory(transactionId, categoryId),
-        error: () => this.categoryUpdateErrorId.set(transactionId),
-      });
-  }
-
-  // The backend answers 204, so the change is applied to the row the table already holds. `items()`
-  // is bound directly as `<app-data-table>`'s `[value]`, and the component caches one
-  // column-accessor proxy per raw row object (a `WeakMap`, keyed by identity) — mutating the row's
-  // own `umsatztyp_id` field in place, rather than replacing it with a new object, keeps that same
-  // row (and its proxy) in place while the visible category name picks up the change through the
-  // `category_name` column's `valueGetter`. Replacing the row object, or the `items()` array itself,
-  // would both break this: PrimeNG's `filteredValue` (what actually renders while a filter is
-  // active) holds the same row references as the bound array, not copies, so a replacement object
-  // would leave the stale one rendered; and PrimeNG resets to page 1 whenever the bound array's own
-  // identity changes while a filter is active.
-  private applyCategory(transactionId: number, categoryId: number | null): void {
-    const row = this.items().find((candidate) => candidate.id === transactionId);
-    if (!row) throw new Error(`transaction ${transactionId} is not in the table`);
-    row.umsatztyp_id = categoryId;
-    this.dataTable().refresh();
   }
 }

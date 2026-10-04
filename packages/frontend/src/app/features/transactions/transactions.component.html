@@ -16,15 +16,6 @@
   <ng-template appDataTableCell="amount" let-value="value">
     <app-transaction-amount-cell [amount]="asAmount(value)" />
   </ng-template>
-  <ng-template appDataTableCell="category" let-row>
-    <app-transaction-category-cell
-      [transactionId]="row.id"
-      [categoryId]="row.umsatztyp_id"
-      [categories]="categories()"
-      [failedUpdateId]="categoryUpdateErrorId()"
-      (categoryChange)="onCategoryChange(row.id, $event)"
-    />
-  </ng-template>
 </app-data-table>
 
 @if (error()) {

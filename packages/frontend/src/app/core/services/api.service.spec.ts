@@ -69,15 +69,6 @@ describe('ApiService', () => {
     expect(() => toTransactionRows(response)).toThrow(/1 values for 2 columns/);
   });
 
-  it('PATCHes a transaction category', () => {
-    service.updateTransactionCategory(42, { categoryId: 7 }).subscribe();
-
-    const req = httpMock.expectOne('/api/transactions/42');
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ categoryId: 7 });
-    req.flush(null, { status: 204, statusText: 'No Content' });
-  });
-
   it('requests the date presets', () => {
     service.getDatePresets().subscribe();
 

@@ -40,11 +40,3 @@ export async function listTransactions(): Promise<TransactionsResponse> {
   });
   return { columns: TRANSACTION_COLUMNS, rows };
 }
-
-export async function updateTransactionCategory(
-  id: number,
-  categoryId: number | null,
-): Promise<void> {
-  const pool = getPool();
-  await pool.query(`UPDATE umsatz SET umsatztyp_id = ? WHERE id = ?`, [categoryId, id]);
-}

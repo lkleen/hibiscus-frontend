@@ -108,8 +108,6 @@
   "transactions.colEndToEndId": "End-to-end ID",
   "transactions.colAmount": "Amount",
   "transactions.colBalance": "Balance",
-  "transactions.colCategory": "Category",
-  "transactions.categoryUpdateError": "Could not save category",
 
   "primeng.startsWith": "Begins with",
   "primeng.contains": "Contains",
@@ -146,9 +144,6 @@
   "primeng.aria.filterConstraint": "Filter constraint",
   "primeng.aria.expandRow": "Expand row",
   "primeng.aria.collapseRow": "Collapse row",
-
-  "categoryPicker.uncategorized": "Uncategorized",
-  "categoryPicker.choose": "Choose category",
 
   "accountFilter.label": "Accounts",
   "accountFilter.all": "All accounts",

@@ -44,8 +44,3 @@ export interface TransactionsResponse {
   columns: TransactionColumn[];
   rows: TransactionValue[][];
 }
-
-/** Body of `PATCH /api/transactions/:id`; the endpoint answers `204 No Content`. */
-export interface UpdateTransactionCategory {
-  categoryId: number | null;
-}

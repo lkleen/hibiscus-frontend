@@ -108,8 +108,6 @@
   "transactions.colEndToEndId": "Ende-zu-Ende-Referenz",
   "transactions.colAmount": "Betrag",
   "transactions.colBalance": "Saldo",
-  "transactions.colCategory": "Kategorie",
-  "transactions.categoryUpdateError": "Kategorie konnte nicht gespeichert werden",
 
   "primeng.startsWith": "Beginnt mit",
   "primeng.contains": "Enthält",
@@ -146,9 +144,6 @@
   "primeng.aria.filterConstraint": "Filterbedingung",
   "primeng.aria.expandRow": "Zeile aufklappen",
   "primeng.aria.collapseRow": "Zeile zuklappen",
-
-  "categoryPicker.uncategorized": "Nicht kategorisiert",
-  "categoryPicker.choose": "Kategorie auswählen",
 
   "accountFilter.label": "Konten",
   "accountFilter.all": "Alle Konten",

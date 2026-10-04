@@ -44,9 +44,8 @@ Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope is limited to two things: which category a transaction belongs to
-(`umsatz.umsatztyp_id`) and per-user settings (date range presets) in `hf_user_setting`.
-Categories themselves are read-only (`GET /api/categories`).
+Write scope is limited to per-user settings (date range presets) in `hf_user_setting`.
+Transactions and categories are read-only (`GET /api/transactions`, `GET /api/categories`).
 It does not edit bank-imported transaction fields (amount, date, counterparty) — those are
 synced from the bank by the desktop client and are not this app's data to change.
 
@@ -60,7 +59,6 @@ itself requires authentication too — there is no unauthenticated route in this
 | `GET /api/me`                          | Echoes the authenticated identity           |
 | `GET /api/accounts`                    | List `konto` rows, as stored (`AccountRow`) |
 | `GET /api/transactions`                | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
-| `PATCH /api/transactions/:id`          | Recategorize — body: `{ categoryId }`; answers `204` |
 | `GET /api/categories`                  | List `umsatztyp` rows, as stored (`CategoryRow`) |
 | `GET /api/settings/date-presets`       | User's date presets; defaults if not stored |
 | `PUT /api/settings/date-presets`       | Save whole preset list (zod-validated); answers `204` |
@@ -94,8 +92,8 @@ visible label (column headers included) comes from the translations.
 
 The transactions table shows every meaningful `umsatz` column as stored — the ids are the only
 values it resolves: `konto_id` to the account's holder, BIC, account number and label (four plain
-columns looked up from `/api/accounts`) and `umsatztyp_id` to the category. What the text columns contain differs by account and over
-time (bank/Hibiscus import formats), so the table does not interpret them.
+columns looked up from `/api/accounts`). `umsatztyp_id` is served but not shown. What the text
+columns contain differs by account and over time (bank/Hibiscus import formats), so the table does not interpret them.
 
 ### User settings
 
@@ -116,8 +114,8 @@ middleware) as raw `TransactionRow` objects. The `<app-data-table>` component ha
 (newest booking first by default), column filtering (text, numeric and date per column), global
 search, and pagination (20 rows per page by default). The backend returns all rows `ORDER BY id`
 (deterministic only); it does not sort, filter or page. Column definitions include `valueGetter`
-lambdas for resolving `konto_id` to account details (holder, BIC, account number, label) and
-`umsatztyp_id` to the category name; all values are computed live, not materialised onto rows.
+lambdas for resolving `konto_id` to account details (holder, BIC, account number, label); all
+values are computed live, not materialised onto rows.
 The table uses `autoSizeStrategy: fitCellContents` with an 82rem minimum width, so cells are
 single-line and the table scrolls horizontally. A `<app-date-range-filter>` in the table's
 toolbar filters on `datum` (booking date), inclusive; it starts on the user's first date preset
@@ -130,9 +128,7 @@ Left of the search field, an `<app-account-filter>` dropdown lists every account
 with a checkbox; only transactions of checked accounts are shown. Its state is the set of
 *unchecked* account ids (session only), so every account — including one that loads late — starts
 checked. Both filters are combined into the table's single `externalFilter` predicate.
-A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
-is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
-filters. See the `transactions-table` skill for column definitions and the refresh contract.
+See the `transactions-table` skill for column definitions.
 
 ### Categories page
 
@@ -140,8 +136,7 @@ A read-only `/:locale/categories` page in the navigation shows the entire `umsat
 table with expand-all/collapse-all controls. Every column is rendered as stored: `type` is
 translated (`0` = expense, `1` = income, `2` or `NULL` = any), `konto_id` is resolved to the
 account label via `/api/accounts`, and the `flags` column's bit 1 (`FLAG_SKIP_REPORTS = 1`)
-indicates "skip in reports". The `color` column uses the same `toCssColor` rendering as the
-category picker. Category editing is planned as a later step.
+indicates "skip in reports". The `color` column is rendered via `toCssColor`. Category editing is planned as a later step.
 
 ## Authentication
 

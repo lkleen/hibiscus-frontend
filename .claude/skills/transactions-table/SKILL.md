@@ -31,8 +31,8 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
 - `TransactionRow` (shared package) mirrors the selected columns one-to-one and is declared once;
   `TransactionColumn`/`TransactionValue`/`TransactionsResponse` are derived from it, and the
   backend and frontend import the same types. Never re-declare it, never add a second "view model" type for the API.
-- Write scope stays as in `docs/architecture.md`: only `umsatz.umsatztyp_id` is written
-  (`PATCH /api/transactions/:id`). Bank-imported fields are never edited.
+- Transactions are read-only (see the write scope in `docs/architecture.md`): there is no
+  write route for `umsatz`. Bank-imported fields are never edited.
 
 ## 2. Columns are displayed exactly as stored (frontend)
 
@@ -42,7 +42,7 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
 - Only ids are resolved to what they identify: `konto_id` → the account's own columns, added as
   four plain columns (holder `name`, `bic`, `kontonummer`, `bezeichnung`) looked up from
   `GET /api/accounts` by `konto_id` (`konto.name` is the holder, the same on every account);
-  `umsatztyp_id` → the category picker. The `konto_id` itself is not shown.
+  The `konto_id` itself is not shown; `umsatztyp_id` (category) is served but not shown.
 - Show every **meaningful** column (filled on real data, not an empty legacy column); omit
   never-filled ones (`empfaenger_name2`, `primanota`, `flags`, `addkey`, `txid`, `purposecode`,
   `mandateid`, `creditorid`), plus `id`, `checksum`, `customerref` (almost always `NONREF`) and
@@ -70,8 +70,7 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   not table behaviour. The table loads every row in one request (about 10,000 rows) and does all
   sorting/filtering/paging on that in-memory set.
 - **Lookups are `valueGetter`s in column definitions, evaluated live; rows stay raw.** The four
-  account columns and the category column use `valueGetter` lambdas to resolve `konto_id` and
-  `umsatztyp_id` from the raw row. No `TransactionViewRow` — column definitions compute values live,
+  account columns use `valueGetter` lambdas to resolve `konto_id` from the raw row. No `TransactionViewRow` — column definitions compute values live,
   and PrimeNG's sort, filters and search call the lambdas directly. This does **not** license
   reinterpreting a DB value: a `valueGetter` may only resolve ids and must never reinterpret stored
   values. §1/§2 still bind — lookups stay confined to the columns that need them.
@@ -88,11 +87,10 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
 - `globalFilterFields` is computed by `<app-data-table>` from the column definitions
   (one function per column with a `getQuickFilterText` lambda). Maintain the columns, and search
   updates automatically.
-- A category change mutates the raw row's `umsatztyp_id` in place and then calls
-  `dataTable().refresh()`; the category column's `valueGetter` picks up the new name live. Never
-  replace the row object or the `value` array: PrimeNG resets the page to 1 whenever the bound
-  array's identity changes while a filter is active, and `filteredValue` holds the same (cached
-  proxy) references, so a replaced object would stay rendered stale.
+- To change a row in place, mutate the raw row and call `dataTable().refresh()`. Never replace
+  the row object or the `value` array: PrimeNG resets the page to 1 whenever the bound array's
+  identity changes while a filter is active, and `filteredValue` holds the same (cached proxy)
+  references, so a replaced object would stay rendered stale.
 - **No ag-Grid Enterprise licence** is why this table is on PrimeNG at all: ag-Grid Community
   cannot do tree data and the Enterprise tier is a paid licence this project does not have. PrimeNG
   21 replaced it. **Stay on PrimeNG 21** — it is MIT-licensed; PrimeNG 22 moved to the commercial

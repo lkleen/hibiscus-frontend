@@ -4,9 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
-import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import { categoryRow } from '../../core/utils/testing/category-row-fixture';
 import { LocaleService } from '../../core/services/locale.service';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
 import { account, transaction, transactionsResponse } from './testing/transaction-fixture';
@@ -20,7 +18,6 @@ function wait(ms: number): Promise<void> {
 
 interface Loaded {
   accounts?: AccountRow[];
-  categories?: CategoryRow[];
   items?: TransactionRow[];
 }
 
@@ -32,7 +29,6 @@ const COL = {
   zweck: 9,
   betrag: 15,
   saldo: 16,
-  category: 17,
 } as const;
 
 describe('TransactionsComponent', () => {
@@ -65,13 +61,12 @@ describe('TransactionsComponent', () => {
     fixture.detectChanges();
   }
 
-  /** Starts the component, answers its three requests and lets the table render. */
-  async function load({ accounts = [], categories = [], items = [] }: Loaded = {}): Promise<void> {
+  /** Starts the component, answers its requests and lets the table render. */
+  async function load({ accounts = [], items = [] }: Loaded = {}): Promise<void> {
     fixture.detectChanges();
     // No presets, so the date filter stays on "All dates" and every row is visible.
     httpMock.expectOne('/api/settings/date-presets').flush([]);
     httpMock.expectOne('/api/accounts').flush(accounts);
-    httpMock.expectOne('/api/categories').flush(categories);
     httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));
     await settle();
   }
@@ -105,24 +100,14 @@ describe('TransactionsComponent', () => {
     return bodyRows().map((row) => Number(cellText(row, COL.zweck)));
   }
 
-  /** Finds the row whose `zweck` cell reads `id`, for tests that only care about one row among
-   *  many (e.g. paging, category updates). */
-  function rowById(id: number): HTMLTableRowElement {
-    const row = bodyRows().find((r) => cellText(r, COL.zweck) === String(id));
-    if (!row) throw new Error(`row ${id} not rendered`);
-    return row;
-  }
-
-  it('renders the transactions, with their account and category resolved', async () => {
+  it('renders the transactions, with their account resolved', async () => {
     await load({
       accounts: [account({ id: 1, bezeichnung: 'Checking' })],
-      categories: [categoryRow({ id: 1, name: 'Groceries', color: '#2f6f4f', customcolor: 1 })],
       items: [
         transaction({
           empfaenger_name: 'Supermarket',
           zweck: 'Direct debit',
           zweck3: 'Weekly shop',
-          umsatztyp_id: 1,
         }),
       ],
     });
@@ -133,7 +118,6 @@ describe('TransactionsComponent', () => {
     expect(text).toContain('Direct debit');
     expect(text).toContain('Weekly shop');
     expect(text).toContain('Checking');
-    expect(text).toContain('Groceries');
     expect(text).toContain('2026-09-01');
   });
 
@@ -161,7 +145,7 @@ describe('TransactionsComponent', () => {
     expect(table.style.width).toBe('max-content');
 
     const headerCells = Array.from(root.querySelectorAll('thead tr:first-child th'));
-    expect(headerCells.length).toBe(18);
+    expect(headerCells.length).toBe(17);
     for (const cell of headerCells) {
       expect((cell as HTMLElement).style.width).toBe('');
       expect((cell as HTMLElement).getAttribute('width')).toBeNull();
@@ -201,7 +185,6 @@ describe('TransactionsComponent', () => {
       'Ende-zu-Ende-Referenz',
       'Betrag',
       'Saldo',
-      'Kategorie',
     ]);
     // The old German pager showed a visible "Seitengröße:" label; PrimeNG's rows-per-page
     // dropdown is ARIA-labelled only, so that exact string no longer appears anywhere — the
@@ -354,85 +337,6 @@ describe('TransactionsComponent', () => {
     expect(root.textContent).toContain('2026-02-15');
     expect(root.textContent).not.toContain('2026-01-15');
     expect(root.textContent).not.toContain('2026-03-15');
-  });
-
-  it('saves a changed category through the picker and applies it to the row, staying on the page', async () => {
-    const items: TransactionRow[] = Array.from({ length: 45 }, (_, i) =>
-      transaction({ id: i + 1, datum: '2026-01-01', zweck: String(i + 1) }),
-    );
-    await load({
-      categories: [categoryRow({ id: 7, name: 'Groceries', color: '#2f6f4f', customcolor: 1 })],
-      items,
-    });
-
-    const next = root.querySelector<HTMLButtonElement>('.p-paginator-next');
-    if (!next) throw new Error('paginator next button not rendered');
-    next.click();
-    await settle();
-    // Newest-first default sort: page 1 shows ids 45..26, page 2 shows 25..6.
-    expect(displayedIds()[0]).toBe(25);
-
-    const row = rowById(25);
-    row.querySelector<HTMLButtonElement>('.category-picker__trigger')?.click();
-    fixture.detectChanges();
-    const option = Array.from(
-      document.querySelectorAll<HTMLButtonElement>('.category-picker__option'),
-    ).find((o) => o.textContent?.includes('Groceries'));
-    if (!option) throw new Error('category option not rendered');
-    option.click();
-    fixture.detectChanges();
-
-    const req = httpMock.expectOne('/api/transactions/25');
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ categoryId: 7 });
-    req.flush(null, { status: 204, statusText: 'No Content' });
-    await settle();
-
-    expect(cellText(rowById(25), COL.category)).toContain('Groceries');
-    // Still on the second page, which still starts at 25 — the category update mutates the row in
-    // place rather than replacing the `[value]` array, so PrimeNG never sees a new array identity
-    // that would otherwise reset pagination to page 1 (which would show 45 here).
-    expect(displayedIds()[0]).toBe(25);
-  });
-
-  it('keeps a category change visible on a row while a filter is active', async () => {
-    // PrimeNG renders `filteredValue` while a filter is active, which holds the *same row
-    // references* as the unfiltered array — replacing the row object on update would leave the
-    // stale object sitting in `filteredValue`, invisible to this test unless a filter narrows
-    // the rendered set first.
-    await load({
-      categories: [categoryRow({ id: 7, name: 'Groceries', color: '#2f6f4f', customcolor: 1 })],
-      items: [
-        transaction({ id: 1, zweck: 'target-row', umsatztyp_id: null }),
-        transaction({ id: 2, zweck: 'other-row', umsatztyp_id: null }),
-      ],
-    });
-
-    const search = root.querySelector<HTMLInputElement>('#filter-search');
-    if (!search) throw new Error('search field not rendered');
-    search.value = 'target-row';
-    search.dispatchEvent(new Event('input'));
-    await settle();
-    expect(bodyRows().length).toBe(1);
-
-    const row = bodyRows()[0];
-    row.querySelector<HTMLButtonElement>('.category-picker__trigger')?.click();
-    fixture.detectChanges();
-    const option = Array.from(
-      document.querySelectorAll<HTMLButtonElement>('.category-picker__option'),
-    ).find((o) => o.textContent?.includes('Groceries'));
-    if (!option) throw new Error('category option not rendered');
-    option.click();
-    fixture.detectChanges();
-
-    const req = httpMock.expectOne('/api/transactions/1');
-    req.flush(null, { status: 204, statusText: 'No Content' });
-    await settle();
-
-    // Still filtered to the one row, and its rendered cell — not just component state — now
-    // shows the new category.
-    expect(bodyRows().length).toBe(1);
-    expect(cellText(bodyRows()[0], COL.category)).toContain('Groceries');
   });
 
   it('keeps zebra striping enabled for greenbar', async () => {

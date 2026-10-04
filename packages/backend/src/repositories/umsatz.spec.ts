@@ -6,7 +6,7 @@ vi.mock('../db/pool', () => ({
 }));
 
 import { getPool } from '../db/pool';
-import { TRANSACTION_COLUMNS, listTransactions, updateTransactionCategory } from './umsatz';
+import { TRANSACTION_COLUMNS, listTransactions } from './umsatz';
 
 interface FakePool {
   query: ReturnType<typeof vi.fn>;
@@ -57,19 +57,5 @@ describe('listTransactions', () => {
     const result = await listTransactions();
 
     expect(result.rows).toBe(rows);
-  });
-});
-
-describe('updateTransactionCategory', () => {
-  it('sends the id and categoryId as parameterized query params', async () => {
-    const pool = makeFakePool();
-    pool.query.mockResolvedValueOnce([{}]);
-    vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
-
-    await updateTransactionCategory(42, 5);
-
-    const [sql, params] = pool.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('UPDATE umsatz SET umsatztyp_id = ? WHERE id = ?');
-    expect(params).toEqual([5, 42]);
   });
 });

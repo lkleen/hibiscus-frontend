@@ -8,7 +8,6 @@ import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories
 import type {
   TransactionRow,
   TransactionsResponse,
-  UpdateTransactionCategory,
 } from '@hibiscus-frontend/shared/contracts/transactions';
 
 /**
@@ -51,11 +50,6 @@ export class ApiService {
 
   getTransactions(): Observable<TransactionRow[]> {
     return this.http.get<TransactionsResponse>('/api/transactions').pipe(map(toTransactionRows));
-  }
-
-  /** The backend answers `204 No Content`; callers apply the change to their own copy of the row. */
-  updateTransactionCategory(id: number, body: UpdateTransactionCategory): Observable<void> {
-    return this.http.patch<void>(`/api/transactions/${id}`, body);
   }
 
   getCategories(): Observable<CategoryRow[]> {
