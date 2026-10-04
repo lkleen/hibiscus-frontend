@@ -109,8 +109,9 @@ interface DataTableColReorderEvent {
  * comparators, quick filter, column order/resize — is shared between the two paths.
  *
  * Besides the `p-table` features it also offers an ag-Grid-style external filter
- * (`externalFilter`) and a toolbar slot: elements marked `appDataTableToolbar` are projected into
- * the filters form next to the search field (see the template).
+ * (`externalFilter`) and two toolbar slots: elements marked `appDataTableToolbarStart` are projected
+ * into the filters form before the search field, elements marked `appDataTableToolbar` after it
+ * (see the template).
  *
  * `sortMode="multiple"` and `customSort` are fixed, not configurable — the whole point of this
  * component is that sorting always goes through column `comparator`s (`onSortFunction` below), so

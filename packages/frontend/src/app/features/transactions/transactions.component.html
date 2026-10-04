@@ -5,8 +5,13 @@
   [columns]="columns"
   [options]="options"
   [loading]="loading()"
-  [externalFilter]="dateFilter()"
+  [externalFilter]="rowFilter()"
 >
+  <app-account-filter
+    appDataTableToolbarStart
+    [accounts]="accounts()"
+    [(excludedIds)]="excludedAccountIds"
+  />
   <app-date-range-filter appDataTableToolbar [(range)]="range" />
   <ng-template appDataTableCell="amount" let-value="value">
     <app-transaction-amount-cell [amount]="asAmount(value)" />

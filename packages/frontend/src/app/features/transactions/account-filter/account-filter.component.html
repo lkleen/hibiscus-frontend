@@ -1,0 +1,64 @@
+<div class="account-filter">
+  <label [for]="id">{{ i18n.t('accountFilter.label') }}</label>
+  <button
+    type="button"
+    class="account-filter__trigger"
+    cdkOverlayOrigin
+    #origin="cdkOverlayOrigin"
+    [id]="id"
+    aria-haspopup="true"
+    [attr.aria-expanded]="isOpen()"
+    (click)="toggleOpen()"
+  >
+    <span class="account-filter__trigger-label">{{ triggerLabel() }}</span>
+    <svg
+      class="account-filter__chevron"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+</div>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="origin"
+  [cdkConnectedOverlayOpen]="isOpen()"
+  [cdkConnectedOverlayPositions]="panelPositions"
+  cdkConnectedOverlayHasBackdrop
+  cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+  (backdropClick)="onDetach()"
+  (detach)="onDetach()"
+>
+  <div
+    class="account-filter__panel"
+    role="group"
+    cdkTrapFocus
+    cdkTrapFocusAutoCapture
+    [attr.aria-label]="i18n.t('accountFilter.label')"
+  >
+    <label class="account-filter__item">
+      <input
+        type="checkbox"
+        [checked]="allChecked()"
+        [indeterminate]="someChecked()"
+        (change)="toggleAll()"
+      />
+      <span class="account-filter__item-label">{{ i18n.t('accountFilter.all') }}</span>
+    </label>
+    <div class="account-filter__separator" role="separator"></div>
+    @for (item of items(); track item.id) {
+      <label class="account-filter__item">
+        <input type="checkbox" [checked]="item.checked" (change)="toggleAccount(item.id)" />
+        <span class="account-filter__item-label">{{ item.label }}</span>
+        <span class="account-filter__item-number">{{ item.number }}</span>
+      </label>
+    }
+  </div>
+</ng-template>

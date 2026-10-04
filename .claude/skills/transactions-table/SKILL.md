@@ -60,7 +60,9 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   in the toolbar passes a `DateRange` predicate to the table's `externalFilter` input, filtering
   on `datum` (booking date), client-side, inclusive on both ends. The date range picker starts on
   the user's first date preset and persists within the session only (no persistence between
-  sessions).
+  sessions). The `<app-account-filter>` (in the `appDataTableToolbarStart` slot, before the search
+  field) excludes unchecked accounts by `konto_id`; `TransactionsComponent.rowFilter` combines
+  both into the one `externalFilter` predicate.
 - Before writing any table code, follow the `angular-primeng-table` skill. Use `<app-data-table>`
   in `transactions.component.html` — it wraps PrimeNG's `p-table` with column-owned lambdas and
   raw rows. It follows the active theme through the CSS bridge in `src/styles/_primeng-table.scss`.

@@ -10,6 +10,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { forkJoin } from 'rxjs';
+import { accountLabel } from '../../core/utils/account-label';
 import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { toCssColor } from '../../core/utils/category-color';
@@ -97,7 +98,7 @@ export class CategoriesComponent {
     colDef<CategoryRow, string | null>({
       colId: 'konto',
       headerKey: 'categories.colAccount',
-      valueGetter: (row) => this.accountLabel(row),
+      valueGetter: (row) => this.rowAccountLabel(row),
     }),
     { colId: 'konto_kategorie', headerKey: 'categories.colAccountCategory' },
     {
@@ -166,10 +167,10 @@ export class CategoriesComponent {
     return parts.join(', ');
   }
 
-  private accountLabel(row: CategoryRow): string | null {
+  private rowAccountLabel(row: CategoryRow): string | null {
     if (row.konto_id === null) return null;
     const account: AccountRow | undefined = this.accountsById().get(row.konto_id);
     if (!account) throw new Error(`category ${row.id}: account ${row.konto_id} is not loaded`);
-    return account.bezeichnung ?? account.name;
+    return accountLabel(account);
   }
 }

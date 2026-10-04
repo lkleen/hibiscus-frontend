@@ -2,6 +2,7 @@ import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import { accountLabel } from '../../core/utils/account-label';
 import { ApiService } from '../../core/services/api.service';
 import { LocaleService } from '../../core/services/locale.service';
 import { TranslationService } from '../../core/services/translation.service';
@@ -19,6 +20,7 @@ export class AccountsComponent {
   protected readonly locale = inject(LocaleService).locale;
   private readonly destroyRef = inject(DestroyRef);
 
+  protected readonly accountLabel: typeof accountLabel = accountLabel;
   protected readonly accounts = signal<AccountRow[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal(false);

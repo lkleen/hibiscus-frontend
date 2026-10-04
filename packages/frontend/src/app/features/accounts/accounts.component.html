@@ -11,7 +11,7 @@
     @for (account of accounts(); track account.id) {
       <li class="account-card">
         <div class="account-card__main">
-          <span class="account-card__name">{{ account.bezeichnung ?? account.name }}</span>
+          <span class="account-card__name">{{ accountLabel(account) }}</span>
           @if (account.iban) {
             <span class="account-card__iban">{{ account.iban }}</span>
           }

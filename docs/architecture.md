@@ -14,8 +14,8 @@
   mode) are done in pure CSS. Columns can be reordered by dragging their header (default on,
   `columnReorder` option), order kept for the session only. The component offers an ag-Grid-style
   `externalFilter` input (a caller-supplied predicate applied before table filters, resetting to
-  page 1 on change) and a `[appDataTableToolbar]` projection slot for additional filters next to
-  the search field. Features are added to the component, never implemented per table. Theming goes
+  page 1 on change) and two projection slots for additional filters: `[appDataTableToolbarStart]`
+  before the search field and `[appDataTableToolbar]` after it. Features are added to the component, never implemented per table. Theming goes
   through the CSS bridge in `styles/_primeng-table.scss`. The component optionally renders a tree
   via the `treeData` option (self-referencing parent-id style, built by `buildTree`); it renders
   PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
@@ -126,6 +126,10 @@ period (`adjacentPeriod()` in `core/utils/date-range.ts`) of a step unit chosen 
 (day, week, month, quarter, year): ◀ steps from `from`, ▶ from `to`, an open end falls back to the
 other end, and "all dates" to today. The step unit follows the selected relative preset's unit and
 is otherwise session-only state of the filter.
+Left of the search field, an `<app-account-filter>` dropdown lists every account (label and IBAN)
+with a checkbox; only transactions of checked accounts are shown. Its state is the set of
+*unchecked* account ids (session only), so every account — including one that loads late — starts
+checked. Both filters are combined into the table's single `externalFilter` predicate.
 A category change is saved with `PATCH /api/transactions/:id`, then the raw row's `umsatztyp_id`
 is mutated in place and `dataTable().refresh()` is called, keeping the user's page, sorting and
 filters. See the `transactions-table` skill for column definitions and the refresh contract.

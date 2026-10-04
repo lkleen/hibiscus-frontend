@@ -150,6 +150,10 @@
   "categoryPicker.uncategorized": "Nicht kategorisiert",
   "categoryPicker.choose": "Kategorie auswählen",
 
+  "accountFilter.label": "Konten",
+  "accountFilter.all": "Alle Konten",
+  "accountFilter.none": "Keine Konten",
+  "accountFilter.some": "{count} von {total} Konten",
   "dateRangeFilter.period": "Zeitraum",
   "dateRangeFilter.from": "Von",
   "dateRangeFilter.to": "Bis",

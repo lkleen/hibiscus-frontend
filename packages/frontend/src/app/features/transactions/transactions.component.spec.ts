@@ -294,6 +294,35 @@ describe('TransactionsComponent', () => {
     expect(root.textContent).toContain('Savings');
   });
 
+  it('shows only the transactions of the accounts checked in the account filter', async () => {
+    await load({
+      accounts: [
+        account({ id: 1, bezeichnung: 'Checking' }),
+        account({ id: 2, bezeichnung: 'Savings' }),
+      ],
+      items: [
+        transaction({ id: 1, konto_id: 1, zweck: '1' }),
+        transaction({ id: 2, konto_id: 2, zweck: '2' }),
+        transaction({ id: 3, konto_id: 1, zweck: '3' }),
+      ],
+    });
+
+    root.querySelector<HTMLButtonElement>('.account-filter__trigger')?.click();
+    fixture.detectChanges();
+    // The panel is in the CDK overlay container; checkbox 0 is "All accounts", 2 is Savings.
+    const savings: HTMLInputElement | undefined = Array.from(
+      document.querySelectorAll<HTMLInputElement>('.account-filter__panel input[type="checkbox"]'),
+    )[2];
+    if (!savings) throw new Error('account checkbox not rendered');
+    savings.click();
+    await settle();
+    expect(displayedIds().sort()).toEqual([1, 3]);
+
+    savings.click();
+    await settle();
+    expect(displayedIds().sort()).toEqual([1, 2, 3]);
+  });
+
   it('filters a date column on its own value without throwing on the ISO string', async () => {
     // The regression this guards: PrimeNG's date filter emits a `Date` and `FilterService`
     // calls `.toDateString()` on the cell value — which throws if that value is still the raw

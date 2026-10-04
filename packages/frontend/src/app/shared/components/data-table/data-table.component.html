@@ -4,6 +4,7 @@
   hidden by `.filters:not(:has(*))` (see the scss) — whitespace/comment nodes don't count there.
 -->
 <form class="filters" (submit)="$event.preventDefault()">
+  <ng-content select="[appDataTableToolbarStart]" />
   @if (quickFilterEnabled()) {
     <div class="filters__field filters__field--grow">
       <label for="filter-search">{{ i18n.t('table.filterSearch') }}</label>

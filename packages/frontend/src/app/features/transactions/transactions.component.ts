@@ -22,6 +22,7 @@ import {
 } from '../../shared/components/data-table/data-table.model';
 import { DateRange, isInRange } from '../../core/utils/date-range';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
+import { AccountFilterComponent } from './account-filter/account-filter.component';
 import { AmountCellComponent } from './cells/amount-cell/amount-cell.component';
 import { CategoryCellComponent } from './cells/category-cell/category-cell.component';
 
@@ -40,6 +41,7 @@ import { CategoryCellComponent } from './cells/category-cell/category-cell.compo
     DataTableComponent,
     DataTableCellDirective,
     DateRangeFilterComponent,
+    AccountFilterComponent,
     AmountCellComponent,
     CategoryCellComponent,
   ],
@@ -60,10 +62,19 @@ export class TransactionsComponent {
   /** Session-only; the date filter picks its initial value (the first preset) itself. */
   protected readonly range = signal<DateRange | null>(null);
 
-  /** Filters on the booking date. `null` (no range) lets every row through. */
-  protected readonly dateFilter = computed<((row: TransactionRow) => boolean) | null>(() => {
+  /** Session-only; empty = every account checked, so late-loading accounts start checked too. */
+  protected readonly excludedAccountIds = signal<ReadonlySet<number>>(new Set<number>());
+
+  /**
+   * The table's external filter: the booking date within the range and the account not excluded.
+   * `null` when neither restricts anything, so the table skips the pass entirely.
+   */
+  protected readonly rowFilter = computed<((row: TransactionRow) => boolean) | null>(() => {
     const range: DateRange | null = this.range();
-    return range === null ? null : (row: TransactionRow): boolean => isInRange(row.datum, range);
+    const excluded: ReadonlySet<number> = this.excludedAccountIds();
+    if (range === null && excluded.size === 0) return null;
+    return (row: TransactionRow): boolean =>
+      !excluded.has(row.konto_id) && (range === null || isInRange(row.datum, range));
   });
 
   private readonly accountsById = computed(

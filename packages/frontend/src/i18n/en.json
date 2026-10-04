@@ -150,6 +150,10 @@
   "categoryPicker.uncategorized": "Uncategorized",
   "categoryPicker.choose": "Choose category",
 
+  "accountFilter.label": "Accounts",
+  "accountFilter.all": "All accounts",
+  "accountFilter.none": "No accounts",
+  "accountFilter.some": "{count} of {total} accounts",
   "dateRangeFilter.period": "Period",
   "dateRangeFilter.from": "From",
   "dateRangeFilter.to": "To",
