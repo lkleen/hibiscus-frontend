@@ -1,7 +1,9 @@
 import type { TreeNode } from 'primeng/api';
 import { buildTree, type TreeBranch } from '../../../core/utils/build-tree';
+import { getRawRow } from './column-accessor-proxy';
+import { defaultValueGetter } from './data-table.defaults';
 import { isVisibleColumn } from './data-table.model';
-import type { DataTableColDef, DataTableTreeOptions } from './data-table.model';
+import type { DataTableColDef, DataTableOptions, DataTableTreeOptions } from './data-table.model';
 
 /** ag-Grid's `groupDefaultExpanded` default: every level starts expanded. */
 export const DEFAULT_GROUP_EXPANDED = -1;
@@ -107,4 +109,71 @@ export function validateTreeMode<Row>(params: TreeModeParams<Row>): void {
   if (externalFilter !== null) {
     throw new Error('data-table: tree mode does not support externalFilter');
   }
+}
+
+/** Throws when a column declares `aggFunc` but the table is not in tree mode. */
+export function validateNoAggFuncOutsideTreeMode<Row>(
+  options: DataTableOptions<Row>,
+  columns: readonly DataTableColDef<Row, unknown>[],
+): void {
+  if (options.treeData !== undefined) return;
+  const aggColumn: DataTableColDef<Row, unknown> | undefined = columns.find(
+    (column: DataTableColDef<Row, unknown>) => column.aggFunc !== undefined,
+  );
+  if (aggColumn) {
+    throw new Error(
+      `data-table: column "${aggColumn.colId}" has aggFunc, which requires tree mode (options.treeData)`,
+    );
+  }
+}
+
+/** Per group node (keyed by its raw row), the aggregate of each `aggFunc` column by colId. */
+export type TreeAggregates<Row> = ReadonlyMap<Row, ReadonlyMap<string, number>>;
+
+/**
+ * Computes `aggFunc: 'sum'` for every node with children: the sum of its descendant leaves'
+ * `valueGetter` values (`null`/`undefined` skipped, any other non-number throws, no numeric
+ * leaves = 0). Leaves have no entry (they show their own value). One post-order pass. The result
+ * is keyed by the *raw* row (`getRawRow`), so proxied and raw rows resolve alike.
+ */
+export function computeTreeAggregates<Row>(
+  nodes: readonly TreeNode<Row>[],
+  columns: readonly DataTableColDef<Row, unknown>[],
+): TreeAggregates<Row> {
+  const aggColumns: DataTableColDef<Row, unknown>[] = columns.filter(
+    (column: DataTableColDef<Row, unknown>) => column.aggFunc === 'sum',
+  );
+  const result = new Map<Row, ReadonlyMap<string, number>>();
+  if (aggColumns.length === 0) return result;
+
+  const leafValue = (column: DataTableColDef<Row, unknown>, raw: Row): number => {
+    const valueGetter: (row: Row) => unknown =
+      column.valueGetter ?? defaultValueGetter<Row>(column.colId);
+    const value: unknown = valueGetter(raw);
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    throw new Error(
+      `data-table: aggFunc 'sum' of column "${column.colId}" needs numbers, got ${typeof value}`,
+    );
+  };
+
+  const visit = (node: TreeNode<Row>): ReadonlyMap<string, number> => {
+    const raw: Row = getRawRow(requireNodeData(node));
+    const sums = new Map<string, number>();
+    if (!node.children || node.children.length === 0) {
+      for (const column of aggColumns) sums.set(column.colId, leafValue(column, raw));
+      return sums;
+    }
+    for (const column of aggColumns) sums.set(column.colId, 0);
+    for (const child of node.children) {
+      const childSums: ReadonlyMap<string, number> = visit(child);
+      for (const column of aggColumns) {
+        sums.set(column.colId, (sums.get(column.colId) ?? 0) + (childSums.get(column.colId) ?? 0));
+      }
+    }
+    result.set(raw, sums);
+    return sums;
+  };
+  for (const root of nodes) visit(root);
+  return result;
 }

@@ -3,6 +3,10 @@
   "nav.accounts": "Accounts",
   "nav.transactions": "Transactions",
 
+  "transactions.tabs.label": "Transaction views",
+  "transactions.tab.list": "List",
+  "transactions.tab.byCategory": "By category",
+
   "settings.title": "Settings",
   "settings.tabs.label": "Settings sections",
   "settings.tab.datePresets": "Date presets",
@@ -108,6 +112,14 @@
   "transactions.colEndToEndId": "End-to-end ID",
   "transactions.colAmount": "Amount",
   "transactions.colBalance": "Balance",
+  "transactions.byCategory.colName": "Name",
+  "transactions.byCategory.colAmount": "Amount",
+  "transactions.byCategory.colIncome": "Income",
+  "transactions.byCategory.colExpenses": "Expenses",
+  "transactions.byCategory.colAccount": "Account",
+  "transactions.byCategory.unassigned": "Unassigned",
+  "transactions.byCategory.empty": "No transactions match these filters.",
+  "transactions.byCategory.invalidPatterns": "These category patterns are not valid regular expressions and match nothing: {names}",
 
   "primeng.startsWith": "Begins with",
   "primeng.contains": "Contains",

@@ -1,0 +1,61 @@
+:host {
+  display: block;
+}
+
+// The tab bar is a row of links on a hairline; the active one sits on it with an accent underline.
+// Deliberately not the header's filled pill, so the two navs don't read as the same level.
+.tab-nav {
+  --tab-nav-border-color: var(--surface-border);
+  --tab-nav-color: var(--text-muted);
+  --tab-nav-hover-bg: var(--surface-hover);
+  --tab-nav-active-color: var(--text-color);
+  --tab-nav-indicator-color: var(--color-accent);
+
+  display: flex;
+  gap: 0.25rem;
+  margin-block-end: 1.5rem;
+  border-block-end: 1px solid var(--tab-nav-border-color);
+  // `overflow-x: auto` alone computes `overflow-y` to `auto` too, and the active tab's underline
+  // overhangs by a pixel, which then shows a vertical scrollbar. Only horizontal scrolling is wanted.
+  overflow: auto hidden;
+}
+
+.tab-nav__tab {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 0.5rem 0.75rem;
+  margin-block-end: -1px;
+  border-block-end: 2px solid transparent;
+  border-start-start-radius: var(--radius-base);
+  border-start-end-radius: var(--radius-base);
+  color: var(--tab-nav-color);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--tab-nav-hover-bg);
+    color: var(--tab-nav-active-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+
+  &--active {
+    border-block-end-color: var(--tab-nav-indicator-color);
+    color: var(--tab-nav-active-color);
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      background var(--transition-duration) ease,
+      color var(--transition-duration) ease;
+  }
+}

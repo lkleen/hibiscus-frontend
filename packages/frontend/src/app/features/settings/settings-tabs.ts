@@ -1,10 +1,8 @@
 import type { Type } from '@angular/core';
-import { TranslationKey } from '../../core/models/translation.model';
+import { TabNavItem } from '../../shared/components/tab-nav/tab-nav.component';
 
-export interface SettingsTab {
-  /** Child route segment: `/:locale/settings/<path>`. */
-  path: string;
-  labelKey: TranslationKey;
+export interface SettingsTab extends TabNavItem {
+  /** `path` is the child route segment: `/:locale/settings/<path>`. */
   loadComponent: () => Promise<Type<unknown>>;
 }
 

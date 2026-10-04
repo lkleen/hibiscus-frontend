@@ -1,23 +1,28 @@
 <h1 class="visually-hidden">{{ i18n.t('transactions.title') }}</h1>
 
-<app-data-table
-  [value]="items()"
-  [columns]="columns"
-  [options]="options"
-  [loading]="loading()"
-  [externalFilter]="rowFilter()"
->
-  <app-account-filter
-    appDataTableToolbarStart
-    [accounts]="accounts()"
-    [(excludedIds)]="excludedAccountIds"
-  />
-  <app-date-range-filter appDataTableToolbar [(range)]="range" />
-  <ng-template appDataTableCell="amount" let-value="value">
-    <app-transaction-amount-cell [amount]="asAmount(value)" />
-  </ng-template>
-</app-data-table>
+<app-tab-nav
+  [tabs]="tabs"
+  [basePath]="['/', locale(), 'transactions']"
+  ariaLabelKey="transactions.tabs.label"
+/>
 
-@if (error()) {
+<form class="filters" (submit)="$event.preventDefault()">
+  <app-account-filter [accounts]="store.accounts()" [(excludedIds)]="store.excludedAccountIds" />
+  <div class="filters__field filters__field--grow">
+    <label for="transactions-search">{{ i18n.t('table.filterSearch') }}</label>
+    <input
+      id="transactions-search"
+      type="search"
+      [placeholder]="i18n.t('table.searchPlaceholder')"
+      [value]="store.searchInput()"
+      (input)="onSearchInput($event)"
+    />
+  </div>
+  <app-date-range-filter [(range)]="store.range" />
+</form>
+
+<router-outlet />
+
+@if (store.error()) {
   <p class="status-text status-text--error">{{ i18n.t('transactions.error') }}</p>
 }

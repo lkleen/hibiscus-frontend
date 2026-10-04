@@ -1,4 +1,12 @@
-import { DEFAULT_TABLE_OPTIONS, containsMatcher, defaultComparator } from './data-table.defaults';
+import { FilterService } from 'primeng/api';
+import {
+  DEFAULT_TABLE_OPTIONS,
+  containsMatcher,
+  defaultComparator,
+  quickFilterMatches,
+} from './data-table.defaults';
+import { colDef } from './data-table.model';
+import type { DataTableColDef } from './data-table.model';
 
 /**
  * Mirrors what `DataTableComponent.compareRows` does with a column `comparator`: call it for the
@@ -109,5 +117,48 @@ describe('DEFAULT_TABLE_OPTIONS', () => {
 
   it('has columnResize: { mode: "expand" }', () => {
     expect(DEFAULT_TABLE_OPTIONS.columnResize).toEqual({ mode: 'expand' });
+  });
+});
+
+describe('quickFilterMatches', () => {
+  interface Row {
+    readonly name: string;
+    readonly note: string | null;
+    readonly amount: number;
+    readonly secret: string;
+  }
+  const columns: readonly DataTableColDef<Row>[] = [
+    colDef<Row, string>({ colId: 'name', headerKey: 'transactions.colRecipient' }),
+    colDef<Row, string | null>({ colId: 'note', headerKey: 'transactions.colRecipient' }),
+    colDef<Row, number>({
+      colId: 'amount',
+      headerKey: 'transactions.colAmount',
+      getQuickFilterText: (value: number): string => `EUR ${value.toFixed(2)}`,
+    }),
+    colDef<Row, string>({ colId: 'secret', hide: true }),
+  ];
+  const row: Row = { name: 'Müller Café', note: null, amount: 12.5, secret: 'hidden' };
+  const contains = new FilterService().filters['contains'];
+
+  /** What the table's global filter does: any visible column's text passes PrimeNG `contains`. */
+  function tableMatches(query: string): boolean {
+    const texts: unknown[] = [row.name, row.note, `EUR ${row.amount.toFixed(2)}`];
+    return texts.some((text: unknown) => contains(text, query, undefined));
+  }
+
+  it.each(['', '  ', 'muller', 'CAFE', 'eur 12.50', '12.5', 'hidden', 'nope', 'null'])(
+    'agrees with the table filter for %j',
+    (query: string) => {
+      expect(quickFilterMatches(row, columns, query)).toBe(tableMatches(query));
+    },
+  );
+
+  it('ignores hidden columns and uses getQuickFilterText', () => {
+    expect(quickFilterMatches(row, columns, 'hidden')).toBe(false);
+    expect(quickFilterMatches(row, columns, 'EUR 12.50')).toBe(true);
+  });
+
+  it('matches everything for a blank query', () => {
+    expect(quickFilterMatches(row, columns, '   ')).toBe(true);
   });
 });

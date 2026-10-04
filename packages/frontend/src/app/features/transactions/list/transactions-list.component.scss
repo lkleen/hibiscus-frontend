@@ -1,0 +1,8 @@
+// The routed tab: takes the height left below the shell's toolbar and hands it to the table
+// (`scrollHeight: 'flex'`).
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}

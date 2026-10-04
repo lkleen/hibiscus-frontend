@@ -26,6 +26,11 @@ export const TRANSACTION_COLUMNS: TransactionColumn[] = [
   'art',
   'gvcode',
   'endtoendid',
+  'kommentar',
+  'purposecode',
+  'customerref',
+  'mandateid',
+  'creditorid',
   'umsatztyp_id',
 ];
 

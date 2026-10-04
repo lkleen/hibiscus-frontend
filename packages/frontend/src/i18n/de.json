@@ -3,6 +3,10 @@
   "nav.accounts": "Konten",
   "nav.transactions": "Umsätze",
 
+  "transactions.tabs.label": "Umsatzansichten",
+  "transactions.tab.list": "Liste",
+  "transactions.tab.byCategory": "Nach Kategorien",
+
   "settings.title": "Einstellungen",
   "settings.tabs.label": "Einstellungsbereiche",
   "settings.tab.datePresets": "Zeiträume",
@@ -108,6 +112,14 @@
   "transactions.colEndToEndId": "Ende-zu-Ende-Referenz",
   "transactions.colAmount": "Betrag",
   "transactions.colBalance": "Saldo",
+  "transactions.byCategory.colName": "Bezeichnung",
+  "transactions.byCategory.colAmount": "Betrag",
+  "transactions.byCategory.colIncome": "Einnahmen",
+  "transactions.byCategory.colExpenses": "Ausgaben",
+  "transactions.byCategory.colAccount": "Konto",
+  "transactions.byCategory.unassigned": "Nicht zugeordnet",
+  "transactions.byCategory.empty": "Keine Umsätze entsprechen diesen Filtern.",
+  "transactions.byCategory.invalidPatterns": "Diese Kategoriemuster sind keine gültigen regulären Ausdrücke und treffen auf nichts zu: {names}",
 
   "primeng.startsWith": "Beginnt mit",
   "primeng.contains": "Enthält",

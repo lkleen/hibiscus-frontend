@@ -1,6 +1,6 @@
 ---
 name: transactions-table
-description: Rules for the transactions table (Hibiscus `umsatz`) across backend, shared contract and frontend table. Use BEFORE adding, changing or removing anything about transaction columns, the `/api/transactions` route or repository, `TransactionRow`, or sorting/filtering/paging of the transactions table. Columns are served and displayed exactly as stored; the backend never modifies them; sorting, filtering and paging are client-side PrimeNG `p-table` features.
+description: Rules for the transactions table and by-category report (Hibiscus `umsatz`) across backend, shared contract and frontend views. Use BEFORE adding, changing or removing anything about transaction columns, the `/api/transactions` route or repository, `TransactionRow`, or sorting/filtering/paging. Columns are served and displayed exactly as stored; the backend never modifies them; sorting, filtering and paging are client-side PrimeNG `p-table` features. The by-category view applies a documented exception to group transactions.
 ---
 
 # Transactions table
@@ -13,7 +13,8 @@ would only be right for some rows, so this app does not interpret them.
 
 Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/routes/transactions.ts`,
 `packages/shared/src/contracts/transactions.d.ts` (`TransactionRow`),
-`packages/frontend/src/app/features/transactions/`.
+`packages/frontend/src/app/features/transactions/` (shell, store, routes, list and by-category
+tabs; `transactions-tabs.ts` is the single source for both tab definitions).
 
 ## 1. Columns are served exactly as stored (backend)
 
@@ -44,11 +45,25 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   `GET /api/accounts` by `konto_id` (`konto.name` is the holder, the same on every account);
   The `konto_id` itself is not shown; `umsatztyp_id` (category) is served but not shown.
 - Show every **meaningful** column (filled on real data, not an empty legacy column); omit
-  never-filled ones (`empfaenger_name2`, `primanota`, `flags`, `addkey`, `txid`, `purposecode`,
-  `mandateid`, `creditorid`), plus `id`, `checksum`, `customerref` (almost always `NONREF`) and
-  `kommentar`.
+  never-filled ones (`empfaenger_name2`, `primanota`, `flags`, `addkey`, `txid`), plus `id`,
+  `checksum` and `umsatztyp_id`. Five columns are served for category matching (in the by-category
+  view) but not displayed in either tab: `kommentar`, `purposecode`, `mandateid`, `creditorid`,
+  `customerref` (almost always `NONREF`).
 - Header labels come from the translations (`en.json` and `de.json`), never from field names.
   Labels must stay true to the raw column (`Purpose 1/2/3`, not "Type"/"Purpose").
+
+## 2.5. Category assignment (documented exception)
+
+The by-category tab groups transactions by category using the Hibiscus assignment rule
+(`UmsatzTypImpl.matches` + `UmsatzTypUtil`): stored `umsatztyp_id` wins; when NULL or unknown, the
+first matching category by `ORDER BY COALESCE(nummer,''), name` is assigned. A category matches
+when its type and account scope fit, and its pattern (if set) matches the transaction's searchable
+fields. This is a deliberate interpretation of stored values, and **the only one** allowed in the
+transactions views (see §1). It is scoped strictly to grouping: displayed values in both tabs stay
+raw, and no value is modified by the assignment. The `assignCategories()` function
+(`by-category/category-assignment.ts`) implements the rule exactly, including Hibiscus's comma-split
+non-regex patterns and full-match regex (`Java matches()`, emulated with `^(?:pattern)$`). Invalid
+regex patterns are reported as a visible warning, never silently ignored.
 
 ## 3. Sorting, filtering, paging: PrimeNG's `p-table`, not the backend
 
@@ -56,13 +71,13 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
   client-side. The backend route does not sort, filter or page for the table's sake, and gains no
   `limit`/`offset`, filter or sort parameters on `GET /api/transactions`. The frontend does not
   re-implement any of this with hand-rolled state.
-- **Date range filtering** is the generic external filter mechanism: `<app-date-range-filter>`
-  in the toolbar passes a `DateRange` predicate to the table's `externalFilter` input, filtering
-  on `datum` (booking date), client-side, inclusive on both ends. The date range picker starts on
-  the user's first date preset and persists within the session only (no persistence between
-  sessions). The `<app-account-filter>` (in the `appDataTableToolbarStart` slot, before the search
-  field) excludes unchecked accounts by `konto_id`; `TransactionsComponent.rowFilter` combines
-  both into the one `externalFilter` predicate.
+- **Date range filtering** and **account filtering** are the generic external filter mechanism:
+  `<app-date-range-filter>` and `<app-account-filter>` in the shell's toolbar manipulate the
+  `TransactionsStore`'s `range` and `excludedAccountIds` signals. The store's `rowFilter` computed
+  (combining both, plus the search) is passed to both tabs' `externalFilter` input, filtering
+  client-side. The date range picker starts on the user's first date preset and persists within the
+  session only (no persistence between sessions); the account filter's state is the set of unchecked
+  account ids (session only), so every account — including late-loading ones — starts checked.
 - Before writing any table code, follow the `angular-primeng-table` skill. Use `<app-data-table>`
   in `transactions.component.html` — it wraps PrimeNG's `p-table` with column-owned lambdas and
   raw rows. It follows the active theme through the CSS bridge in `src/styles/_primeng-table.scss`.
@@ -106,10 +121,10 @@ Files: `packages/backend/src/repositories/umsatz.ts`, `packages/backend/src/rout
    as in the table).
 2. `TRANSACTION_COLUMNS` in `umsatz.ts` — it is the `SELECT` list and the response's `columns`
    (no mapping — rows are returned as the driver delivers them).
-3. One `DataTableColDef<TransactionRow>` entry in `transactions.component.ts`, at its display
-   position. If it is a lookup (account/category), use a `valueGetter` lambda; if it needs
-   special formatting or rendering, add a `valueFormatter` and/or a `cellRenderer` name with a
-   matching `appDataTableCell` template — only if the default dash text isn't enough. The header
+3. One `DataTableColDef<TransactionRow>` entry in `transactions.store.ts` (the `transactionColumns`
+   field), at its display position. If it is a lookup (account), use a `valueGetter` lambda; if it
+   needs special formatting or rendering, add a `valueFormatter` and/or a `cellRenderer` name with
+   a matching `appDataTableCell` template — only if the default dash text isn't enough. The header
    translation key in **both** `en.json` and `de.json`.
 4. `testing/transaction-fixture.ts` (`transaction()`; `transactionsResponse()` derives its columns
    from it) and the specs that count columns/headers.

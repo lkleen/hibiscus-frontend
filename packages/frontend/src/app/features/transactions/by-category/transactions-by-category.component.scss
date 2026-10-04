@@ -1,0 +1,23 @@
+// The routed tab: takes the height left below the shell's toolbar and hands it to the table
+// (`scrollHeight: 'flex'`).
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+.by-category__warning {
+  --by-category-warning-color: var(--text-color);
+  --by-category-warning-bg: var(--color-accent-subtle);
+  --by-category-warning-border-color: var(--color-accent);
+  --by-category-warning-radius: var(--radius-base);
+
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  color: var(--by-category-warning-color);
+  background: var(--by-category-warning-bg);
+  border: 1px solid var(--by-category-warning-border-color);
+  border-radius: var(--by-category-warning-radius);
+}

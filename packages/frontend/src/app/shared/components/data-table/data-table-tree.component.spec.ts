@@ -289,6 +289,44 @@ describe('DataTableComponent tree mode', () => {
     }).toThrow(/groupColId/);
   });
 
+  describe('aggFunc sum', () => {
+    const AGG_COLUMNS: readonly DataTableColDef<Node, unknown>[] = [
+      COLUMNS[0],
+      colDef<Node, number>({
+        colId: 'amount',
+        headerKey: 'transactions.colAmount',
+        aggFunc: 'sum',
+      }),
+    ];
+
+    function amounts(): string[] {
+      return bodyRows().map((row) => row.children[1].textContent?.trim() ?? '');
+    }
+
+    it('shows the leaf sum on group nodes and the own value on leaves', async () => {
+      host.columns.set(AGG_COLUMNS);
+      await settle();
+      expect(names()).toEqual(['Alpha', 'Bravo', 'Delta', 'Charlie', 'Zulu']);
+      expect(amounts()).toEqual(['70', '40', '40', '30', '50']);
+    });
+
+    it('sorts group nodes by their aggregate', async () => {
+      host.columns.set(AGG_COLUMNS);
+      host.options.set(treeOptions({ defaultSort: [{ colId: 'amount', order: -1 }] }));
+      await settle();
+      // Own values would put Zulu (50) before Alpha (10) and Charlie before Bravo.
+      expect(names()).toEqual(['Alpha', 'Bravo', 'Delta', 'Charlie', 'Zulu']);
+    });
+
+    it('throws on a flat table with an aggFunc column', () => {
+      host.columns.set(AGG_COLUMNS);
+      host.options.set({ getRowId: (row: Node): number => row.id, emptyKey: 'transactions.empty' });
+      expect(() => {
+        fixture.detectChanges();
+      }).toThrow(/aggFunc/);
+    });
+  });
+
   it('expandAll() on a flat table throws', async () => {
     host.options.set({ getRowId: (row: Node): number => row.id, emptyKey: 'transactions.empty' });
     await settle();

@@ -26,6 +26,16 @@ export interface TransactionRow {
   art: string | null;
   gvcode: string | null;
   endtoendid: string | null;
+  /** Served for Hibiscus-style category pattern matching and not displayed. */
+  kommentar: string | null;
+  /** Served for Hibiscus-style category pattern matching and not displayed. */
+  purposecode: string | null;
+  /** Served for Hibiscus-style category pattern matching and not displayed. */
+  customerref: string | null;
+  /** Served for Hibiscus-style category pattern matching and not displayed. */
+  mandateid: string | null;
+  /** Served for Hibiscus-style category pattern matching and not displayed. */
+  creditorid: string | null;
   umsatztyp_id: number | null;
 }
 

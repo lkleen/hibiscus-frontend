@@ -30,10 +30,13 @@ import {
 import {
   DEFAULT_GROUP_EXPANDED,
   requireNodeData,
+  computeTreeAggregates,
   sortTreeNodes,
   toTreeNodes,
+  validateNoAggFuncOutsideTreeMode,
   validateTreeMode,
 } from './data-table-tree';
+import type { TreeAggregates } from './data-table-tree';
 import { isVisibleColumn } from './data-table.model';
 import type {
   DataTableAutoSizeStrategy,
@@ -189,6 +192,7 @@ export class DataTableComponent<Row extends object> {
    *  unsupported tree-mode combination (see `validateTreeMode`), on first render. */
   private readonly treeOptions = computed<DataTableTreeOptions<Row> | null>(() => {
     const options: DataTableOptions<Row> = this.options();
+    validateNoAggFuncOutsideTreeMode(options, this.columns());
     if (options.treeData === undefined) return null;
     validateTreeMode({
       options,
@@ -227,6 +231,12 @@ export class DataTableComponent<Row extends object> {
       groupDefaultExpanded: this.expansion().level,
     });
   });
+
+  /** `aggFunc` aggregates of the current `treeNodes` (empty when no column aggregates); recomputed
+   *  exactly when the tree is rebuilt. */
+  private readonly treeAggregates = computed<TreeAggregates<Row>>(() =>
+    computeTreeAggregates(this.treeNodes(), this.columns()),
+  );
 
   /** Tree mode's `scrollHeight`: a CSS length becomes the wrapper's `max-height`; `'flex'` is
    *  handled by the host class, `false` leaves the wrapper unbounded. */
@@ -522,9 +532,16 @@ export class DataTableComponent<Row extends object> {
   ): { readonly raw: Row; readonly value: unknown; readonly formatted: string } {
     const raw = getRawRow(row);
     const valueGetter = column.valueGetter ?? defaultValueGetter<Row>(column.colId);
-    const value = valueGetter(raw);
+    const value = this.aggregateOf(column, raw) ?? valueGetter(raw);
     const formatter = column.valueFormatter ?? dashFormatter;
     return { raw, value, formatted: formatter(value, raw) };
+  }
+
+  /** The `aggFunc` aggregate of a group node's column, `undefined` for a leaf, a flat table or a
+   *  column without `aggFunc`. */
+  private aggregateOf(column: DataTableColDef<Row, unknown>, raw: Row): number | undefined {
+    if (column.aggFunc === undefined) return undefined;
+    return this.treeAggregates().get(raw)?.get(column.colId);
   }
 
   protected templateFor(rendererName: string): TemplateRef<DataTableCellContext<Row>> {
@@ -642,8 +659,9 @@ export class DataTableComponent<Row extends object> {
       const column = this.columnById(meta.colId);
       const valueGetter = column.valueGetter ?? defaultValueGetter<Row>(meta.colId);
       const comparator = column.comparator ?? defaultComparator;
-      const result =
-        comparator(valueGetter(rawA), valueGetter(rawB), meta.order === -1) * meta.order;
+      const valueA: unknown = this.aggregateOf(column, rawA) ?? valueGetter(rawA);
+      const valueB: unknown = this.aggregateOf(column, rawB) ?? valueGetter(rawB);
+      const result = comparator(valueA, valueB, meta.order === -1) * meta.order;
       if (result !== 0) return result;
     }
     return 0;

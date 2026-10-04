@@ -1,7 +1,13 @@
 import type { TreeNode } from 'primeng/api';
 import { colDef } from './data-table.model';
 import type { DataTableColDef, DataTableTreeData, DataTableTreeOptions } from './data-table.model';
-import { sortTreeNodes, toTreeNodes, validateTreeMode } from './data-table-tree';
+import {
+  computeTreeAggregates,
+  sortTreeNodes,
+  toTreeNodes,
+  validateNoAggFuncOutsideTreeMode,
+  validateTreeMode,
+} from './data-table-tree';
 
 interface Item {
   readonly id: number;
@@ -204,5 +210,95 @@ describe('validateTreeMode', () => {
         validate(options({ groupDefaultExpanded: invalid }));
       }).toThrow(/groupDefaultExpanded/);
     }
+  });
+});
+
+describe('computeTreeAggregates', () => {
+  interface Priced {
+    readonly id: number;
+    readonly parentId: number | null;
+    readonly price: unknown;
+  }
+  const column: DataTableColDef<Priced, unknown> = colDef<Priced, unknown>({
+    colId: 'price',
+    headerKey: 'transactions.colAmount',
+    aggFunc: 'sum',
+  });
+  function tree(rows: readonly Priced[]): TreeNode<Priced>[] {
+    return toTreeNodes<Priced, Priced>(rows, {
+      getId: (row: Priced): number => row.id,
+      getParentId: (row: Priced): number | null => row.parentId,
+      getData: (row: Priced): Priced => row,
+      groupDefaultExpanded: -1,
+    });
+  }
+
+  it('sums descendant leaves per group node, skipping null/undefined', () => {
+    const rows: Priced[] = [
+      { id: 1, parentId: null, price: 999 }, // own value ignored for a group
+      { id: 2, parentId: 1, price: 5 },
+      { id: 3, parentId: 1, price: null },
+      { id: 4, parentId: 3, price: 7 },
+      { id: 5, parentId: 3, price: undefined },
+      { id: 6, parentId: null, price: 1 },
+    ];
+    const result = computeTreeAggregates<Priced>(tree(rows), [column]);
+    expect(result.get(rows[0])?.get('price')).toBe(12);
+    expect(result.get(rows[2])?.get('price')).toBe(7);
+    expect(result.has(rows[1])).toBe(false);
+    expect(result.has(rows[5])).toBe(false);
+  });
+
+  it('a group without numeric leaves sums to 0', () => {
+    const rows: Priced[] = [
+      { id: 1, parentId: null, price: 1 },
+      { id: 2, parentId: 1, price: null },
+    ];
+    expect(computeTreeAggregates<Priced>(tree(rows), [column]).get(rows[0])?.get('price')).toBe(0);
+  });
+
+  it('throws on a non-number leaf value', () => {
+    const rows: Priced[] = [
+      { id: 1, parentId: null, price: 1 },
+      { id: 2, parentId: 1, price: '3' },
+    ];
+    expect(() => computeTreeAggregates<Priced>(tree(rows), [column])).toThrow(/needs numbers/);
+  });
+
+  it('is empty without aggFunc columns', () => {
+    const rows: Priced[] = [{ id: 1, parentId: null, price: 1 }];
+    const plain: DataTableColDef<Priced, unknown> = colDef<Priced, unknown>({
+      colId: 'price',
+      headerKey: 'transactions.colAmount',
+    });
+    expect(computeTreeAggregates<Priced>(tree(rows), [plain]).size).toBe(0);
+  });
+});
+
+describe('validateNoAggFuncOutsideTreeMode', () => {
+  const agg: DataTableColDef<Item, unknown> = colDef<Item, unknown>({
+    colId: 'id',
+    headerKey: 'transactions.colAmount',
+    aggFunc: 'sum',
+  });
+
+  it('throws for a flat table with an aggFunc column', () => {
+    expect(() =>
+      validateNoAggFuncOutsideTreeMode<Item>(
+        { getRowId: (row: Item): number => row.id, emptyKey: 'transactions.empty' },
+        [agg],
+      ),
+    ).toThrow(/aggFunc/);
+  });
+
+  it('passes in tree mode', () => {
+    const options: DataTableTreeOptions<Item> = {
+      getRowId: (row: Item): number => row.id,
+      emptyKey: 'transactions.empty',
+      treeData: { getParentId: (row: Item): number | null => row.parentId, groupColId: 'name' },
+    };
+    expect(() => {
+      validateNoAggFuncOutsideTreeMode<Item>(options, [agg]);
+    }).not.toThrow();
   });
 });

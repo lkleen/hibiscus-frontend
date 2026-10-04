@@ -21,6 +21,10 @@
   PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
   fully expanded by default with expand-all/collapse-all controls; the quick filter is lenient
   (keeping ancestors of matches), sorting and resizing work, and pagination is not available.
+  In tree mode a column may set `aggFunc: 'sum'`: group nodes then show and sort by the sum of their
+  descendant leaves' values (computed once per tree rebuild; throws outside tree mode). The pure
+  `quickFilterMatches(row, columns, query)` (`data-table.defaults.ts`) reproduces the table's own
+  quick filter for rows rendered elsewhere.
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
 
@@ -33,12 +37,12 @@ app-owned `hf_user_setting` table for per-user settings (see below).
 
 Tables this app uses:
 
-| Table       | Purpose                                                                 |
-|-------------|--------------------------------------------------------------------------|
-| `konto`     | Bank accounts — name, IBAN/BIC, currency, current balance                |
-| `umsatz`    | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
-| `umsatztyp` | Categories — self-referencing tree via `parent_id`, has a `color` column |
-| `hf_user_setting` | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup |
+| Table             | Purpose                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| `konto`           | Bank accounts — name, IBAN/BIC, currency, current balance                                        |
+| `umsatz`          | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
+| `umsatztyp`       | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
+| `hf_user_setting` | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
@@ -54,15 +58,15 @@ synced from the bank by the desktop client and are not this app's data to change
 All routes are under `/api` and require authentication (see below) except `/api/me`, which
 itself requires authentication too — there is no unauthenticated route in this app at all.
 
-| Method & path                         | Purpose                                    |
-|----------------------------------------|---------------------------------------------|
-| `GET /api/me`                          | Echoes the authenticated identity           |
-| `GET /api/accounts`                    | List `konto` rows, as stored (`AccountRow`) |
-| `GET /api/transactions`                | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
-| `GET /api/categories`                  | List `umsatztyp` rows, as stored (`CategoryRow`) |
-| `GET /api/settings/date-presets`       | User's date presets; defaults if not stored |
-| `PUT /api/settings/date-presets`       | Save whole preset list (zod-validated); answers `204` |
-| `DELETE /api/settings/date-presets`    | Restore defaults; answers `204`            |
+| Method & path                       | Purpose                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `GET /api/me`                       | Echoes the authenticated identity                                                         |
+| `GET /api/accounts`                 | List `konto` rows, as stored (`AccountRow`)                                               |
+| `GET /api/transactions`             | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
+| `GET /api/categories`               | List `umsatztyp` rows, as stored (`CategoryRow`)                                          |
+| `GET /api/settings/date-presets`    | User's date presets; defaults if not stored                                               |
+| `PUT /api/settings/date-presets`    | Save whole preset list (zod-validated); answers `204`                                     |
+| `DELETE /api/settings/date-presets` | Restore defaults; answers `204`                                                           |
 
 ### Shared contracts
 
@@ -88,7 +92,7 @@ desktop client, and the API mirrors it one-to-one. The UI never displays a colum
 visible label (column headers included) comes from the translations.
 
 `GET /api/accounts` does the same for `konto` (`AccountRow`). Note that `konto.name` is the account
-*holder* (the same on every account); an account's own label is `bezeichnung`.
+_holder_ (the same on every account); an account's own label is `bezeichnung`.
 
 The transactions table shows every meaningful `umsatz` column as stored — the ids are the only
 values it resolves: `konto_id` to the account's holder, BIC, account number and label (four plain
@@ -106,29 +110,63 @@ Reads and writes go through `DatePresetService`, which loads presets once at app
 all writes through a single serial channel (so the server receives them in order), and only
 surfaces confirmed state to the UI (unsaved changes are not displayed).
 
-### Transactions table
+### Transactions page
 
-The table loads **every** `umsatz` row in one request (about 10,000 rows, under 3 MB of columnar
-JSON, about 530 KB on the wire — the backend gzips every response via the `compression`
-middleware) as raw `TransactionRow` objects. The `<app-data-table>` component handles all client-side sorting
-(newest booking first by default), column filtering (text, numeric and date per column), global
-search, and pagination (20 rows per page by default). The backend returns all rows `ORDER BY id`
-(deterministic only); it does not sort, filter or page. Column definitions include `valueGetter`
-lambdas for resolving `konto_id` to account details (holder, BIC, account number, label); all
-values are computed live, not materialised onto rows.
-The table uses `autoSizeStrategy: fitCellContents` with an 82rem minimum width, so cells are
-single-line and the table scrolls horizontally. A `<app-date-range-filter>` in the table's
-toolbar filters on `datum` (booking date), inclusive; it starts on the user's first date preset
-and persists within the session only. Its ◀/▶ buttons jump to the previous/next whole calendar
-period (`adjacentPeriod()` in `core/utils/date-range.ts`) of a step unit chosen next to them
-(day, week, month, quarter, year): ◀ steps from `from`, ▶ from `to`, an open end falls back to the
-other end, and "all dates" to today. The step unit follows the selected relative preset's unit and
-is otherwise session-only state of the filter.
-Left of the search field, an `<app-account-filter>` dropdown lists every account (label and IBAN)
-with a checkbox; only transactions of checked accounts are shown. Its state is the set of
-*unchecked* account ids (session only), so every account — including one that loads late — starts
-checked. Both filters are combined into the table's single `externalFilter` predicate.
-See the `transactions-table` skill for column definitions.
+The page at `/:locale/transactions` is a tabbed shell (`TransactionsComponent`) with a single
+`TransactionsStore` provided in its `providers`, so every tab shares the same loaded data and filter
+state. Switching tabs never refetches.
+
+**Shell and tabs.** The route is `/:locale/transactions` with two child-route tabs: `list` (the
+transaction table) and `categories` (a by-category report tree). Both paths are defined in
+`TRANSACTIONS_TABS` (`transactions-tabs.ts`), a single source like `SETTINGS_TABS` that pairs each
+tab's route segment with its `labelKey` for the i18n tab label and its `loadComponent` for lazy
+loading. The shell redirects the empty path to the first tab.
+
+**Shared toolbar and filter.** Above the `<router-outlet>`, a shared toolbar holds three controls:
+`<app-account-filter>` (dropdown with one checkbox per account, unchecked = excluded; session-only
+state is the set of unchecked account ids), a search input (debounced 300 ms via `searchInput`
+→ `debouncedSearch` to avoid recomputing filters on every keystroke), and
+`<app-date-range-filter>` (filters on `datum`, starting on the user's first preset, session-only).
+
+**`TransactionsStore`.** Loaded once at shell creation via `forkJoin` (accounts, transactions,
+categories), it exposes: `accounts`, `transactions` (the raw 10,000 rows, about 530 KB on the wire;
+backend gzips), `categories`, `range`/`excludedAccountIds`/`search` signals (the filter inputs),
+`accountsById` (computed map), `transactionColumns` (list-tab column definitions, moved here because
+search needs them), `rowFilter` (computed predicate: account + date + search combined into one,
+`null` when nothing restricts), and `filteredTransactions` (computed, all rows minus the filter).
+Leaving `/transactions` destroys the store and coming back refetches; tab switches do not.
+
+**List tab** (`TransactionsListComponent`). Today's table, now mounted on the shell's outlet. Loads
+`[value]="store.transactions()"`, sets `[externalFilter]="store.rowFilter()"` (the shared
+toolbar's combined filter), uses `quickFilter: false` (search is the shell's, not per-row), and
+`autoSizeStrategy: fitCellContents` with an 82rem floor (cells single-line, table scrolls). Column
+definitions live in `transactionColumns` (store) and include `valueGetter` lambdas resolving
+`konto_id` to account details (holder, BIC, number, label); values are computed live, not on rows.
+Sorts newest booking first by default, ties broken by newest id.
+
+**By-category tab** (`TransactionsByCategoryComponent`). Reproduces Hibiscus's "Umsätze nach
+Kategorien" report. It builds a tree from the filtered transactions using `buildCategoryReport()`
+(pure function). The tree has two row kinds: category nodes (wrapping `CategoryRow | null`, where
+`null` is the "Unassigned" node always present) and transaction leaf rows (wrapping raw
+`TransactionRow`). Category nodes show recursive sums (amount, income, expenses) via `aggFunc: 'sum'`
+and are ordered by `nummer` then `name` (unassigned last); transactions are ordered by booking date
+descending then id. Categories flagged `FLAG_SKIP_REPORTS` (bit 1) and their transactions are
+excluded. The tree is collapsed by default; expand-all/collapse-all controls expand/collapse all
+nodes at once. Invalid category regex patterns are listed in a visible warning above the tree.
+
+**Category assignment.** The by-category tab groups transactions using Hibiscus's own assignment
+rule: stored `umsatztyp_id` wins; when NULL or unknown, the first matching category by `ORDER BY
+COALESCE(nummer,''), name` is used; when no category matches, the transaction is unassigned. A
+category matches when its type and account scope fit and its pattern (if set) matches the
+transaction's searchable fields. The `assignCategories()` function in `category-assignment.ts`
+implements this exactly, including Hibiscus's comma-split non-regex patterns and full-match regex
+(Java `matches()`, emulated with `^(?:pattern)$`). Grouping only — displayed values stay raw. This is
+a documented exception to the transactions-table skill's "never interpret" rule, scoped to that
+grouping logic only.
+
+**Served but not displayed.** Five columns are served for category matching but not shown in either
+tab: `kommentar`, `purposecode`, `mandateid`, `creditorid`, `customerref`. These appear in the
+assignment patterns as-is, used as searchable fields in `category-assignment.ts`.
 
 ### Categories page
 
@@ -164,7 +202,7 @@ this design trusted a plain dev-mode header with no secret, which would have bee
 exploitable if that mode's port were ever exposed by mistake. The fix was to delete that branch,
 not harden it: the same check runs unconditionally in every environment.
 
-Local, non-Docker development (`pnpm start:local`) gets its convenience from *outside* the app:
+Local, non-Docker development (`pnpm start:local`) gets its convenience from _outside_ the app:
 `scripts/start-local.sh` generates a random `INTERNAL_PROXY_SECRET` into a gitignored
 `.env.dev.local` on first run, and the Angular dev server's `proxy.config.mjs` injects that
 secret plus a fixed identity header on every proxied request — exactly mimicking what a real
@@ -181,7 +219,8 @@ contract; the demo just needed one concrete, easy-to-run IdP to be a working exa
 
 Three real bugs were caught by actually running this demo rather than trusting the design on
 paper, all fixed in `auth-demo/Caddyfile` / `docker-compose.auth-demo.yml`:
-- A bare top-level `header` directive sets *response* headers, not the upstream request header —
+
+- A bare top-level `header` directive sets _response_ headers, not the upstream request header —
   it was leaking the shared secret back to the client. Fixed with `header_up` inside
   `reverse_proxy`.
 - Caddy reorders directives by a fixed precedence list regardless of file order, so

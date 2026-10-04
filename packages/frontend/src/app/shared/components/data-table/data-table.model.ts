@@ -58,6 +58,15 @@ interface DataTableColDefBase<Row, Value> {
    *  PrimeNG creates the handle once, after the view initialises, so changing this at runtime has
    *  no effect. */
   readonly resizable?: boolean;
+  /**
+   * ag-Grid's tree-data aggregation. `'sum'`: in tree mode, a node with children shows (and sorts
+   * by) the sum of its descendant *leaf* nodes' `valueGetter` values; a leaf shows its own value.
+   * `null`/`undefined` leaf values are skipped, any other non-number throws; a group without
+   * numeric leaves sums to `0`. `valueFormatter`/`cellRenderer` receive the aggregate as `value`
+   * for group nodes. Quick and column filters still read the node's own `valueGetter` value.
+   * Throws when `options.treeData` is not set. Only meaningful for a number-valued column.
+   */
+  readonly aggFunc?: 'sum';
 }
 
 /** A rendered column: shows a header/filter/body cell and is included in the quick filter. */

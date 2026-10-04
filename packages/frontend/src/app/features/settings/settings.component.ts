@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { RouterOutlet } from '@angular/router';
 import { LocaleService } from '../../core/services/locale.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { TabNavComponent } from '../../shared/components/tab-nav/tab-nav.component';
 import { SETTINGS_TABS, SettingsTab } from './settings-tabs';
 
 @Component({
@@ -9,7 +10,7 @@ import { SETTINGS_TABS, SettingsTab } from './settings-tabs';
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterOutlet, TabNavComponent],
 })
 export class SettingsComponent {
   protected readonly i18n = inject(TranslationService);

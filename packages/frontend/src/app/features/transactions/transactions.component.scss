@@ -1,5 +1,5 @@
-// Fills `.app-main` (a flex column) below the header, and hands the rest of its height to the
-// table (`scrollHeight: 'flex'`).
+// Fills `.app-main` (a flex column) below the header; the routed tab (a sibling of the
+// router-outlet) takes the rest of the height, see its own `:host`.
 :host {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,6 @@
-import type { DataTableFilterType, DataTableOptions } from './data-table.model';
+import { FilterService } from 'primeng/api';
+import { isVisibleColumn } from './data-table.model';
+import type { DataTableColDef, DataTableFilterType, DataTableOptions } from './data-table.model';
 
 /** Default `valueGetter`: the raw row's own `colId` field, unresolved and untouched. */
 export function defaultValueGetter<Row>(colId: string): (row: Row) => unknown {
@@ -104,6 +106,33 @@ export function containsMatcher(text: string, query: string): boolean {
   const filterValue = removeAccents(query).toLocaleLowerCase();
   const stringValue = removeAccents(text).toLocaleLowerCase();
   return stringValue.includes(filterValue);
+}
+
+/** PrimeNG's own filter implementations. `FilterService` has no constructor dependencies, so a
+ *  plain instance exposes exactly the `contains` the table's global filter uses. */
+const PRIMENG_FILTERS: FilterService = new FilterService();
+
+/**
+ * Whether `row` passes the table's own global (quick) filter for `query`, without a custom
+ * `quickFilter.matcher`: any *visible* column (`isVisibleColumn`) whose
+ * `getQuickFilterText(value, row)` — else the raw `valueGetter` result (default `row[colId]`) —
+ * matches under PrimeNG's `contains` (accent- and case-insensitive; a `null`/`undefined` value
+ * never matches). A blank query matches every row. Lets a caller apply the same search to rows
+ * the table does not filter itself (e.g. the data behind a chart).
+ */
+export function quickFilterMatches<Row>(
+  row: Row,
+  columns: readonly DataTableColDef<Row>[],
+  query: string,
+): boolean {
+  if (query.trim() === '') return true;
+  return columns.filter(isVisibleColumn).some((column: DataTableColDef<Row>): boolean => {
+    const valueGetter: (row: Row) => unknown =
+      column.valueGetter ?? defaultValueGetter<Row>(column.colId);
+    const value: unknown = valueGetter(row);
+    const text: unknown = column.getQuickFilterText ? column.getQuickFilterText(value, row) : value;
+    return PRIMENG_FILTERS.filters['contains'](text, query, undefined);
+  });
 }
 
 /**

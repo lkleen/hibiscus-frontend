@@ -1,0 +1,15 @@
+@if (invalidPatternNames(); as names) {
+  <p class="by-category__warning" role="status">
+    {{ i18n.t('transactions.byCategory.invalidPatterns', { names }) }}
+  </p>
+}
+<app-data-table
+  [value]="rows()"
+  [columns]="columns"
+  [options]="options"
+  [loading]="store.loading()"
+>
+  <ng-template appDataTableCell="amount" let-value="value">
+    <app-transaction-amount-cell [amount]="asAmount(value)" />
+  </ng-template>
+</app-data-table>

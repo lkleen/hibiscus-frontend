@@ -1,0 +1,12 @@
+<nav class="tab-nav" [attr.aria-label]="i18n.t(ariaLabelKey())">
+  @for (tab of tabs(); track tab.path) {
+    <a
+      class="tab-nav__tab"
+      [routerLink]="[...basePath(), tab.path]"
+      routerLinkActive="tab-nav__tab--active"
+      ariaCurrentWhenActive="page"
+    >
+      {{ i18n.t(tab.labelKey) }}
+    </a>
+  }
+</nav>
