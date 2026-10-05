@@ -57,8 +57,25 @@ export class TransactionsStore {
   // only the closures do, lazily, when the table calls them — so it's a plain field, built once,
   // not a `computed` that would never re-run.
   readonly transactionColumns: readonly DataTableColDef<TransactionRow>[] = [
-    { colId: 'datum', headerKey: 'transactions.colDate', filter: 'date' },
     { colId: 'valuta', headerKey: 'transactions.colValuta', filter: 'date' },
+    {
+      colId: 'betrag',
+      headerKey: 'transactions.colAmount',
+      cellRenderer: 'amount',
+      align: 'end',
+      filter: 'numeric',
+    },
+    {
+      colId: 'saldo',
+      headerKey: 'transactions.colBalance',
+      cellRenderer: 'amount',
+      align: 'end',
+      filter: 'numeric',
+    },
+    { colId: 'zweck', headerKey: 'transactions.colPurpose1' },
+    { colId: 'zweck2', headerKey: 'transactions.colPurpose2' },
+    { colId: 'zweck3', headerKey: 'transactions.colPurpose3' },
+    { colId: 'datum', headerKey: 'transactions.colDate', filter: 'date' },
     colDef<TransactionRow, string | null>({
       colId: 'konto_name',
       headerKey: 'transactions.colAccountHolder',
@@ -82,26 +99,9 @@ export class TransactionsStore {
     { colId: 'empfaenger_name', headerKey: 'transactions.colRecipient' },
     { colId: 'empfaenger_konto', headerKey: 'transactions.colRecipientAccount' },
     { colId: 'empfaenger_blz', headerKey: 'transactions.colRecipientBank' },
-    { colId: 'zweck', headerKey: 'transactions.colPurpose1' },
-    { colId: 'zweck2', headerKey: 'transactions.colPurpose2' },
-    { colId: 'zweck3', headerKey: 'transactions.colPurpose3' },
     { colId: 'art', headerKey: 'transactions.colBookingType' },
     { colId: 'gvcode', headerKey: 'transactions.colTransactionCode' },
     { colId: 'endtoendid', headerKey: 'transactions.colEndToEndId' },
-    {
-      colId: 'betrag',
-      headerKey: 'transactions.colAmount',
-      cellRenderer: 'amount',
-      align: 'end',
-      filter: 'numeric',
-    },
-    {
-      colId: 'saldo',
-      headerKey: 'transactions.colBalance',
-      cellRenderer: 'amount',
-      align: 'end',
-      filter: 'numeric',
-    },
     {
       // The column exists only to carry the id tie-break for `listOptions.defaultSort` below.
       colId: 'id',
@@ -110,13 +110,13 @@ export class TransactionsStore {
     },
   ];
 
-  // Newest booking first, ties broken by the newest id — same default the old grid had.
+  // Earliest value date first, ties broken by the oldest id.
   // The shell owns the search field, so the table's own is off.
   readonly listOptions: DataTableOptions<TransactionRow> = {
     getRowId: (row) => row.id,
     defaultSort: [
-      { colId: 'datum', order: -1 },
-      { colId: 'id', order: -1 },
+      { colId: 'valuta', order: 1 },
+      { colId: 'id', order: 1 },
     ],
     autoSizeStrategy: { type: 'fitCellContents' },
     minWidth: '82rem',

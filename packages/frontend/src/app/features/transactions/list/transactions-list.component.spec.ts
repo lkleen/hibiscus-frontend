@@ -25,11 +25,11 @@ interface Loaded {
 // Column order in the `#body` template — used to pick a cell out of a row by index rather than
 // by a DOM hook the implementation doesn't have.
 const COL = {
-  datum: 0,
-  valuta: 1,
-  zweck: 9,
-  betrag: 15,
-  saldo: 16,
+  valuta: 0,
+  betrag: 1,
+  saldo: 2,
+  zweck: 3,
+  datum: 6,
 } as const;
 
 describe('TransactionsListComponent', () => {
@@ -167,8 +167,13 @@ describe('TransactionsListComponent', () => {
     expect(text).toContain('-1.234,50');
     const headers = Array.from(root.querySelectorAll('thead tr:first-child th')).map(headerLabel);
     expect(headers).toEqual([
-      'Datum',
       'Valuta',
+      'Betrag',
+      'Saldo',
+      'Verwendungszweck 1',
+      'Verwendungszweck 2',
+      'Verwendungszweck 3',
+      'Datum',
       'Kontoinhaber',
       'Konto-BIC',
       'Kontonummer',
@@ -176,14 +181,9 @@ describe('TransactionsListComponent', () => {
       'Empfänger',
       'Empfängerkonto',
       'Empfänger-BIC/BLZ',
-      'Verwendungszweck 1',
-      'Verwendungszweck 2',
-      'Verwendungszweck 3',
       'Buchungsart',
       'Geschäftsvorfallcode',
       'Ende-zu-Ende-Referenz',
-      'Betrag',
-      'Saldo',
     ]);
     // The old German pager showed a visible "Seitengröße:" label; PrimeNG's rows-per-page
     // dropdown is ARIA-labelled only, so that exact string no longer appears anywhere — the
@@ -214,16 +214,16 @@ describe('TransactionsListComponent', () => {
     }
   });
 
-  it('sorts the newest booking first, ties broken by the newest id', async () => {
+  it('sorts the earliest value date first, ties broken by the oldest id', async () => {
     await load({
       items: [
-        transaction({ id: 1, datum: '2026-01-01', zweck: '1' }),
-        transaction({ id: 2, datum: '2026-03-01', zweck: '2' }),
-        transaction({ id: 3, datum: '2026-03-01', zweck: '3' }),
+        transaction({ id: 1, valuta: '2026-03-01', zweck: '1' }),
+        transaction({ id: 2, valuta: '2026-01-01', zweck: '2' }),
+        transaction({ id: 3, valuta: '2026-03-01', zweck: '3' }),
       ],
     });
 
-    expect(displayedIds()).toEqual([3, 2, 1]);
+    expect(displayedIds()).toEqual([2, 1, 3]);
   });
 
   it('sorts by a column when the user clicks its header', async () => {
@@ -261,7 +261,7 @@ describe('TransactionsListComponent', () => {
     });
 
     const dateInput = root.querySelector<HTMLInputElement>(
-      'thead tr:nth-child(2) th:first-child input',
+      `thead tr:nth-child(2) th:nth-child(${COL.datum + 1}) input`,
     );
     if (!dateInput) throw new Error('date filter input not rendered');
 

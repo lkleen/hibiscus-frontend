@@ -86,10 +86,10 @@ export class TransactionsByCategoryComponent {
       },
     }),
     this.transactionText('datum', 'transactions.colDate'),
+    this.amountColumn('betrag', 'transactions.byCategory.colAmount', (amount) => amount),
     this.transactionText('zweck', 'transactions.colPurpose1'),
     this.transactionText('zweck2', 'transactions.colPurpose2'),
     this.transactionText('zweck3', 'transactions.colPurpose3'),
-    this.amountColumn('betrag', 'transactions.byCategory.colAmount', (amount) => amount),
     this.amountColumn('income', 'transactions.byCategory.colIncome', (amount) =>
       amount > 0 ? amount : null,
     ),

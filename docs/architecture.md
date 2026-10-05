@@ -147,7 +147,8 @@ toolbar's combined filter), uses `quickFilter: false` (search is the shell's, no
 `autoSizeStrategy: fitCellContents` with an 82rem floor (cells single-line, table scrolls). Column
 definitions live in `transactionColumns` (store) and include `valueGetter` lambdas resolving
 `konto_id` to account details (holder, BIC, number, label); values are computed live, not on rows.
-Sorts newest booking first by default, ties broken by newest id.
+Sorts by value date (`valuta`) ascending by default, ties broken by id ascending. Columns
+start with value date, amount, balance and purpose 1–3.
 
 **By-category tab** (`TransactionsByCategoryComponent`). Reproduces Hibiscus's "Umsätze nach
 Kategorien" report. It builds a tree from the filtered transactions using `buildCategoryReport()`
