@@ -80,6 +80,26 @@ describe('TransactionsByCategoryComponent', () => {
     expect(unassigned).toContain('20.00');
   });
 
+  it('shows a swatch in the custom colour of a category, and none elsewhere', async () => {
+    await load({
+      categories: [
+        categoryRow({ id: 1, name: 'Housing', pattern: 'rent', color: '10,20,30', customcolor: 1 }),
+        categoryRow({ id: 2, name: 'Food', pattern: 'shop', color: '10,20,30', customcolor: 0 }),
+      ],
+      items: [
+        transaction({ id: 1, zweck: 'rent', betrag: -100 }),
+        transaction({ id: 2, zweck: 'shop', betrag: -5 }),
+      ],
+    });
+
+    const swatches: HTMLElement[] = Array.from(
+      root.querySelectorAll<HTMLElement>('.by-category__swatch'),
+    );
+    expect(swatches.length).toBe(1);
+    expect(swatches[0].closest('tr')?.textContent).toContain('Housing');
+    expect(swatches[0].style.backgroundColor).toBe('rgb(10 20 30)');
+  });
+
   it('shows the unassigned node with 0 when nothing is unassigned', async () => {
     await load();
 

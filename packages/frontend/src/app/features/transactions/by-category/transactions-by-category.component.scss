@@ -21,3 +21,22 @@
   border: 1px solid var(--by-category-warning-border-color);
   border-radius: var(--by-category-warning-radius);
 }
+
+// A category's custom colour, as on the categories page: a small swatch before the name.
+.by-category__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.by-category__swatch {
+  --by-category-swatch-border-color: var(--surface-border);
+  --by-category-swatch-radius: var(--radius-base);
+
+  flex: none;
+  inline-size: 0.9em;
+  block-size: 0.9em;
+  border: 1px solid var(--by-category-swatch-border-color);
+  border-radius: var(--by-category-swatch-radius);
+}

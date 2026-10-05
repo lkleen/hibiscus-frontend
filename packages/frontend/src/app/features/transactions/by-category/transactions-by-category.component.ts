@@ -3,6 +3,7 @@ import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { TranslationService } from '../../../core/services/translation.service';
 import { accountLabel } from '../../../core/utils/account-label';
+import { toCssColor } from '../../../core/utils/category-color';
 import { DataTableCellDirective } from '../../../shared/components/data-table/data-table-cell.directive';
 import { DataTableComponent } from '../../../shared/components/data-table/data-table.component';
 import {
@@ -76,6 +77,7 @@ export class TransactionsByCategoryComponent {
       colId: 'name',
       headerKey: 'transactions.byCategory.colName',
       filter: false,
+      cellRenderer: 'categoryName',
       valueGetter: (row) => {
         if (row.kind === 'transaction') return row.transaction.empfaenger_name;
         return row.category === null
@@ -165,6 +167,13 @@ export class TransactionsByCategoryComponent {
       aggFunc: 'sum',
       valueGetter: (row) => (row.kind === 'category' ? 0 : leafValue(row.transaction.betrag)),
     });
+  }
+
+  /** A category's custom colour as CSS (Hibiscus colours only category nodes, and only when
+   *  `customcolor = 1`); `null` for transactions, the unassigned node and uncoloured categories. */
+  protected swatchColor(row: CategoryReportRow): string | null {
+    if (row.kind === 'transaction' || row.category === null) return null;
+    return toCssColor(row.category);
   }
 
   // See `TransactionsListComponent.asAmount`: the "amount" renderer is only wired to number columns.

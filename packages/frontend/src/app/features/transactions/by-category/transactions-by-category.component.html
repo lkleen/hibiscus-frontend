@@ -9,6 +9,18 @@
   [options]="options"
   [loading]="store.loading()"
 >
+  <ng-template appDataTableCell="categoryName" let-row let-name="valueFormatted">
+    <span class="by-category__name">
+      @if (swatchColor(row); as color) {
+        <span
+          class="by-category__swatch"
+          [style.background-color]="color"
+          aria-hidden="true"
+        ></span>
+      }
+      {{ name }}
+    </span>
+  </ng-template>
   <ng-template appDataTableCell="amount" let-value="value">
     <app-transaction-amount-cell [amount]="asAmount(value)" />
   </ng-template>
