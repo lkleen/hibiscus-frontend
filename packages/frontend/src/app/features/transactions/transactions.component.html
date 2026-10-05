@@ -19,6 +19,8 @@
     />
   </div>
   <app-date-range-filter [(range)]="store.range" />
+  <!-- The routed tab's table controls (by-category: expand/collapse all) join this row. -->
+  <ng-template cdkPortalOutlet />
 </form>
 
 <router-outlet />

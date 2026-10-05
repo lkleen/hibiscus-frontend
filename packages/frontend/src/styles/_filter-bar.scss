@@ -45,8 +45,8 @@
   }
 }
 
-// Tree mode's expand/collapse-all buttons: a trailing group in the filters form, styled like the
-// form's inputs so the toolbar reads as one row.
+// Tree mode's expand/collapse-all buttons: a trailing group of icon buttons in the filters form,
+// styled like the form's inputs so the toolbar reads as one row.
 .filters__actions {
   display: flex;
   gap: 0.5rem;
@@ -76,4 +76,19 @@
   @media (pointer: coarse) {
     min-height: 44px;
   }
+
+  // Square: the icon alone, its label in `title` (tooltip) and `aria-label`.
+  &--icon {
+    padding: 0.45rem;
+
+    @media (pointer: coarse) {
+      min-width: 44px;
+      justify-content: center;
+    }
+  }
+}
+
+.filters__action-icon {
+  inline-size: 1.25em;
+  block-size: 1.25em;
 }

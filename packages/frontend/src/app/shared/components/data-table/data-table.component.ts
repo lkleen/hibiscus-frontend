@@ -1,11 +1,14 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { CdkPortalOutlet, TemplatePortal } from '@angular/cdk/portal';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   TemplateRef,
+  ViewContainerRef,
   computed,
   contentChildren,
+  effect,
   inject,
   input,
   linkedSignal,
@@ -38,6 +41,7 @@ import {
   validateTreeMode,
 } from './data-table-tree';
 import type { TreeAggregates } from './data-table-tree';
+import { DataTableToolbarOutlet } from './data-table-toolbar-outlet';
 import { isVisibleColumn } from './data-table.model';
 import type {
   DataTableAutoSizeStrategy,
@@ -136,6 +140,13 @@ export class DataTableComponent<Row extends object> {
   protected readonly i18n = inject(TranslationService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly filterService = inject(FilterService);
+  private readonly viewContainerRef = inject(ViewContainerRef);
+  /** A page-owned toolbar row for the tree controls (see `DataTableToolbarOutlet`); optional — no
+   *  provider means the controls render in this table's own filters form. */
+  protected readonly toolbarOutlet: DataTableToolbarOutlet | null = inject(DataTableToolbarOutlet, {
+    optional: true,
+  });
+  private readonly treeActions = viewChild.required<TemplateRef<unknown>>('treeActions');
 
   readonly value = input.required<readonly Row[]>();
   readonly columns = input.required<readonly DataTableColDef<Row, unknown>[]>();
@@ -465,6 +476,20 @@ export class DataTableComponent<Row extends object> {
         return quickFilter.matcher(String(value ?? ''), String(filter ?? ''));
       },
     );
+
+    // Tree controls into the page's toolbar row, when it offers one. On a tab switch the next
+    // table may attach before this one is destroyed: it detaches whatever is there, and this
+    // cleanup then only detaches its own portal.
+    effect((onCleanup): void => {
+      const outlet: CdkPortalOutlet | undefined = this.toolbarOutlet?.outlet();
+      if (!outlet || !this.treeMode()) return;
+      const portal: TemplatePortal = new TemplatePortal(this.treeActions(), this.viewContainerRef);
+      if (outlet.hasAttached()) outlet.detach();
+      outlet.attach(portal);
+      onCleanup((): void => {
+        if (outlet.portal === portal) outlet.detach();
+      });
+    });
   }
 
   protected filterType(column: DataTableColDef<Row, unknown>): DataTableFilterType {

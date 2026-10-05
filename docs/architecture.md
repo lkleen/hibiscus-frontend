@@ -19,7 +19,10 @@
   through the CSS bridge in `styles/_primeng-table.scss`. The component optionally renders a tree
   via the `treeData` option (self-referencing parent-id style, built by `buildTree`); it renders
   PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
-  fully expanded by default with expand-all/collapse-all controls (nodes are updated in place by row id when `value` changes, so expansion survives data changes); the quick filter is lenient
+  fully expanded by default with expand-all/collapse-all controls (icon buttons with a tooltip at the end of the
+  toolbar row; a page that owns the toolbar row, like the transactions shell, provides
+  `DataTableToolbarOutlet` and the table attaches them to that page's `cdkPortalOutlet` instead;
+  nodes are updated in place by row id when `value` changes, so expansion survives data changes); the quick filter is lenient
   (keeping ancestors of matches), sorting and resizing work, and pagination is not available.
   In tree mode a column may set `aggFunc: 'sum'`: group nodes then show and sort by the sum of their
   descendant leaves' values (computed once per tree rebuild; throws outside tree mode). The pure
@@ -126,7 +129,9 @@ loading. The shell redirects the empty path to the first tab.
 `<app-account-filter>` (dropdown with one checkbox per account, unchecked = excluded; session-only
 state is the set of unchecked account ids), a search input (debounced 300 ms via `searchInput`
 → `debouncedSearch` to avoid recomputing filters on every keystroke), and
-`<app-date-range-filter>` (filters on `datum`, starting on the user's first preset, session-only).
+`<app-date-range-filter>` (filters on `datum`, starting on the user's first preset, session-only). The
+row ends in a `cdkPortalOutlet` (`DataTableToolbarOutlet`) where the active tab's table controls
+appear — the by-category tree's expand/collapse-all buttons.
 
 **`TransactionsStore`.** Loaded once at shell creation via `forkJoin` (accounts, transactions,
 categories), it exposes: `accounts`, `transactions` (the raw 10,000 rows, about 530 KB on the wire;

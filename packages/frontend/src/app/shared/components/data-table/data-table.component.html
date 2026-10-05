@@ -18,15 +18,8 @@
     </div>
   }
   <ng-content select="[appDataTableToolbar]" />
-  @if (treeMode()) {
-    <div class="filters__actions">
-      <button type="button" class="filters__action" (click)="expandAll()">
-        {{ i18n.t('table.expandAll') }}
-      </button>
-      <button type="button" class="filters__action" (click)="collapseAll()">
-        {{ i18n.t('table.collapseAll') }}
-      </button>
-    </div>
+  @if (treeMode() && !toolbarOutlet) {
+    <ng-container [ngTemplateOutlet]="treeActions" />
   }
 </form>
 
@@ -248,4 +241,53 @@
   } @else {
     {{ cell.formatted }}
   }
+</ng-template>
+
+<!-- Tree mode's expand/collapse-all buttons: rendered at the end of this table's filters form, or —
+     when a page provides a `DataTableToolbarOutlet` — attached to the page's own toolbar row. -->
+<ng-template #treeActions>
+  <div class="filters__actions">
+    <button
+      type="button"
+      class="filters__action filters__action--icon"
+      [title]="i18n.t('table.expandAll')"
+      [attr.aria-label]="i18n.t('table.expandAll')"
+      (click)="expandAll()"
+    >
+      <svg
+        class="filters__action-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m7 15 5 5 5-5" />
+        <path d="m7 9 5-5 5 5" />
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="filters__action filters__action--icon"
+      [title]="i18n.t('table.collapseAll')"
+      [attr.aria-label]="i18n.t('table.collapseAll')"
+      (click)="collapseAll()"
+    >
+      <svg
+        class="filters__action-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m7 20 5-5 5 5" />
+        <path d="m7 4 5 5 5-5" />
+      </svg>
+    </button>
+  </div>
 </ng-template>

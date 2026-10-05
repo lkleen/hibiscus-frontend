@@ -64,9 +64,16 @@ describe('TransactionsComponent (shell)', () => {
     await TestBed.inject(Router).navigateByUrl('/en/transactions/categories');
     await settle();
     expect(root.querySelector('app-transactions-by-category')).not.toBeNull();
+    // The by-category tree's expand/collapse-all buttons join the shell's toolbar row.
+    const shellActions = (): string[] =>
+      Array.from(
+        root.querySelector('form.filters')?.querySelectorAll('.filters__action') ?? [],
+      ).map((button) => button.getAttribute('aria-label') ?? '');
+    expect(shellActions()).toEqual(['Expand all', 'Collapse all']);
 
     await TestBed.inject(Router).navigateByUrl('/en/transactions/list');
     await settle();
+    expect(shellActions()).toEqual([]);
     // httpMock.verify() in afterEach fails on any further request.
     expect(root.querySelector('app-transactions-list')).not.toBeNull();
   });
