@@ -5,6 +5,11 @@ import {
   DATE_PRESETS_SETTING_KEY,
   DatePresetListSchema,
 } from '../settings/date-presets';
+import {
+  DEFAULT_TABLE_DENSITY,
+  TABLE_DENSITY_SETTING_KEY,
+  TableDensitySchema,
+} from '../settings/table-density';
 import { deleteUserSetting, getUserSetting, putUserSetting } from '../repositories/user-setting';
 import { respondWithValidationError } from './zod-validation';
 
@@ -57,6 +62,45 @@ export function createSettingsRouter(): Router {
   router.delete('/date-presets', (_req: Request, res: Response, next: NextFunction): void => {
     const user = res.locals['user'] as string;
     deleteUserSetting(user, DATE_PRESETS_SETTING_KEY)
+      .then(() => res.status(204).send())
+      .catch(next);
+  });
+
+  /**
+   * GET /table-density: retrieve the user's table density, or the default if not yet chosen.
+   * A stored value is re-validated against the schema; a corrupt row throws a 500.
+   */
+  router.get('/table-density', (_req: Request, res: Response, next: NextFunction): void => {
+    const user = res.locals['user'] as string;
+    getUserSetting(user, TABLE_DENSITY_SETTING_KEY)
+      .then((value: unknown | undefined) => {
+        const density: unknown = value === undefined ? DEFAULT_TABLE_DENSITY : value;
+        const parseResult = TableDensitySchema.safeParse(density);
+        if (!parseResult.success) {
+          next(new Error(`Stored table density is invalid: ${parseResult.error.message}`));
+          return;
+        }
+        res.json(parseResult.data);
+      })
+      .catch(next);
+  });
+
+  /**
+   * PUT /table-density: save the user's table density (body is a bare JSON string).
+   */
+  router.put('/table-density', (req: Request, res: Response, next: NextFunction): void => {
+    const user = res.locals['user'] as string;
+    const parseResult = TableDensitySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      respondWithValidationError(res, parseResult.error);
+      return;
+    }
+
+    putUserSetting({
+      user,
+      key: TABLE_DENSITY_SETTING_KEY,
+      value: parseResult.data,
+    })
       .then(() => res.status(204).send())
       .catch(next);
   });

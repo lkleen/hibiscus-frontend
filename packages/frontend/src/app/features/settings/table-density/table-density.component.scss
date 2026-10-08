@@ -1,0 +1,126 @@
+:host {
+  display: block;
+}
+
+.table-density__hint {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.table-density__status {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+
+  &--error {
+    color: var(--color-danger);
+  }
+}
+
+.table-density__layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+
+  @media (min-width: 768px) {
+    // --ds-breakpoint-md
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.table-density__picker {
+  --table-density-divider-color: var(--surface-border);
+
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-block-start: 1px solid var(--table-density-divider-color);
+
+  @media (min-width: 768px) {
+    // --ds-breakpoint-md
+    flex: none;
+    inline-size: 16rem;
+  }
+}
+
+.table-density__legend {
+  padding: 0;
+  margin-block-end: 0.5rem;
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.table-density__option {
+  --table-density-option-bg: transparent;
+  --table-density-option-bar: transparent;
+  --table-density-description-color: var(--text-muted);
+  --table-density-focus-color: var(--color-accent);
+
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-block-end: 1px solid var(--table-density-divider-color);
+  border-inline-start: 3px solid var(--table-density-option-bar);
+  background: var(--table-density-option-bg);
+  cursor: pointer;
+
+  &:has(:checked) {
+    --table-density-option-bg: var(--color-accent-subtle);
+    --table-density-option-bar: var(--color-accent);
+  }
+
+  &:has(:focus-visible) {
+    outline: 2px solid var(--table-density-focus-color);
+    outline-offset: -2px;
+  }
+
+  &:has(:disabled) {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 44px;
+  }
+}
+
+.table-density__radio {
+  flex: none;
+  margin: 0.2rem 0 0;
+  accent-color: var(--color-accent);
+}
+
+.table-density__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.table-density__name {
+  color: var(--text-color);
+}
+
+.table-density__description {
+  color: var(--table-density-description-color);
+  font-size: var(--text-xs);
+}
+
+.table-density__preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.table-density__preview-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

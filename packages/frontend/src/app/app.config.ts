@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import Aura from '@primeuix/themes/aura';
 import { PrimeNG, providePrimeNG } from 'primeng/config';
 import { routes } from './app.routes';
+import { TableDensityService } from './core/services/table-density.service';
 import { TranslationService } from './core/services/translation.service';
 import { primengTranslation } from './core/utils/primeng-translation';
 
@@ -31,6 +32,11 @@ export const appConfig: ApplicationConfig = {
       const primeng = inject(PrimeNG);
       const i18n = inject(TranslationService);
       effect(() => primeng.setTranslation(primengTranslation(i18n)));
+    }),
+    // Instantiates TableDensityService at startup so its `table-density-*` class is on <html> on
+    // every page, not only once a component happens to inject the service.
+    provideAppInitializer(() => {
+      inject(TableDensityService);
     }),
   ],
 };

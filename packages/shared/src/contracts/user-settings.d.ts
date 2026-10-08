@@ -58,3 +58,13 @@ export interface DatePresetLimits {
   /** Largest number of periods the newest period may lie in the past (`offset >= -maxAgo`). */
   readonly maxAgo: 100;
 }
+
+/**
+ * How dense every table in the app is rendered (font size and cell padding; the values live in the
+ * frontend's `_primeng-table.scss`). Body of `PUT /api/settings/table-density` and response of
+ * `GET /api/settings/table-density`; `normal` when the user has not chosen one.
+ *
+ * Types-only, so each side declares its own runtime list of the ids, checked against this union
+ * so a missing or extra id fails typecheck on that side.
+ */
+export type TableDensity = 'extra-compact' | 'compact' | 'normal' | 'comfortable' | 'spacious';

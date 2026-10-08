@@ -1,3 +1,5 @@
+@use 'sass:map';
+
 // Theming bridge for PrimeNG's table components (replaces the deleted base-table.component.scss /
 // base-table.theme.ts, which did the same job for ag-Grid). PrimeNG resolves its own look from
 // `--p-*` CSS custom properties (set once at bootstrap by `providePrimeNG`), not from a JS Theming
@@ -49,9 +51,48 @@
   --app-table-radius: var(--radius-base);
   --app-table-font-family: var(--font-sans);
   --app-table-font-size: var(--text-sm);
+  --app-table-cell-padding-y: 0.5rem;
   --app-table-cell-padding-x: 0.75rem;
   --app-table-resize-indicator-color: var(--color-accent);
   --app-table-drop-point-color: var(--color-accent);
+}
+
+// Table density: the `table-density-<id>` class on <html> is set by TableDensityService (user
+// setting, `GET/PUT /api/settings/table-density`); ids must match the shared `TableDensity` type.
+$table-densities: (
+  'extra-compact': (
+    font-size: var(--text-xs),
+    padding-y: 0.125rem,
+    padding-x: 0.375rem,
+  ),
+  'compact': (
+    font-size: var(--text-xs),
+    padding-y: 0.25rem,
+    padding-x: 0.5rem,
+  ),
+  'normal': (
+    font-size: var(--text-sm),
+    padding-y: 0.5rem,
+    padding-x: 0.75rem,
+  ),
+  'comfortable': (
+    font-size: var(--text-base),
+    padding-y: 0.75rem,
+    padding-x: 1rem,
+  ),
+  'spacious': (
+    font-size: var(--text-md),
+    padding-y: 1rem,
+    padding-x: 1.25rem,
+  ),
+);
+
+@each $id, $values in $table-densities {
+  :root.table-density-#{$id} {
+    --app-table-font-size: #{map.get($values, font-size)};
+    --app-table-cell-padding-y: #{map.get($values, padding-y)};
+    --app-table-cell-padding-x: #{map.get($values, padding-x)};
+  }
 }
 
 // Layer 2 is declared again on every `<app-data-table>` so its `var(--app-table-*)` references
@@ -84,11 +125,11 @@ app-data-table {
   --p-datatable-header-cell-hover-color: var(--app-table-header-color);
   --p-datatable-header-cell-selected-background: var(--color-accent-subtle);
   --p-datatable-header-cell-selected-color: var(--app-table-header-color);
-  --p-datatable-header-cell-padding: 0.5rem var(--app-table-cell-padding-x);
-  --p-datatable-header-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-datatable-header-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
+  --p-datatable-header-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
 
   --p-datatable-body-cell-border-color: var(--app-table-border-color);
-  --p-datatable-body-cell-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-datatable-body-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
   --p-datatable-body-cell-font-size: var(--app-table-font-size);
   --p-datatable-column-title-font-size: var(--app-table-font-size);
 
@@ -140,11 +181,11 @@ app-data-table {
   --p-treetable-header-cell-hover-color: var(--app-table-header-color);
   --p-treetable-header-cell-selected-background: var(--color-accent-subtle);
   --p-treetable-header-cell-selected-color: var(--app-table-header-color);
-  --p-treetable-header-cell-padding: 0.5rem var(--app-table-cell-padding-x);
-  --p-treetable-header-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-treetable-header-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
+  --p-treetable-header-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
 
   --p-treetable-body-cell-border-color: var(--app-table-border-color);
-  --p-treetable-body-cell-padding: 0.5rem var(--app-table-cell-padding-x);
+  --p-treetable-body-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
   --p-treetable-body-cell-font-size: var(--app-table-font-size);
   --p-treetable-column-title-font-size: var(--app-table-font-size);
 

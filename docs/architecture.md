@@ -51,7 +51,7 @@ Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope is limited to per-user settings (date range presets) in `hf_user_setting`.
+Write scope is limited to per-user settings (date range presets, table density) in `hf_user_setting`.
 Transactions and categories are read-only (`GET /api/transactions`, `GET /api/categories`).
 It does not edit bank-imported transaction fields (amount, date, counterparty) — those are
 synced from the bank by the desktop client and are not this app's data to change.
@@ -70,6 +70,8 @@ itself requires authentication too — there is no unauthenticated route in this
 | `GET /api/settings/date-presets`    | User's date presets; defaults if not stored                                               |
 | `PUT /api/settings/date-presets`    | Save whole preset list (zod-validated); answers `204`                                     |
 | `DELETE /api/settings/date-presets` | Restore defaults; answers `204`                                                           |
+| `GET /api/settings/table-density`   | User's table density; `normal` if not stored                                              |
+| `PUT /api/settings/table-density`   | Save the density (zod-validated); answers `204`                                           |
 
 ### Shared contracts
 
@@ -105,13 +107,24 @@ columns contain differs by account and over time (bank/Hibiscus import formats),
 ### User settings
 
 Per-user settings are keyed by the forward-auth identity and stored in `hf_user_setting`. The
-shared contract `@hibiscus-frontend/shared/contracts/user-settings` defines the setting types;
-date presets are the first (relative units like "current month" or fixed date ranges, each named
-or auto-generated, the first preset auto-selected on page load). Defaults live only in the backend
-(`DEFAULT_DATE_PRESETS`); the user is never "no presets", they always have at least the defaults.
-Reads and writes go through `DatePresetService`, which loads presets once at app startup, queues
-all writes through a single serial channel (so the server receives them in order), and only
-surfaces confirmed state to the UI (unsaved changes are not displayed).
+shared contract `@hibiscus-frontend/shared/contracts/user-settings` defines the setting types.
+
+**Date presets** (first setting): relative units like "current month" or fixed date ranges, each
+named or auto-generated, the first preset auto-selected on page load. Defaults live only in the
+backend (`DEFAULT_DATE_PRESETS`); the user is never "no presets", they always have at least the
+defaults.
+
+**Table density** (second setting): one of five ids (`extra-compact | compact | normal | comfortable | spacious`),
+shared type `TableDensity`, default `normal` (backend `DEFAULT_TABLE_DENSITY`). Frontend
+`TableDensityService` loads it at app startup via app initializer and sets a `table-density-<id>`
+class on `<html>`; `_primeng-table.scss` maps each class onto layer-1 tokens (`--app-table-font-size`,
+`--app-table-cell-padding-y`, `--app-table-cell-padding-x`) so every table follows it automatically.
+
+Both services share the load-once / serial-write-queue / confirmed-state-only logic via
+`UserSettingChannel<T>` (`core/services/user-setting-channel.ts`): Reads and writes go through
+these services, which load settings once at app startup, queue all writes through a single serial
+channel (so the server receives them in order), and only surface confirmed state to the UI
+(unsaved changes are not displayed).
 
 ### Transactions page
 
@@ -273,8 +286,10 @@ locale data in `app.config.ts`, and add a `locale.<code>` label to every diction
 Per-user settings are accessed via a route-based tab interface at `/:locale/settings/<tab>`,
 with all tabs defined in a single source (`SETTINGS_TABS` in `settings-tabs.ts`). The route
 structure is: root shell component loads the active tab child route lazily. The first tab is
-the default. Settings are reachable from the user menu. Currently implemented: date range
-presets (see User settings above).
+the default. Settings are reachable from the user menu. Currently implemented: two tabs. **Date
+range presets** (first tab) shows a preset picker on the left; picking one saves it immediately.
+**Table density** (second tab) shows a density option picker on the left and a demo `<app-data-table>`
+on the right that shows the selected density live; picking an option saves it immediately.
 
 ## Local development
 

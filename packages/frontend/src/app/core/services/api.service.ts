@@ -1,8 +1,11 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { Me } from '../models/me.model';
-import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
+import type {
+  DatePresetList,
+  TableDensity,
+} from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type {
@@ -69,5 +72,17 @@ export class ApiService {
   /** Deletes the stored list so the defaults apply again; answers `204 No Content`. */
   resetDatePresets(): Observable<void> {
     return this.http.delete<void>('/api/settings/date-presets');
+  }
+
+  getTableDensity(): Observable<TableDensity> {
+    return this.http.get<TableDensity>('/api/settings/table-density');
+  }
+
+  /** The body is the bare JSON string; the backend answers `204 No Content`. */
+  saveTableDensity(density: TableDensity): Observable<void> {
+    // HttpClient sends a raw string as text/plain, so serialise and label it as JSON ourselves.
+    return this.http.put<void>('/api/settings/table-density', JSON.stringify(density), {
+      headers: new HttpHeaders({ 'Content-Type': 'application/json' }),
+    });
   }
 }

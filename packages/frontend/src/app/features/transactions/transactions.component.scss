@@ -5,8 +5,6 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  // The densest table in the app (many columns, single-line cells) — one step below the default.
-  --app-table-font-size: var(--text-xs);
 }
 
 .status-text {

@@ -27,7 +27,8 @@ async function main(): Promise<void> {
   // is several MB of JSON uncompressed. Registered first so it wraps every route below.
   app.use(compression());
   app.use(cors());
-  app.use(express.json());
+  // `strict: false`: `PUT /api/settings/table-density` sends a bare JSON string.
+  app.use(express.json({ strict: false }));
 
   const requireAuth = createAuthMiddleware(config);
 
