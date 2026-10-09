@@ -11,16 +11,17 @@ package layout.
 
 ## Context loading rules
 
-Load context files on demand based on the task. All paths are relative to the project root.
+Load context files on demand based on the task. All paths are relative to the project root and are
+deliberately **not** `@` imports — an `@` import is expanded into every session.
 
 Skills containing a `.copied-from-claude-config` file are copies from `../claude-config/skills/`. Never
 edit them here — edit the skill in `claude-config` and re-run `pnpm run copy-skills` there.
 
 | Task type                                              | Load                                                                                 |
 |----------------------------------------------------------|---------------------------------------------------------------------------------------|
-| Project structure, data model, package boundaries       | @docs/architecture.md                                                                 |
-| Backend routes, repositories, the DB client              | @docs/architecture.md                                                                 |
-| Forward-auth contract, `ALLOWED_USERS`, the demo compose | @docs/architecture.md#authentication                                                  |
+| Project structure, data model, package boundaries       | `docs/architecture.md`                                                                 |
+| Backend routes, repositories, the DB client              | `docs/architecture.md`                                                                 |
+| Forward-auth contract, `ALLOWED_USERS`, the demo compose | `docs/architecture.md#authentication`                                                  |
 | Build commands, local dev, environment setup             | `web-toolchain` skill                                                    |
 | Layout, flexbox, responsive design, CSS conventions       | `frontend` skill                                                         |
 | Component architecture, signals, DI, i18n                 | `frontend-angular` skill                                                 |
