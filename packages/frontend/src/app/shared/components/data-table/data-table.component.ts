@@ -341,6 +341,10 @@ export class DataTableComponent<Row extends object> {
     () => this.options().striped ?? DEFAULT_TABLE_OPTIONS.striped,
   );
 
+  protected readonly rowHover = computed<boolean>(
+    () => this.options().rowHover ?? DEFAULT_TABLE_OPTIONS.rowHover,
+  );
+
   private readonly scrollHeightOption = computed<string | false>(
     () => this.options().scrollHeight ?? DEFAULT_TABLE_OPTIONS.scrollHeight,
   );

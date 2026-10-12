@@ -969,4 +969,25 @@ describe('DataTableComponent', () => {
     await settle();
     expect(cellText(bodyRows()[0], 0)).toBe('Item 1');
   });
+
+  it('28. default: p-table has p-datatable-hoverable class', async () => {
+    host.rows.set([toyRow()]);
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable?.classList.contains('p-datatable-hoverable')).toBe(true);
+  });
+
+  it('29. rowHover: false removes p-datatable-hoverable class', async () => {
+    host.rows.set([toyRow()]);
+    host.options.set({
+      getRowId: (row: ToyRow): number => row.id,
+      emptyKey: 'transactions.empty',
+      rowHover: false,
+    });
+    await settle();
+
+    const pTable = root.querySelector<HTMLElement>('p-table');
+    expect(pTable?.classList.contains('p-datatable-hoverable')).toBe(false);
+  });
 });

@@ -147,6 +147,7 @@ export const DEFAULT_TABLE_OPTIONS: {
   readonly pagination: { readonly pageSize: number; readonly pageSizes: readonly number[] };
   readonly quickFilter: NonNullable<DataTableOptions<never>['quickFilter']>;
   readonly striped: boolean;
+  readonly rowHover: boolean;
   readonly scrollHeight: string | false;
   readonly autoSizeStrategy: NonNullable<DataTableOptions<never>['autoSizeStrategy']>;
   readonly columnResize: NonNullable<DataTableOptions<never>['columnResize']>;
@@ -155,6 +156,7 @@ export const DEFAULT_TABLE_OPTIONS: {
   pagination: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
   quickFilter: {},
   striped: true,
+  rowHover: true,
   scrollHeight: '36rem',
   autoSizeStrategy: { type: 'fitGridWidth' },
   columnResize: { mode: 'expand' },

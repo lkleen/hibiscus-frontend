@@ -368,4 +368,19 @@ describe('DataTableComponent tree mode', () => {
       table().expandAll();
     }).toThrow(/tree mode/);
   });
+
+  it('default: p-treetable has p-treetable-hoverable-rows and data-table--row-hover', async () => {
+    await settle();
+    const treeTable = root.querySelector<HTMLElement>('p-treetable');
+    expect(treeTable?.classList.contains('p-treetable-hoverable-rows')).toBe(true);
+    expect(treeTable?.classList.contains('data-table--row-hover')).toBe(true);
+  });
+
+  it('rowHover: false removes p-treetable-hoverable-rows and data-table--row-hover', async () => {
+    host.options.set(treeOptions({ rowHover: false }));
+    await settle();
+    const treeTable = root.querySelector<HTMLElement>('p-treetable');
+    expect(treeTable?.classList.contains('p-treetable-hoverable-rows')).toBe(false);
+    expect(treeTable?.classList.contains('data-table--row-hover')).toBe(false);
+  });
 });

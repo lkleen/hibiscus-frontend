@@ -99,6 +99,11 @@
   &.data-table--striped ::ng-deep tbody > tr:nth-child(even) {
     background: var(--app-table-row-alt-bg);
   }
+
+  // Unlayered like the zebra rule above, which would otherwise beat PrimeNG's (layered) hover.
+  &.data-table--row-hover ::ng-deep tbody > tr:hover {
+    background: var(--app-table-row-hover-bg);
+  }
 }
 
 // `scrollHeight: 'flex'`: the wrapper takes whatever the search field leaves (the host/`.data-table`

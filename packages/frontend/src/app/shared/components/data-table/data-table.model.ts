@@ -197,6 +197,10 @@ interface DataTableOptionsBase<Row> {
   /** Initial `multiSortMeta`. May reference a `hide: true` column (a sort-only tie-break). */
   readonly defaultSort?: readonly DataTableSortModel[];
   readonly striped?: boolean;
+  /** Maps to PrimeNG's `[rowHover]` on both `<p-table>` and `<p-treetable>`. The hover colour is
+   *  `--app-table-row-hover-bg` (`_primeng-table.scss`). Defaults to `true`, see
+   *  `DEFAULT_TABLE_OPTIONS`. */
+  readonly rowHover?: boolean;
   /** `false` disables the table's own scroll container (no `scrollable`/`scrollHeight`).
    *  `'flex'` makes the table fill its parent instead of a fixed height; the parent must then be a
    *  flex column with a bounded height (see `data-table.component.scss`). */
