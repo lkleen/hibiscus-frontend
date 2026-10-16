@@ -168,7 +168,10 @@ toolbar's combined filter), uses `quickFilter: false` (search is the shell's, no
 definitions live in `transactionColumns` (store) and include `valueGetter` lambdas resolving
 `konto_id` to account details (holder, BIC, number, label); values are computed live, not on rows.
 Sorts by value date (`valuta`) ascending by default, ties broken by id ascending. Columns
-start with value date, amount, balance and purpose 1–3.
+start with value date, amount, balance and purpose 1–3. The row context menu offers View, Edit and
+Assign (tooltip): Edit and Assign open dialogs (`TransactionDialogs`, one at a time, closed with
+the shell) that save through `TransactionsStore.saveTransaction`; Assign picks a category in the
+shared `<app-category-picker>` tree and saves at once.
 
 **By-category tab** (`TransactionsByCategoryComponent`). Reproduces Hibiscus's "Umsätze nach
 Kategorien" report. It builds a tree from the filtered transactions using `buildCategoryReport()`

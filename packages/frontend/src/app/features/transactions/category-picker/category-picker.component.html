@@ -1,0 +1,23 @@
+<!-- `inert` makes the tree unreachable by pointer and keyboard while the parent is busy. -->
+<div [attr.inert]="disabled() ? '' : null">
+  <app-data-table
+    [value]="categories()"
+    [columns]="columns"
+    [options]="options"
+    [selectedRowId]="selectedId()"
+    (selectedRowIdChange)="onSelectedRowIdChange($event)"
+  >
+    <ng-template appDataTableCell="categoryName" let-row let-name="valueFormatted">
+      <span class="category-picker__name">
+        @if (swatchColor(row); as color) {
+          <span
+            class="category-picker__swatch"
+            [style.background-color]="color"
+            aria-hidden="true"
+          ></span>
+        }
+        {{ name }}
+      </span>
+    </ng-template>
+  </app-data-table>
+</div>

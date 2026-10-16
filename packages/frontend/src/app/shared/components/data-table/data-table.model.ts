@@ -290,6 +290,8 @@ export interface DataTableMenuItemDef {
   readonly nameKey: TranslationKey;
   readonly action: () => void;
   readonly disabled?: boolean;
+  /** Explains the entry: shown as the button's native tooltip and read as its description. */
+  readonly tooltipKey?: TranslationKey;
 }
 
 /** The `'showDetails'` entry for another record than the clicked row — e.g. the transaction a

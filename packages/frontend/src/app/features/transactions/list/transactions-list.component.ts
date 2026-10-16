@@ -14,7 +14,7 @@ import type {
   DataTableOptions,
 } from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
-import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
+import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
 
 /**
@@ -31,15 +31,15 @@ import { TransactionsStore } from '../transactions.store';
 })
 export class TransactionsListComponent {
   protected readonly store = inject(TransactionsStore);
-  private readonly editDialog = inject(TransactionEditDialog);
+  private readonly dialogs = inject(TransactionDialogs);
   private readonly table = viewChild.required(DataTableComponent<TransactionRow>);
 
-  /** The store's options plus the row menu: View, and Edit (opens the edit dialog). */
+  /** The store's options plus the row menu: View, Edit and Assign. */
   protected readonly options: DataTableOptions<TransactionRow> = {
     ...this.store.listOptions,
     getContextMenuItems: ({ row }): readonly DataTableMenuItem[] => [
       'showDetails',
-      { nameKey: 'transactions.menuEdit', action: (): void => this.editDialog.open(row) },
+      ...this.dialogs.menuItems(row),
     ],
   };
 

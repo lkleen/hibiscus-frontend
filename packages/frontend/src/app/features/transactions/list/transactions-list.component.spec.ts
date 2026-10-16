@@ -9,7 +9,7 @@ import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transac
 import { LocaleService } from '../../../core/services/locale.service';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
-import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
+import { TransactionDialogs } from '../transaction-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionsListComponent } from './transactions-list.component';
@@ -49,7 +49,7 @@ describe('TransactionsListComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         TransactionsStore,
-        TransactionEditDialog,
+        TransactionDialogs,
       ],
     });
     fixture = TestBed.createComponent(TransactionsListComponent);
@@ -325,7 +325,10 @@ describe('TransactionsListComponent', () => {
     const labels: string[] = Array.from(
       document.querySelectorAll<HTMLElement>('[cdkMenuItem]'),
     ).map((el: HTMLElement) => el.textContent?.trim() ?? '');
-    expect(labels).toEqual(['View', 'Edit']);
+    expect(labels).toEqual(['View', 'Edit', 'Assign']);
+    expect(document.querySelectorAll<HTMLElement>('[cdkMenuItem]')[2].title).toBe(
+      'Assign this transaction to a category, or remove its category',
+    );
     document.querySelectorAll<HTMLElement>('[cdkMenuItem]')[1].click();
     await settle();
 

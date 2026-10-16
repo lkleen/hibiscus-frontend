@@ -1,0 +1,44 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">{{ i18n.t('transactions.assign.title') }}</h2>
+</header>
+
+<div class="app-dialog__body">
+  <p class="transaction-assign__summary">
+    <span>{{ row.valuta }}</span>
+    <app-transaction-amount-cell [amount]="row.betrag" />
+    <span class="transaction-assign__recipient">{{ row.empfaenger_name ?? '—' }}</span>
+  </p>
+
+  <div class="app-dialog__current">
+    <p class="app-dialog__current-label" role="status">{{ categoryLabel() }}</p>
+    <button
+      type="button"
+      class="app-dialog__button"
+      [disabled]="unassignDisabled()"
+      (click)="unassign()"
+    >
+      {{ i18n.t('transactions.edit.noCategory') }}
+    </button>
+  </div>
+
+  <app-category-picker
+    [categories]="categories()"
+    [(selectedId)]="selectedId"
+    [disabled]="locked()"
+    (picked)="assign($event)"
+  />
+</div>
+
+<footer class="app-dialog__footer">
+  <!-- In the footer: the body scrolls, so a message below the tree could be off-screen. -->
+  @if (error(); as failure) {
+    <p class="app-dialog__error" role="alert">
+      {{
+        i18n.t(failure === 'conflict' ? 'transactions.edit.conflict' : 'transactions.edit.error')
+      }}
+    </p>
+  }
+  <button type="button" class="app-dialog__button" [disabled]="saving()" (click)="cancel()">
+    {{ i18n.t('transactions.edit.cancel') }}
+  </button>
+</footer>

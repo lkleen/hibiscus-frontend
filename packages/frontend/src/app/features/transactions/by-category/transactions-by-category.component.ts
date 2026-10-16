@@ -15,7 +15,7 @@ import {
   type DataTableOptions,
 } from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
-import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
+import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
 import { buildCategoryReport, type CategoryReportRow } from './category-report';
 
@@ -59,7 +59,7 @@ function compareReportRows(a: CategoryReportRow, b: CategoryReportRow): number {
 export class TransactionsByCategoryComponent {
   protected readonly store = inject(TransactionsStore);
   protected readonly i18n = inject(TranslationService);
-  private readonly editDialog = inject(TransactionEditDialog);
+  private readonly dialogs = inject(TransactionDialogs);
 
   protected readonly rows = computed<CategoryReportRow[]>(() =>
     buildCategoryReport({
@@ -136,14 +136,14 @@ export class TransactionsByCategoryComponent {
     scrollHeight: 'flex',
     emptyKey: 'transactions.byCategory.empty',
     quickFilter: false,
-    // A transaction shows the list tab's details (its own columns) and can be edited; category
+    // A transaction shows the list tab's details (its own columns) and can be edited or assigned; category
     // rows have no menu.
     getContextMenuItems: ({ row }): readonly DataTableMenuItem[] => {
       if (row.kind !== 'transaction') return [];
       const transaction: TransactionRow = row.transaction;
       return [
         showDetailsOf<TransactionRow>(this.store.transactionColumns, transaction),
-        { nameKey: 'transactions.menuEdit', action: (): void => this.editDialog.open(transaction) },
+        ...this.dialogs.menuItems(transaction),
       ];
     },
   };

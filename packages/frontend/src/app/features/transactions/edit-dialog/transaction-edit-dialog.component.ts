@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -8,36 +7,24 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type {
   TransactionEditableFields,
   TransactionRow,
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import { TranslationService } from '../../../core/services/translation.service';
-import { toCssColor } from '../../../core/utils/category-color';
 import { APP_DIALOG_CLASS } from '../../../shared/dialog/dialog-classes';
-import { DataTableCellDirective } from '../../../shared/components/data-table/data-table-cell.directive';
-import { DataTableComponent } from '../../../shared/components/data-table/data-table.component';
-import {
-  colDef,
-  type DataTableColDef,
-  type DataTableOptions,
-} from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
-import type { TransactionsStore } from '../transactions.store';
+import { CategoryPickerComponent } from '../category-picker/category-picker.component';
+import {
+  toSaveError,
+  type SaveError,
+  type TransactionDialogData,
+} from '../transaction-dialogs.model';
 
 /** The `ariaLabelledBy` target of the dialog. */
 export const TRANSACTION_EDIT_TITLE_ID = 'transaction-edit-title';
 /** The comment textarea; the service focuses it when the dialog opens. */
 export const TRANSACTION_EDIT_COMMENT_ID = 'transaction-edit-comment';
-
-/** What `TransactionEditDialog` hands to the dialog. */
-export interface TransactionEditDialogData {
-  readonly row: TransactionRow;
-  readonly store: TransactionsStore;
-}
-
-type SaveError = 'conflict' | 'generic';
 
 /** An empty comment is stored as NULL, like a comment that was never set. */
 function normalizeComment(comment: string | null): string | null {
@@ -45,8 +32,8 @@ function normalizeComment(comment: string | null): string | null {
 }
 
 /**
- * Edits a transaction's comment and category. The category is picked in a single-selection tree
- * (`<app-data-table>`); "No category" unsets it. The save carries the values the dialog started
+ * Edits a transaction's comment and category. The category is picked in the category picker;
+ * "No category" unsets it. The save carries the values the dialog started
  * from, so the backend rejects it (409) when the row changed elsewhere in the meantime.
  */
 @Component({
@@ -55,11 +42,11 @@ function normalizeComment(comment: string | null): string | null {
   styleUrl: './transaction-edit-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: APP_DIALOG_CLASS },
-  imports: [DataTableComponent, DataTableCellDirective, AmountCellComponent],
+  imports: [CategoryPickerComponent, AmountCellComponent],
 })
 export class TransactionEditDialogComponent {
   protected readonly i18n = inject(TranslationService);
-  private readonly data: TransactionEditDialogData = inject<TransactionEditDialogData>(DIALOG_DATA);
+  private readonly data: TransactionDialogData = inject<TransactionDialogData>(DIALOG_DATA);
   private readonly dialogRef: DialogRef<void, TransactionEditDialogComponent> =
     inject<DialogRef<void, TransactionEditDialogComponent>>(DialogRef);
   private readonly destroyed = signal<boolean>(false);
@@ -97,32 +84,8 @@ export class TransactionEditDialogComponent {
 
   protected readonly categories = this.data.store.categories;
 
-  protected readonly columns: readonly DataTableColDef<CategoryRow>[] = [
-    colDef<CategoryRow, string>({
-      colId: 'name',
-      headerKey: 'categories.colName',
-      filter: false,
-      cellRenderer: 'categoryName',
-      valueGetter: (category: CategoryRow) => category.name,
-    }),
-  ];
-
-  protected readonly options: DataTableOptions<CategoryRow> = {
-    treeData: { getParentId: (category) => category.parent_id, groupColId: 'name' },
-    getRowId: (category) => category.id,
-    rowSelection: { mode: 'single' },
-    defaultSort: [{ colId: 'name', order: 1 }],
-    autoSizeStrategy: { type: 'fitGridWidth' },
-    scrollHeight: '16rem',
-    emptyKey: 'categories.empty',
-  };
-
   constructor() {
     inject(DestroyRef).onDestroy((): void => this.destroyed.set(true));
-  }
-
-  protected swatchColor(category: CategoryRow): string | null {
-    return toCssColor(category);
   }
 
   protected onCommentInput(event: Event): void {
@@ -133,13 +96,6 @@ export class TransactionEditDialogComponent {
 
   protected clearCategory(): void {
     this.categoryId.set(null);
-  }
-
-  protected onCategoryPicked(id: string | number | null): void {
-    // The table only emits ids of selected rows, and a re-click keeps the selection.
-    if (id === null) return;
-    if (typeof id !== 'number') throw new Error(`category id must be a number, got ${typeof id}`);
-    this.categoryId.set(id);
   }
 
   protected cancel(): void {
@@ -168,9 +124,7 @@ export class TransactionEditDialogComponent {
         if (this.destroyed()) return;
         this.dialogRef.disableClose = false;
         this.saving.set(false);
-        this.error.set(
-          cause instanceof HttpErrorResponse && cause.status === 409 ? 'conflict' : 'generic',
-        );
+        this.error.set(toSaveError(cause));
       },
     });
   }

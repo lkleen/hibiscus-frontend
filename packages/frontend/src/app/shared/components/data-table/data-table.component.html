@@ -268,6 +268,8 @@
           class="data-table-menu__item"
           cdkMenuItem
           [cdkMenuItemDisabled]="item.disabled === true"
+          [attr.title]="item.tooltipKey ? i18n.t(item.tooltipKey) : null"
+          [attr.aria-description]="item.tooltipKey ? i18n.t(item.tooltipKey) : null"
           (cdkMenuItemTriggered)="item.action()"
         >
           {{ i18n.t(item.nameKey) }}

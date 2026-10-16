@@ -1,0 +1,23 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// A category's colour as on the by-category tab: a small swatch before the name.
+.category-picker__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.category-picker__swatch {
+  --category-picker-swatch-border-color: var(--surface-border);
+  --category-picker-swatch-radius: var(--radius-base);
+
+  flex: none;
+  inline-size: 0.9em;
+  block-size: 0.9em;
+  border: 1px solid var(--category-picker-swatch-border-color);
+  border-radius: var(--category-picker-swatch-radius);
+}

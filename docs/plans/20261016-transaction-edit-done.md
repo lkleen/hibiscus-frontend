@@ -1,6 +1,6 @@
 # Edit a transaction's comment and category — plan
 
-Plan status: implementing
+Plan status: done
 
 ## Context
 
@@ -165,9 +165,9 @@ Invoke `frontend-design:frontend-design` first; follow `frontend`, `frontend-ang
   fields are never edited. §2: "View"/"Edit" menu wording.
 
 ## Phase F — Verification
-- **Status:** in progress
+- **Status:** done
 - **Started:** 2026-10-16 15:07
-- **Ended:**
+- **Ended:** 2026-10-16 15:13
 
 - Quality gates from repo root: `pnpm format:fix`, `pnpm format:check`, `pnpm lint`, `pnpm test`,
   `pnpm build` (pre-existing bundle-budget warning excepted).
@@ -178,6 +178,8 @@ Invoke `frontend-design:frontend-design` first; follow `frontend`, `frontend-ang
 
 Race-condition check: the stale-save `WHERE` makes concurrent writers safe without locks; the store
 mutates only after a confirmed `204`; one edit dialog at a time; the dialog closes with the shell.
+
+Outcome: all gates green (51 backend, 357 frontend tests); pre-existing bundle-budget warning unchanged. Browser check passed: edit + save, unset, page kept, 409 message, by-category regroup, keyboard, themes, 390px; test rows restored. Follow-up: the error message moved into the footer (it was below the tree, off-screen on short viewports). Open: selected tree row is low-contrast in default light and greenbar; on a 713px-high window the tree is ~100px tall.
 
 ## Execution
 

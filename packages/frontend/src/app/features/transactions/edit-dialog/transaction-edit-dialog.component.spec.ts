@@ -12,15 +12,15 @@ import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
-import { TransactionEditDialog } from './transaction-edit-dialog';
+import { TransactionDialogs } from '../transaction-dialogs';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-describe('TransactionEditDialog', () => {
+describe('TransactionEditDialogComponent', () => {
   let httpMock: HttpTestingController;
-  let service: TransactionEditDialog;
+  let service: TransactionDialogs;
   let appRef: ApplicationRef;
   let row: TransactionRow;
 
@@ -31,11 +31,11 @@ describe('TransactionEditDialog', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         TransactionsStore,
-        TransactionEditDialog,
+        TransactionDialogs,
       ],
     });
     httpMock = TestBed.inject(HttpTestingController);
-    service = TestBed.inject(TransactionEditDialog);
+    service = TestBed.inject(TransactionDialogs);
     appRef = TestBed.inject(ApplicationRef);
     row = transaction({ id: 7, kommentar: 'Old note', umsatztyp_id: 2, zweck: 'Rent' });
     httpMock.expectOne('/api/accounts').flush([account()]);
@@ -67,7 +67,7 @@ describe('TransactionEditDialog', () => {
   }
 
   async function open(): Promise<HTMLElement> {
-    service.open(storeRow());
+    service.openEdit(storeRow());
     await settle();
     return dialog();
   }

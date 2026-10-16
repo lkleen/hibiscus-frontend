@@ -1091,6 +1091,33 @@ describe('DataTableComponent', () => {
       expect(overlayText('.data-table-menu').length).toBe(0);
     });
 
+    it('31b. an entry with a tooltipKey gets it as title and aria-description', async () => {
+      host.rows.set([toyRow()]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        getContextMenuItems: () => [
+          {
+            nameKey: 'table.expandAll',
+            action: vi.fn(),
+            tooltipKey: 'transactions.menuAssignTooltip',
+          },
+          { nameKey: 'table.collapseAll', action: vi.fn() },
+        ],
+      });
+      await settle();
+
+      rightClick(bodyRows()[0].children[0]);
+      await settle();
+
+      const [withTip, withoutTip] = overlayText('[cdkMenuItem]');
+      const tip = 'Assign this transaction to a category, or remove its category';
+      expect(withTip.getAttribute('title')).toBe(tip);
+      expect(withTip.getAttribute('aria-description')).toBe(tip);
+      expect(withoutTip.hasAttribute('title')).toBe(false);
+      expect(withoutTip.hasAttribute('aria-description')).toBe(false);
+    });
+
     it('32. showDetails lists every visible column with its rendered cell and closes', async () => {
       host.rows.set([toyRow({ name: 'Detail Name' })]);
       host.options.set({

@@ -6,7 +6,7 @@ import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
-import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
+import { TransactionDialogs } from '../transaction-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionsByCategoryComponent } from './transactions-by-category.component';
@@ -34,7 +34,7 @@ describe('TransactionsByCategoryComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         TransactionsStore,
-        TransactionEditDialog,
+        TransactionDialogs,
       ],
     });
     fixture = TestBed.createComponent(TransactionsByCategoryComponent);
@@ -161,7 +161,11 @@ describe('TransactionsByCategoryComponent', () => {
     expect(overlay('[cdkMenuItem]').map((el: HTMLElement) => el.textContent?.trim())).toEqual([
       'View',
       'Edit',
+      'Assign',
     ]);
+    expect(overlay('[cdkMenuItem]')[2].getAttribute('title')).toBe(
+      'Assign this transaction to a category, or remove its category',
+    );
     show.click();
     fixture.detectChanges();
     await wait(50);

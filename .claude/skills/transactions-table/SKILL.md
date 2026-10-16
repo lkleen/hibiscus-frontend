@@ -63,8 +63,11 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
 - The row context menu has "View", which opens a details dialog with every displayed column of the
   list tab (same display rules; the four matching-only fields stay hidden), and "Edit", which opens
   the edit dialog for `kommentar` and the category (picked in a category tree, or unset with "No
-  category"). Both tabs offer them on transaction rows (`showDetailsOf(store.transactionColumns, …)`
-  for View); the by-category tab's category rows keep the browser's own menu.
+  category"), and "Assign" (with a tooltip), which opens a dialog with the same searchable category
+  tree where a pick saves the category at once ("No category" unassigns; the comment stays). Both
+  tabs offer them on transaction rows (`showDetailsOf(store.transactionColumns, …)` for View,
+  `TransactionDialogs.menuItems(row)` for Edit and Assign); the by-category tab's category rows keep
+  the browser's own menu.
 
 ## 2.5. Category assignment (documented exception)
 
