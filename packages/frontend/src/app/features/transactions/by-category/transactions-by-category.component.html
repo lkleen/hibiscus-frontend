@@ -8,7 +8,14 @@
   [columns]="columns"
   [options]="options"
   [loading]="store.loading()"
+  [(selectedRowIds)]="selectedRowIds"
 >
+  <app-transactions-selection-bar
+    appDataTableToolbar
+    [count]="selectedRowIds().size"
+    (cleared)="clearSelection()"
+  />
+
   <ng-template appDataTableCell="categoryName" let-row let-name="valueFormatted">
     <span class="by-category__name">
       @if (swatchColor(row); as color) {

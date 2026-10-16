@@ -1,5 +1,6 @@
 import type { Pool } from 'mysql2/promise';
 import type {
+  TransactionAssignRequest,
   TransactionEditableFields,
   TransactionUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/transactions';
@@ -10,7 +11,7 @@ vi.mock('../db/pool', () => ({
 }));
 
 import { getPool } from '../db/pool';
-import { TRANSACTION_COLUMNS, listTransactions, updateTransaction } from './umsatz';
+import { TRANSACTION_COLUMNS, assignCategory, listTransactions, updateTransaction } from './umsatz';
 
 interface FakePool {
   query: ReturnType<typeof vi.fn>;
@@ -119,5 +120,83 @@ describe('updateTransaction', () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]);
 
     await expect(updateTransaction(42, request)).rejects.toThrow('affected 2 rows');
+  });
+});
+
+describe('assignCategory', () => {
+  interface FakeConnection {
+    beginTransaction: ReturnType<typeof vi.fn>;
+    query: ReturnType<typeof vi.fn>;
+    commit: ReturnType<typeof vi.fn>;
+    rollback: ReturnType<typeof vi.fn>;
+    release: ReturnType<typeof vi.fn>;
+  }
+  let connection: FakeConnection;
+
+  beforeEach(() => {
+    connection = {
+      beginTransaction: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn(),
+      commit: vi.fn().mockResolvedValue(undefined),
+      rollback: vi.fn().mockResolvedValue(undefined),
+      release: vi.fn(),
+    };
+    const pool: { getConnection: ReturnType<typeof vi.fn> } = {
+      getConnection: vi.fn().mockResolvedValue(connection),
+    };
+    vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
+  });
+
+  const request: TransactionAssignRequest = {
+    items: [
+      { id: 9, expected: { kommentar: null, umsatztyp_id: 3 } },
+      { id: 4, expected: { kommentar: 'x', umsatztyp_id: null } },
+    ],
+    umsatztyp_id: 7,
+  };
+
+  it('updates every row in id order, writing only umsatztyp_id, then commits', async () => {
+    connection.query.mockResolvedValue([{ affectedRows: 1 }]);
+
+    expect(await assignCategory(request)).toEqual({ result: 'assigned' });
+
+    expect(connection.query).toHaveBeenCalledTimes(2);
+    const [sql, params] = connection.query.mock.calls[0] as [string, unknown[]];
+    expect(sql.replace(/\s+/g, ' ')).toBe(
+      'UPDATE umsatz SET umsatztyp_id = ? WHERE id = ? AND kommentar <=> ? AND umsatztyp_id <=> ?',
+    );
+    expect(params).toEqual([7, 4, 'x', null]);
+    expect((connection.query.mock.calls[1] as [string, unknown[]])[1]).toEqual([7, 9, null, 3]);
+    expect(connection.commit).toHaveBeenCalledTimes(1);
+    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back and reports all conflicting ids when a row no longer matches', async () => {
+    connection.query.mockResolvedValue([{ affectedRows: 0 }]);
+
+    expect(await assignCategory(request)).toEqual({ result: 'conflict', conflictIds: [4, 9] });
+
+    expect(connection.rollback).toHaveBeenCalledTimes(1);
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back, rethrows and releases when a statement fails', async () => {
+    const error: Error = new Error('fk');
+    connection.query.mockRejectedValue(error);
+
+    await expect(assignCategory(request)).rejects.toBe(error);
+
+    expect(connection.rollback).toHaveBeenCalledTimes(1);
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws on an unexpected affected row count', async () => {
+    connection.query.mockResolvedValue([{ affectedRows: 2 }]);
+
+    await expect(assignCategory(request)).rejects.toThrow('affected 2 rows');
+    expect(connection.rollback).toHaveBeenCalledTimes(1);
   });
 });

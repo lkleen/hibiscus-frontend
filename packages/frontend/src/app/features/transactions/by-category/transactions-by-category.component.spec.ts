@@ -137,7 +137,7 @@ describe('TransactionsByCategoryComponent', () => {
       return Array.from(document.querySelectorAll<HTMLElement>(selector));
     }
 
-    const categoryCell: Element | null = root.querySelector('tbody tr td');
+    const categoryCell: Element | null = root.querySelector('tbody tr td:nth-child(2)');
     if (!categoryCell) throw new Error('category row not rendered');
     expect(rightClick(categoryCell).defaultPrevented).toBe(false);
     expect(overlay('.data-table-menu').length).toBe(0);
@@ -149,7 +149,7 @@ describe('TransactionsByCategoryComponent', () => {
     await wait(50);
     fixture.detectChanges();
 
-    const leafCell: Element | undefined = root.querySelectorAll('tbody tr')[1]?.children[0];
+    const leafCell: Element | undefined = root.querySelectorAll('tbody tr')[1]?.children[1];
     if (!leafCell) throw new Error('transaction row not rendered');
     expect(rightClick(leafCell).defaultPrevented).toBe(true);
     fixture.detectChanges();
@@ -185,5 +185,97 @@ describe('TransactionsByCategoryComponent', () => {
     await load({ categories: [categoryRow({ id: 1, pattern: 'x' })] });
 
     expect(root.querySelector('.by-category__warning')).toBeNull();
+  });
+
+  describe('bulk assign', () => {
+    const tx = (id: number): TransactionRow =>
+      transaction({ id, zweck: `Tx ${id}`, umsatztyp_id: null, kommentar: `N${id}` });
+
+    async function settle(): Promise<void> {
+      fixture.detectChanges();
+      await wait(50);
+      fixture.detectChanges();
+    }
+    function leafBoxes(): HTMLInputElement[] {
+      return Array.from(root.querySelectorAll<HTMLInputElement>('tbody tr .data-table__checkbox'));
+    }
+    async function expandAndTick(count: number): Promise<void> {
+      const toggler: HTMLElement | null = root.querySelector<HTMLElement>('tbody tr button');
+      if (!toggler) throw new Error('tree toggler not rendered');
+      toggler.click();
+      await settle();
+      const boxes: HTMLInputElement[] = leafBoxes();
+      expect(boxes.length).toBeGreaterThanOrEqual(count);
+      for (const box of boxes.slice(0, count)) box.click();
+      await settle();
+    }
+    function isIdle(): boolean {
+      const bar: Element | null = root.querySelector('app-transactions-selection-bar');
+      if (!bar) throw new Error('selection bar not rendered');
+      return bar.classList.contains('selection-bar--idle');
+    }
+    function menu(row: number): HTMLElement[] {
+      const cell: Element | undefined = root.querySelectorAll('tbody tr')[row]?.children[1];
+      if (!cell) throw new Error('row not rendered');
+      cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('[cdkMenuItem]'));
+    }
+
+    it('only transaction leaves have a checkbox; ticking shows the count and Clear empties it', async () => {
+      await load({ items: [tx(1), tx(2)] });
+      expect(leafBoxes().length).toBe(0);
+      await expandAndTick(2);
+      expect(root.querySelector('.selection-bar__count')?.textContent).toContain('2 selected');
+      const clear: HTMLButtonElement | undefined = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('.filters__action'),
+      ).find((el: HTMLButtonElement) => el.textContent?.trim() === 'Clear selection');
+      if (!clear) throw new Error('Clear button not rendered');
+      clear.click();
+      await settle();
+      expect(isIdle()).toBe(true);
+    });
+
+    it('View and Edit are disabled on a selected row and Assign saves the selection, then clears it', async () => {
+      await load({ items: [tx(1), tx(2)], categories: [categoryRow({ id: 4, name: 'Food' })] });
+      await expandAndTick(2);
+      const items: HTMLElement[] = menu(1);
+      expect(items.map((el: HTMLElement) => el.getAttribute('aria-disabled'))).toEqual([
+        'true',
+        'true',
+        null,
+      ]);
+      items[2].click();
+      await settle();
+      const dialog: HTMLElement | null = document.querySelector('app-transaction-assign-dialog');
+      if (!dialog) throw new Error('assign dialog not rendered');
+      expect(dialog.textContent).toContain('2 transactions');
+      const food: HTMLElement | undefined = Array.from(
+        dialog.querySelectorAll<HTMLElement>('tbody tr'),
+      ).find((el: HTMLElement) => el.textContent?.trim() === 'Food');
+      if (!food) throw new Error('category row not rendered');
+      food.click();
+      await settle();
+      const request = httpMock.expectOne({
+        method: 'POST',
+        url: '/api/transactions/assign-category',
+      });
+      expect((request.request.body as { items: unknown[] }).items.length).toBe(2);
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+      expect(isIdle()).toBe(true);
+      expect(document.querySelector('app-transaction-assign-dialog')).toBeNull();
+    });
+
+    it('a row outside the selection keeps the single-row menu', async () => {
+      await load({ items: [tx(1), tx(2), tx(3)] });
+      await expandAndTick(2);
+      const items: HTMLElement[] = menu(3);
+      expect(items.map((el: HTMLElement) => el.getAttribute('aria-disabled'))).toEqual([
+        null,
+        null,
+        null,
+      ]);
+    });
   });
 });

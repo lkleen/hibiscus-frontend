@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type {
+  TransactionAssignRequest,
   TransactionEditableFields,
   TransactionUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/transactions';
@@ -20,6 +21,33 @@ export const TransactionUpdateSchema: z.ZodType<TransactionUpdateRequest> = z
   .object({
     expected: TransactionEditableFieldsSchema,
     next: TransactionEditableFieldsSchema,
+  })
+  .strict();
+
+/** Upper bound of rows per bulk assignment; bigger requests are a 400, not a long transaction. */
+const ASSIGN_MAX_ITEMS = 10_000;
+
+/** Body of `POST /api/transactions/assign-category`: 1 to 10,000 unique rows and the category. */
+export const TransactionAssignSchema: z.ZodType<TransactionAssignRequest> = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            id: z.number().int().positive(),
+            expected: TransactionEditableFieldsSchema,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(ASSIGN_MAX_ITEMS)
+      .refine(
+        (items: { id: number }[]): boolean => new Set(items.map((i) => i.id)).size === items.length,
+        {
+          message: 'Duplicate transaction ids',
+        },
+      ),
+    umsatztyp_id: z.number().int().positive().nullable(),
   })
   .strict();
 

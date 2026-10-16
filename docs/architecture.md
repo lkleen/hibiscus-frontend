@@ -55,8 +55,12 @@ Write scope is per-user settings (date range presets, table density) in `hf_user
 user-maintained fields of `umsatz`: `kommentar` and `umsatztyp_id` (the category), via
 `PATCH /api/transactions/:id`. Both are written in one atomic `UPDATE ... WHERE` that only succeeds
 while the row still holds the values the edit started from (`expected`); otherwise the API answers
-`409`, e.g. when the row was changed in the Hibiscus desktop client. No other column of `umsatz` is
-ever written, and categories stay read-only (`GET /api/categories`). Bank-imported transaction
+`409`, e.g. when the row was changed in the Hibiscus desktop client. Bulk category assignment
+(`POST /api/transactions/assign-category`) writes only `umsatztyp_id` and only compares `kommentar`.
+It runs one `UPDATE ... WHERE` per row, in ascending id order, inside a single DB transaction: if any
+row does not match its `expected` values, the whole batch is rolled back and nothing is saved. The JSON
+body limit for this route is 10 MB (`server.ts`). No other column of `umsatz` is ever written, and
+categories stay read-only (`GET /api/categories`). Bank-imported transaction
 fields (amount, date, counterparty) are synced from the bank by the desktop client and are not this
 app's data to change.
 
@@ -65,18 +69,19 @@ app's data to change.
 All routes are under `/api` and require authentication (see below) except `/api/me`, which
 itself requires authentication too — there is no unauthenticated route in this app at all.
 
-| Method & path                       | Purpose                                                                                                                                                                                                     |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/me`                       | Echoes the authenticated identity                                                                                                                                                                           |
-| `GET /api/accounts`                 | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                 |
-| `GET /api/transactions`             | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                   |
-| `PATCH /api/transactions/:id`       | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected` |
-| `GET /api/categories`               | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                            |
-| `GET /api/settings/date-presets`    | User's date presets; defaults if not stored                                                                                                                                                                 |
-| `PUT /api/settings/date-presets`    | Save whole preset list (zod-validated); answers `204`                                                                                                                                                       |
-| `DELETE /api/settings/date-presets` | Restore defaults; answers `204`                                                                                                                                                                             |
-| `GET /api/settings/table-density`   | User's table density; `normal` if not stored                                                                                                                                                                |
-| `PUT /api/settings/table-density`   | Save the density (zod-validated); answers `204`                                                                                                                                                             |
+| Method & path                            | Purpose                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/me`                            | Echoes the authenticated identity                                                                                                                                                                                                                                                                                                             |
+| `GET /api/accounts`                      | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                                                                                                                                                   |
+| `GET /api/transactions`                  | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                                                                                                                                                     |
+| `PATCH /api/transactions/:id`            | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                   |
+| `POST /api/transactions/assign-category` | Set `umsatztyp_id` on 1–10,000 selected rows (`TransactionAssignRequest`: `items` of `{ id, expected: { kommentar, umsatztyp_id } }`, `umsatztyp_id`); one DB transaction, all-or-nothing; `204`; `400` invalid body or unknown category; `409` `{ error: 'conflict', conflictIds }` if any row no longer holds its `expected`, nothing saved |
+| `GET /api/categories`                    | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                                                                                                                                                              |
+| `GET /api/settings/date-presets`         | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                   |
+| `PUT /api/settings/date-presets`         | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                         |
+| `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                               |
+| `GET /api/settings/table-density`        | User's table density; `normal` if not stored                                                                                                                                                                                                                                                                                                  |
+| `PUT /api/settings/table-density`        | Save the density (zod-validated); answers `204`                                                                                                                                                                                                                                                                                               |
 
 ### Shared contracts
 
@@ -192,6 +197,15 @@ implements this exactly, including Hibiscus's comma-split non-regex patterns and
 (Java `matches()`, emulated with `^(?:pattern)$`). Grouping only — displayed values stay raw. This is
 a documented exception to the transactions-table skill's "never interpret" rule, scoped to that
 grouping logic only.
+
+**Selection and bulk assign (both tabs).** Each table has a checkbox column for multi-row selection
+(in the by-category tree only transaction rows are selectable). The header checkbox selects every row
+passing the shared filters, across all pages; Ctrl/Cmd-click toggles a row, and in the list Shift-click
+selects a range. The selection is pruned to the rows passing the filters whenever they change, and the
+toolbar shows "N selected" with a Clear action. Right-clicking a row inside a multi-row selection
+disables View and Edit and makes Assign assign all selected rows in one request
+(`TransactionsStore.assignCategory`, see the write scope above); right-clicking outside the selection
+opens the single-row menu. After a successful bulk assign the selection is cleared.
 
 **Served but not displayed.** Four columns are served for category matching but not shown in either
 tab: `purposecode`, `mandateid`, `creditorid`, `customerref`. These (and the displayed `kommentar`)

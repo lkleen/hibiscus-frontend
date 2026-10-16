@@ -26,14 +26,14 @@ interface Loaded {
   categories?: CategoryRow[];
 }
 
-// Column order in the `#body` template — used to pick a cell out of a row by index rather than
-// by a DOM hook the implementation doesn't have.
+// Column order in the `#body` template (after the leading checkbox cell) — used to pick a cell out
+// of a row by index rather than by a DOM hook the implementation doesn't have.
 const COL = {
-  valuta: 0,
-  betrag: 1,
-  saldo: 2,
-  zweck: 3,
-  datum: 6,
+  valuta: 1,
+  betrag: 2,
+  saldo: 3,
+  zweck: 4,
+  datum: 7,
 } as const;
 
 describe('TransactionsListComponent', () => {
@@ -170,7 +170,7 @@ describe('TransactionsListComponent', () => {
     expect(table.style.width).toBe('max-content');
 
     const headerCells = Array.from(root.querySelectorAll('thead tr:first-child th'));
-    expect(headerCells.length).toBe(20);
+    expect(headerCells.length).toBe(21);
     for (const cell of headerCells) {
       expect((cell as HTMLElement).style.width).toBe('');
       expect((cell as HTMLElement).getAttribute('width')).toBeNull();
@@ -192,6 +192,7 @@ describe('TransactionsListComponent', () => {
     expect(text).toContain('-1.234,50');
     const headers = Array.from(root.querySelectorAll('thead tr:first-child th')).map(headerLabel);
     expect(headers).toEqual([
+      '',
       'Valuta',
       'Betrag',
       'Saldo',
@@ -403,6 +404,90 @@ describe('TransactionsListComponent', () => {
     close.click();
     await settle();
     expect(document.querySelectorAll('app-data-table-row-details').length).toBe(0);
+  });
+
+  describe('bulk assign', () => {
+    const tx = (id: number): TransactionRow =>
+      transaction({ id, zweck: `Tx ${id}`, umsatztyp_id: null, kommentar: `N${id}` });
+
+    function boxes(): HTMLInputElement[] {
+      return Array.from(root.querySelectorAll<HTMLInputElement>('tbody .data-table__checkbox'));
+    }
+    function isIdle(): boolean {
+      const bar: Element | null = root.querySelector('app-transactions-selection-bar');
+      if (!bar) throw new Error('selection bar not rendered');
+      return bar.classList.contains('selection-bar--idle');
+    }
+    function menu(row: number): HTMLElement[] {
+      bodyRows()[row].children[COL.zweck].dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('[cdkMenuItem]'));
+    }
+    function disabledFlags(items: HTMLElement[]): (string | null)[] {
+      return items.map((el: HTMLElement) => el.getAttribute('aria-disabled'));
+    }
+
+    it('shows N selected with a Clear button while rows are ticked', async () => {
+      await load({ items: [tx(1), tx(2)] });
+      expect(isIdle()).toBe(true);
+      boxes()[0].click();
+      boxes()[1].click();
+      await settle();
+      expect(root.querySelector('.selection-bar__count')?.textContent).toContain('2 selected');
+      const clear: HTMLButtonElement | undefined = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('.filters__action'),
+      ).find((el: HTMLButtonElement) => el.textContent?.trim() === 'Clear selection');
+      if (!clear) throw new Error('Clear button not rendered');
+      clear.click();
+      await settle();
+      expect(isIdle()).toBe(true);
+    });
+
+    it('disables View and Edit on a selected row; Assign saves the selection and clears it', async () => {
+      await load({
+        items: [tx(1), tx(2)],
+        categories: [categoryRow({ id: 4, name: 'Food' })],
+      });
+      boxes()[0].click();
+      boxes()[1].click();
+      await settle();
+      const items: HTMLElement[] = menu(0);
+      expect(disabledFlags(items)).toEqual(['true', 'true', null]);
+      items[2].click();
+      await settle();
+      const dialog: HTMLElement | null = document.querySelector('app-transaction-assign-dialog');
+      if (!dialog) throw new Error('assign dialog not rendered');
+      expect(dialog.textContent).toContain('2 transactions');
+      const food: HTMLElement | undefined = Array.from(
+        dialog.querySelectorAll<HTMLElement>('tbody tr'),
+      ).find((el: HTMLElement) => el.textContent?.trim() === 'Food');
+      if (!food) throw new Error('category row not rendered');
+      food.click();
+      await settle();
+      const request = httpMock.expectOne({
+        method: 'POST',
+        url: '/api/transactions/assign-category',
+      });
+      expect((request.request.body as { items: unknown[] }).items.length).toBe(2);
+      // The selection is only cleared once the save is confirmed.
+      expect(isIdle()).toBe(false);
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+      expect(isIdle()).toBe(true);
+    });
+
+    it('a row outside the selection, or a single ticked row, keeps the single-row menu', async () => {
+      await load({ items: [tx(1), tx(2), tx(3)] });
+      boxes()[0].click();
+      await settle();
+      expect(disabledFlags(menu(0))).toEqual([null, null, null]);
+      document.body.click();
+      boxes()[1].click();
+      await settle();
+      expect(disabledFlags(menu(2))).toEqual([null, null, null]);
+    });
   });
 
   it('keeps zebra striping enabled for greenbar', async () => {

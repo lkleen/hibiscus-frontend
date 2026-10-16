@@ -205,6 +205,117 @@ describe('TransactionsStore', () => {
     expect(store.rowFilter()).toBe(filter);
   });
 
+  /** Starts a bulk assign and answers its POST with `204`. */
+  function assign(rows: TransactionRow[], umsatztypId: number | null): void {
+    store.assignCategory(rows, umsatztypId).subscribe();
+    httpMock
+      .expectOne('/api/transactions/assign-category')
+      .flush(null, { status: 204, statusText: 'No Content' });
+  }
+
+  it('posts the starting values of every row as expected, with the category as target', () => {
+    load(
+      [],
+      [
+        transaction({ id: 1, kommentar: 'old', umsatztyp_id: 7 }),
+        transaction({ id: 2, kommentar: null, umsatztyp_id: null }),
+      ],
+    );
+    const rows: TransactionRow[] = store.transactions().slice();
+
+    store.assignCategory(rows, 8).subscribe();
+
+    const req = httpMock.expectOne('/api/transactions/assign-category');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      items: [
+        { id: 1, expected: { kommentar: 'old', umsatztyp_id: 7 } },
+        { id: 2, expected: { kommentar: null, umsatztyp_id: null } },
+      ],
+      umsatztyp_id: 8,
+    });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('mutates every assigned row in place and bumps the revision exactly once', () => {
+    load(
+      [],
+      [
+        transaction({ id: 1, umsatztyp_id: 7 }),
+        transaction({ id: 2, umsatztyp_id: null }),
+        transaction({ id: 3, umsatztyp_id: 9 }),
+      ],
+    );
+    const rows: TransactionRow[] = store.transactions().slice(0, 2);
+
+    assign(rows, 8);
+
+    expect(store.transactions()[0]).toBe(rows[0]);
+    expect(store.transactions()[1]).toBe(rows[1]);
+    expect(rows.map((row: TransactionRow) => row.umsatztyp_id)).toEqual([8, 8]);
+    expect(store.transactions()[2]?.umsatztyp_id).toBe(9);
+    expect(store.revision()).toBe(1);
+  });
+
+  it('clears the category of every assigned row when given null', () => {
+    load([], [transaction({ id: 1, umsatztyp_id: 7 }), transaction({ id: 2, umsatztyp_id: 8 })]);
+
+    assign(store.transactions().slice(), null);
+
+    expect(store.transactions().map((row: TransactionRow) => row.umsatztyp_id)).toEqual([
+      null,
+      null,
+    ]);
+    expect(store.revision()).toBe(1);
+  });
+
+  it('recomputes the category assignment after a bulk assign', () => {
+    httpMock.expectOne('/api/accounts').flush([account({ id: 1 })]);
+    httpMock
+      .expectOne('/api/transactions')
+      .flush(
+        transactionsResponse([
+          transaction({ id: 1, zweck: 'rent', umsatztyp_id: null }),
+          transaction({ id: 2, zweck: 'other', umsatztyp_id: null }),
+        ]),
+      );
+    httpMock
+      .expectOne('/api/categories')
+      .flush([
+        categoryRow({ id: 7, name: 'Housing', pattern: 'rent', konto_kategorie: null }),
+        categoryRow({ id: 8, name: 'Food', pattern: 'groceries', konto_kategorie: null }),
+      ]);
+    expect(store.categoryAssignment().byTransactionId.get(1)?.id).toBe(7);
+
+    assign(store.transactions().slice(), 8);
+
+    expect(store.categoryAssignment().byTransactionId.get(1)?.id).toBe(8);
+    expect(store.categoryAssignment().byTransactionId.get(2)?.id).toBe(8);
+  });
+
+  it('throws when no rows are given, without sending a request', () => {
+    load([], [transaction({ id: 1 })]);
+
+    expect(() => store.assignCategory([], 8)).toThrow();
+  });
+
+  it('leaves the rows and the revision untouched when the bulk assign conflicts', () => {
+    load([], [transaction({ id: 1, umsatztyp_id: 7 }), transaction({ id: 2, umsatztyp_id: null })]);
+    const rows: TransactionRow[] = store.transactions().slice();
+    let failure: unknown = null;
+
+    store.assignCategory(rows, 8).subscribe({
+      error: (error: unknown) => (failure = error),
+    });
+    httpMock
+      .expectOne('/api/transactions/assign-category')
+      .flush({ error: 'conflict', conflictIds: [2] }, { status: 409, statusText: 'Conflict' });
+
+    expect(failure).not.toBeNull();
+    expect(rows.map((row: TransactionRow) => row.umsatztyp_id)).toEqual([7, null]);
+    expect(store.revision()).toBe(0);
+  });
+
   it('leaves the row and the revision untouched when the save fails', () => {
     load([], [transaction({ id: 1, kommentar: 'old', umsatztyp_id: 7 })]);
     const row: TransactionRow = firstRow();

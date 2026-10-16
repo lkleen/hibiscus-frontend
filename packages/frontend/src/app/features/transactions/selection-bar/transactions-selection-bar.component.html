@@ -1,0 +1,6 @@
+<span class="selection-bar__count" role="status">{{
+  i18n.t('table.selectedCount', { count: count() })
+}}</span>
+<button type="button" class="filters__action" (click)="cleared.emit()">
+  {{ i18n.t('table.clearSelection') }}
+</button>

@@ -32,12 +32,15 @@
     [class.data-table--striped]="striped()"
     [class.data-table--row-hover]="rowHover()"
     [class.data-table--selectable]="rowSelectionEnabled()"
+    [class.data-table--multi]="multiSelectionEnabled()"
     [style.--data-table-tree-max-height]="treeMaxHeight()"
     [value]="treeNodes()"
     [rowTrackBy]="treeRowTrackBy"
     sortMode="multiple"
     [customSort]="true"
     (sortFunction)="onTreeSortFunction($event)"
+    (onFilter)="onViewChange()"
+    (onSort)="onViewChange()"
     [multiSortMeta]="multiSortMeta()"
     [globalFilterFields]="globalFilterFieldsForPrimeNg()"
     [tableStyle]="tableStyle()"
@@ -57,6 +60,11 @@
   >
     <ng-template #header>
       <tr (mousedown)="onHeaderMouseDown($event)">
+        @if (multiSelectionEnabled()) {
+          <th class="data-table__select-cell">
+            <ng-container [ngTemplateOutlet]="selectAllCheckbox" />
+          </th>
+        }
         @for (column of visibleColumns(); track column.colId) {
           @if (column.sortable === false) {
             <th
@@ -86,6 +94,9 @@
         }
       </tr>
       <tr>
+        @if (multiSelectionEnabled()) {
+          <th class="data-table__select-cell data-table__filter-cell"></th>
+        }
         @for (column of visibleColumns(); track column.colId) {
           <th class="data-table__filter-cell">
             @if (column.filter !== false) {
@@ -107,7 +118,22 @@
         [ttSelectableRowDisabled]="!rowSelectionEnabled()"
         [cdkContextMenuTriggerFor]="rowMenu"
         [cdkContextMenuDisabled]="!contextMenuEnabled()"
+        [class.data-table__row--selected]="
+          multiSelectionEnabled() && isRowChecked(serialized.node.data)
+        "
+        (click)="multiSelectionEnabled() && onRowClick($event, serialized.node.data)"
+        (mousedown)="multiSelectionEnabled() && onRowMouseDown($event)"
       >
+        @if (multiSelectionEnabled()) {
+          <td class="data-table__select-cell">
+            @if (isRowCheckable(serialized.node.data)) {
+              <ng-container
+                [ngTemplateOutlet]="selectRowCheckbox"
+                [ngTemplateOutletContext]="{ row: serialized.node.data }"
+              />
+            }
+          </td>
+        }
         @for (column of visibleColumns(); track column.colId) {
           <td
             [class.data-table__col--end]="column.align === 'end'"
@@ -150,6 +176,7 @@
     #dt
     class="data-table"
     [class.data-table--fit-contents]="fitContents()"
+    [class.data-table--multi]="multiSelectionEnabled()"
     [value]="boundRows()"
     [rowTrackBy]="rowTrackBy"
     [paginator]="paginationEnabled()"
@@ -158,6 +185,8 @@
     sortMode="multiple"
     [customSort]="true"
     (sortFunction)="onSortFunction($event)"
+    (onFilter)="onViewChange()"
+    (onSort)="onViewChange()"
     [multiSortMeta]="multiSortMeta()"
     [globalFilterFields]="globalFilterFieldsForPrimeNg()"
     [tableStyle]="tableStyle()"
@@ -181,6 +210,11 @@
   >
     <ng-template #header>
       <tr (mousedown)="onHeaderMouseDown($event)">
+        @if (multiSelectionEnabled()) {
+          <th class="data-table__select-cell">
+            <ng-container [ngTemplateOutlet]="selectAllCheckbox" />
+          </th>
+        }
         @for (column of visibleColumns(); track column.colId) {
           @if (column.sortable === false) {
             <th
@@ -210,6 +244,9 @@
         }
       </tr>
       <tr>
+        @if (multiSelectionEnabled()) {
+          <th class="data-table__select-cell data-table__filter-cell"></th>
+        }
         @for (column of visibleColumns(); track column.colId) {
           <th class="data-table__filter-cell">
             @if (column.filter !== false) {
@@ -232,7 +269,20 @@
         [pSelectableRowDisabled]="!rowSelectionEnabled()"
         [cdkContextMenuTriggerFor]="rowMenu"
         [cdkContextMenuDisabled]="!contextMenuEnabled()"
+        [class.data-table__row--selected]="multiSelectionEnabled() && isRowChecked(row)"
+        (click)="multiSelectionEnabled() && onRowClick($event, row)"
+        (mousedown)="multiSelectionEnabled() && onRowMouseDown($event)"
       >
+        @if (multiSelectionEnabled()) {
+          <td class="data-table__select-cell">
+            @if (isRowCheckable(row)) {
+              <ng-container
+                [ngTemplateOutlet]="selectRowCheckbox"
+                [ngTemplateOutletContext]="{ row: row }"
+              />
+            }
+          </td>
+        }
         @for (column of visibleColumns(); track column.colId) {
           <td
             [class.data-table__col--end]="column.align === 'end'"
@@ -277,6 +327,29 @@
       }
     }
   </div>
+</ng-template>
+
+<!-- Multi-row selection (options.rowSelection 'multiple'): the header checkbox over every filtered
+     selectable row, and one row's checkbox. Plain inputs: a click on them is not a row click. -->
+<ng-template #selectAllCheckbox>
+  <input
+    type="checkbox"
+    class="data-table__checkbox"
+    [attr.aria-label]="i18n.t('table.selectAll')"
+    [checked]="headerSelection().checked"
+    [indeterminate]="headerSelection().indeterminate"
+    [disabled]="headerSelection().total === 0"
+    (click)="onHeaderCheckboxClick()"
+  />
+</ng-template>
+<ng-template #selectRowCheckbox let-row="row">
+  <input
+    type="checkbox"
+    class="data-table__checkbox"
+    [attr.aria-label]="i18n.t('table.selectRow')"
+    [checked]="isRowChecked(row)"
+    (click)="onRowCheckboxClick($event, row)"
+  />
 </ng-template>
 
 <!-- One cell's content, shared by the flat and the tree body: the caller's renderer or the

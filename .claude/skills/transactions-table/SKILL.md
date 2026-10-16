@@ -32,12 +32,15 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
 - `TransactionRow` (shared package) mirrors the selected columns one-to-one and is declared once;
   `TransactionColumn`/`TransactionValue`/`TransactionsResponse` are derived from it, and the
   backend and frontend import the same types. Never re-declare it, never add a second "view model" type for the API.
-- The only write to `umsatz` is `PATCH /api/transactions/:id` (see the write scope in
-  `docs/architecture.md`), and it writes only `kommentar` and `umsatztyp_id` (`TransactionEditableFields`),
-  in one atomic `UPDATE … WHERE kommentar <=> expected AND umsatztyp_id <=> expected`. A stale save
-  (the row no longer holds the values the edit started from, e.g. changed in the Hibiscus desktop
-  client) answers `409`; it is never overwritten. Every other column, bank-imported fields above all,
-  is never written.
+- The writes to `umsatz` are `PATCH /api/transactions/:id` (see the write scope in
+  `docs/architecture.md`), which writes `kommentar` and `umsatztyp_id` (`TransactionEditableFields`),
+  and `POST /api/transactions/assign-category` (bulk category assignment; single-row Assign uses it
+  with one item), which writes only `umsatztyp_id` and only compares `kommentar`. Each row is one
+  atomic `UPDATE … WHERE kommentar <=> expected AND umsatztyp_id <=> expected`. The bulk route runs all
+  rows in one DB transaction in ascending id order: any row not matching rolls back the whole batch
+  (`409` with `conflictIds`, nothing saved). A stale save (the row no longer holds the values the edit
+  started from, e.g. changed in the Hibiscus desktop client) answers `409`; it is never overwritten.
+  Every other column, bank-imported fields above all, is never written.
 
 ## 2. Columns are displayed exactly as stored (frontend)
 
@@ -68,6 +71,11 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
   tabs offer them on transaction rows (`showDetailsOf(store.transactionColumns, …)` for View,
   `TransactionDialogs.menuItems(row)` for Edit and Assign); the by-category tab's category rows keep
   the browser's own menu.
+- Multi-row selection (checkbox column, `<app-data-table>` `rowSelection: { mode: 'multiple' }`) works
+  in both tabs; in the by-category tree only transaction rows are selectable. Right-clicking a row in
+  a multi-row selection disables View and Edit, and Assign assigns the whole selection through
+  `TransactionsStore.assignCategory` (one request). Right-clicking outside the selection gives the
+  single-row menu. Never assign or edit a row that is not selected and visible.
 
 ## 2.5. Category assignment (documented exception)
 
@@ -95,6 +103,9 @@ regex patterns are reported as a visible warning, never silently ignored.
   client-side. The date range picker starts on the user's first date preset and persists within the
   session only (no persistence between sessions); the account filter's state is the set of unchecked
   account ids (session only), so every account — including late-loading ones — starts checked.
+- The selection is pruned to the rows passing these filters, and a bulk action only touches selected,
+  visible rows. The header checkbox selects all rows passing the filters (all pages), not only the
+  current page.
 - Before writing any table code, follow the `angular-primeng-table` skill. Use `<app-data-table>`
   in `transactions.component.html` — it wraps PrimeNG's `p-table` with column-owned lambdas and
   raw rows. It follows the active theme through the CSS bridge in `src/styles/_primeng-table.scss`.

@@ -4,9 +4,13 @@
 
 <div class="app-dialog__body">
   <p class="transaction-assign__summary">
-    <span>{{ row.valuta }}</span>
-    <app-transaction-amount-cell [amount]="row.betrag" />
-    <span class="transaction-assign__recipient">{{ row.empfaenger_name ?? '—' }}</span>
+    @if (rows.length === 1) {
+      <span>{{ rows[0].valuta }}</span>
+      <app-transaction-amount-cell [amount]="rows[0].betrag" />
+      <span class="transaction-assign__recipient">{{ rows[0].empfaenger_name ?? '—' }}</span>
+    } @else {
+      <span>{{ i18n.t('transactions.assign.summaryMany', { count: rows.length }) }}</span>
+    }
   </p>
 
   <div class="app-dialog__current">
@@ -33,9 +37,7 @@
   <!-- In the footer: the body scrolls, so a message below the tree could be off-screen. -->
   @if (error(); as failure) {
     <p class="app-dialog__error" role="alert">
-      {{
-        i18n.t(failure === 'conflict' ? 'transactions.edit.conflict' : 'transactions.edit.error')
-      }}
+      {{ failure === 'conflict' ? conflictText() : i18n.t('transactions.edit.error') }}
     </p>
   }
   <button type="button" class="app-dialog__button" [disabled]="saving()" (click)="cancel()">

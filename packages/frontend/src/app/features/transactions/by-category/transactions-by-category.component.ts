@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
@@ -15,6 +15,7 @@ import {
   type DataTableOptions,
 } from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
+import { TransactionsSelectionBarComponent } from '../selection-bar/transactions-selection-bar.component';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
 import { buildCategoryReport, type CategoryReportRow } from './category-report';
@@ -47,19 +48,27 @@ function compareReportRows(a: CategoryReportRow, b: CategoryReportRow): number {
 
 /**
  * "Umsätze nach Kategorien": the category tree with sums per category (over its subcategories)
- * and the transactions as leaves, over the shell's filtered transactions. Read-only.
+ * and the transactions as leaves, over the shell's filtered transactions. Rows can be ticked to assign them a category in one go.
  */
 @Component({
   selector: 'app-transactions-by-category',
   templateUrl: './transactions-by-category.component.html',
   styleUrl: './transactions-by-category.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DataTableComponent, DataTableCellDirective, AmountCellComponent],
+  imports: [
+    DataTableComponent,
+    DataTableCellDirective,
+    AmountCellComponent,
+    TransactionsSelectionBarComponent,
+  ],
 })
 export class TransactionsByCategoryComponent {
   protected readonly store = inject(TransactionsStore);
   protected readonly i18n = inject(TranslationService);
   private readonly dialogs = inject(TransactionDialogs);
+
+  /** The ticked transaction leaves (ids); the table prunes it to the rows that pass the filters. */
+  protected readonly selectedRowIds = signal<ReadonlySet<string | number>>(new Set());
 
   protected readonly rows = computed<CategoryReportRow[]>(() =>
     buildCategoryReport({
@@ -136,15 +145,25 @@ export class TransactionsByCategoryComponent {
     scrollHeight: 'flex',
     emptyKey: 'transactions.byCategory.empty',
     quickFilter: false,
-    // A transaction shows the list tab's details (its own columns) and can be edited or assigned; category
-    // rows have no menu.
-    getContextMenuItems: ({ row }): readonly DataTableMenuItem[] => {
+    // Only transaction leaves can be ticked; category rows have no checkbox.
+    rowSelection: {
+      mode: 'multiple',
+      isRowSelectable: (row: CategoryReportRow): boolean => row.kind === 'transaction',
+    },
+    // A transaction shows the list tab's details (its own columns) and can be edited or assigned;
+    // category rows have no menu. In a multi-row selection the entries act on the selected
+    // transactions (see `TransactionDialogs.menuItems`).
+    getContextMenuItems: ({ row, selectedRows }): readonly DataTableMenuItem[] => {
       if (row.kind !== 'transaction') return [];
       const transaction: TransactionRow = row.transaction;
-      return [
-        showDetailsOf<TransactionRow>(this.store.transactionColumns, transaction),
-        ...this.dialogs.menuItems(transaction),
-      ];
+      return this.dialogs.menuItems({
+        row: transaction,
+        selectedRows: selectedRows.flatMap((selected: CategoryReportRow): TransactionRow[] =>
+          selected.kind === 'transaction' ? [selected.transaction] : [],
+        ),
+        view: showDetailsOf<TransactionRow>(this.store.transactionColumns, transaction),
+        onBulkAssigned: (): void => this.clearSelection(),
+      });
     },
   };
 
@@ -189,6 +208,10 @@ export class TransactionsByCategoryComponent {
   protected swatchColor(row: CategoryReportRow): string | null {
     if (row.kind === 'transaction' || row.category === null) return null;
     return toCssColor(row.category);
+  }
+
+  protected clearSelection(): void {
+    this.selectedRowIds.set(new Set());
   }
 
   // See `TransactionsListComponent.asAmount`: the "amount" renderer is only wired to number columns.

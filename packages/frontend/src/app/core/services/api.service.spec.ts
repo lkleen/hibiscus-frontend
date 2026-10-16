@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type {
+  TransactionAssignRequest,
   TransactionRow,
   TransactionUpdateRequest,
   TransactionsResponse,
@@ -79,6 +80,22 @@ describe('ApiService', () => {
 
     const req = httpMock.expectOne('/api/transactions/42');
     expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual(request);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('posts the bulk category assignment', () => {
+    const request: TransactionAssignRequest = {
+      items: [
+        { id: 1, expected: { kommentar: null, umsatztyp_id: 3 } },
+        { id: 2, expected: { kommentar: 'Rent', umsatztyp_id: null } },
+      ],
+      umsatztyp_id: 7,
+    };
+    service.assignCategory(request).subscribe();
+
+    const req = httpMock.expectOne('/api/transactions/assign-category');
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(request);
     req.flush(null, { status: 204, statusText: 'No Content' });
   });

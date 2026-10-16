@@ -180,10 +180,22 @@ export type DataTableAutoSizeStrategy =
   | { readonly type: 'fitProvidedWidth'; readonly width: number } // px
   | { readonly type: 'fitCellContents' };
 
-/** `options.rowSelection`; `'single'` is the only mode. */
-export interface DataTableRowSelection {
-  readonly mode: 'single';
-}
+/**
+ * `options.rowSelection`. `'single'`: click a row to select it (`selectedRowId`). `'multiple'`
+ * (ag-Grid's `multiRow` with `checkboxes` and `headerCheckbox`): a leading checkbox column, a
+ * tri-state header checkbox over every row that passes the current filters (all pages; in tree
+ * mode every filtered node, collapsed or not), Ctrl/Cmd-click to toggle a row and — in the flat
+ * table only — Shift-click to add the range from the last toggled row. The ids (`getRowId`) are
+ * the component's two-way `selectedRowIds`, always pruned to the selectable rows that pass the
+ * filters. `isRowSelectable` is ag-Grid's: a row it rejects has no checkbox and is never selected
+ * (default: every row).
+ */
+export type DataTableRowSelection<Row> =
+  | { readonly mode: 'single' }
+  | {
+      readonly mode: 'multiple';
+      readonly isRowSelectable?: (row: Row) => boolean;
+    };
 
 /**
  * Grid-level options, modelled on ag-Grid's `GridOptions`. Runtime-changing behaviour is not an
@@ -209,7 +221,7 @@ interface DataTableOptionsBase<Row> {
   /** ag-Grid's `rowSelection: { mode: 'singleRow' }`: clicking (or Enter/Space on) a row selects
    *  it, flat and tree alike. Off when unset (default); the selected row's id (`getRowId`) is the
    *  component's two-way `selectedRowId`. Clicking the selected row again keeps it selected. */
-  readonly rowSelection?: DataTableRowSelection;
+  readonly rowSelection?: DataTableRowSelection<Row>;
   /** ag-Grid's `getContextMenuItems`: the entries of the row context menu (right-click), called
    *  with the raw row and the clicked cell's column. Unset (default) or an empty list for a cell:
    *  no custom menu, the browser's own one shows. */
@@ -283,6 +295,10 @@ export interface DataTableContextMenuParams<Row> {
   readonly column: DataTableVisibleColDef<Row, unknown>;
   /** That column's `valueGetter` result. */
   readonly value: unknown;
+  /** The raw rows of `selectedRowIds` in display order; empty unless `rowSelection` is
+   *  `'multiple'`. Does not depend on the clicked row — a caller decides whether the clicked row
+   *  is part of it. */
+  readonly selectedRows: readonly Row[];
 }
 
 /** ag-Grid's `MenuItemDef`; `action` closes over the params like in ag-Grid. */

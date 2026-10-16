@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { Dialog } from '@angular/cdk/dialog';
 import { ApplicationRef } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
@@ -23,7 +24,7 @@ describe('TransactionAssignDialogComponent', () => {
   let service: TransactionDialogs;
   let appRef: ApplicationRef;
 
-  async function setup(row: TransactionRow): Promise<void> {
+  async function setup(...rows: TransactionRow[]): Promise<void> {
     installMutationObserverMock();
     TestBed.configureTestingModule({
       providers: [
@@ -37,7 +38,7 @@ describe('TransactionAssignDialogComponent', () => {
     service = TestBed.inject(TransactionDialogs);
     appRef = TestBed.inject(ApplicationRef);
     httpMock.expectOne('/api/accounts').flush([account()]);
-    httpMock.expectOne('/api/transactions').flush(transactionsResponse([row]));
+    httpMock.expectOne('/api/transactions').flush(transactionsResponse(rows));
     httpMock
       .expectOne('/api/categories')
       .flush([
@@ -59,12 +60,15 @@ describe('TransactionAssignDialogComponent', () => {
     appRef.tick();
   }
 
-  function storeRow(): TransactionRow {
-    return TestBed.inject(TransactionsStore).transactions()[0];
+  function storeRow(index = 0): TransactionRow {
+    return TestBed.inject(TransactionsStore).transactions()[index];
   }
 
-  async function open(): Promise<HTMLElement> {
-    service.openAssign(storeRow());
+  async function open(onAssigned?: () => void, count = 1): Promise<HTMLElement> {
+    service.openAssign(
+      Array.from({ length: count }, (_: unknown, index: number) => storeRow(index)),
+      onAssigned,
+    );
     await settle();
     return dialog();
   }
@@ -91,8 +95,8 @@ describe('TransactionAssignDialogComponent', () => {
     return found;
   }
 
-  function patch(): TestRequest {
-    return httpMock.expectOne({ method: 'PATCH', url: '/api/transactions/7' });
+  function post(): TestRequest {
+    return httpMock.expectOne({ method: 'POST', url: '/api/transactions/assign-category' });
   }
 
   const assigned: Partial<TransactionRow> = { id: 7, kommentar: 'Old note', umsatztyp_id: 2 };
@@ -112,10 +116,10 @@ describe('TransactionAssignDialogComponent', () => {
 
     treeRow('Food').click();
     await settle();
-    const request: TestRequest = patch();
+    const request: TestRequest = post();
     expect(request.request.body).toEqual({
-      expected: { kommentar: 'Old note', umsatztyp_id: 2 },
-      next: { kommentar: 'Old note', umsatztyp_id: 3 },
+      items: [{ id: 7, expected: { kommentar: 'Old note', umsatztyp_id: 2 } }],
+      umsatztyp_id: 3,
     });
     request.flush(null, { status: 204, statusText: 'No Content' });
     await settle();
@@ -132,7 +136,7 @@ describe('TransactionAssignDialogComponent', () => {
     treeRow('Rent').click();
     await settle();
 
-    httpMock.expectNone('/api/transactions/7');
+    httpMock.expectNone('/api/transactions/assign-category');
     expect(dialog()).toBeTruthy();
   });
 
@@ -141,11 +145,8 @@ describe('TransactionAssignDialogComponent', () => {
     await open();
 
     button('No category').click();
-    const request: TestRequest = patch();
-    expect((request.request.body as { next: unknown }).next).toEqual({
-      kommentar: 'Old note',
-      umsatztyp_id: null,
-    });
+    const request: TestRequest = post();
+    expect((request.request.body as { umsatztyp_id: unknown }).umsatztyp_id).toBeNull();
     request.flush(null, { status: 204, statusText: 'No Content' });
     await settle();
 
@@ -169,7 +170,7 @@ describe('TransactionAssignDialogComponent', () => {
     treeRow('Living').click();
     await settle();
 
-    patch().flush(null, { status: 204, statusText: 'No Content' });
+    post().flush(null, { status: 204, statusText: 'No Content' });
     await settle();
     expect(storeRow().umsatztyp_id).toBe(3);
   });
@@ -180,14 +181,14 @@ describe('TransactionAssignDialogComponent', () => {
 
     treeRow('Food').click();
     await settle();
-    patch().flush({ error: 'conflict' }, { status: 409, statusText: 'Conflict' });
+    post().flush({ error: 'conflict' }, { status: 409, statusText: 'Conflict' });
     await settle();
 
     expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('changed elsewhere');
     expect(button('No category').disabled).toBe(true);
     treeRow('Living').click();
     await settle();
-    httpMock.expectNone('/api/transactions/7');
+    httpMock.expectNone('/api/transactions/assign-category');
     expect(storeRow().umsatztyp_id).toBe(2);
   });
 
@@ -197,15 +198,82 @@ describe('TransactionAssignDialogComponent', () => {
 
     treeRow('Food').click();
     await settle();
-    patch().flush(null, { status: 500, statusText: 'Server Error' });
+    post().flush(null, { status: 500, statusText: 'Server Error' });
     await settle();
     expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('Could not save');
 
     treeRow('Food').click();
     await settle();
-    patch().flush(null, { status: 204, statusText: 'No Content' });
+    post().flush(null, { status: 204, statusText: 'No Content' });
     await settle();
     expect(storeRow().umsatztyp_id).toBe(3);
+  });
+
+  describe('several rows', () => {
+    const rowA: TransactionRow = transaction({ id: 7, umsatztyp_id: 2, kommentar: 'A' });
+    const rowB: TransactionRow = transaction({ id: 8, umsatztyp_id: 3, kommentar: 'B' });
+
+    it('shows the count and "Mixed categories" without a preselection', async () => {
+      await setup(rowA, rowB);
+      await open(undefined, 2);
+      expect(dialog().querySelector('.transaction-assign__summary')?.textContent?.trim()).toBe(
+        '2 transactions',
+      );
+      expect(dialog().querySelector('[role="status"]')?.textContent?.trim()).toBe(
+        'Mixed categories',
+      );
+      expect(button('No category').disabled).toBe(false);
+    });
+
+    it('a pick saves all rows in one request, calls onAssigned and closes', async () => {
+      await setup(rowA, rowB);
+      const onAssigned: Mock<() => void> = vi.fn<() => void>();
+      await open(onAssigned, 2);
+      treeRow('Living').click();
+      await settle();
+      const request: TestRequest = post();
+      expect(request.request.body).toEqual({
+        items: [
+          { id: 7, expected: { kommentar: 'A', umsatztyp_id: 2 } },
+          { id: 8, expected: { kommentar: 'B', umsatztyp_id: 3 } },
+        ],
+        umsatztyp_id: 1,
+      });
+      expect(onAssigned).not.toHaveBeenCalled();
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+      expect(onAssigned).toHaveBeenCalledTimes(1);
+      expect(storeRow(0).umsatztyp_id).toBe(1);
+      expect(storeRow(1).umsatztyp_id).toBe(1);
+      expect(document.querySelector('app-transaction-assign-dialog')).toBeNull();
+    });
+
+    it('picking the category all rows share does nothing', async () => {
+      await setup(transaction({ id: 7, umsatztyp_id: 2 }), transaction({ id: 8, umsatztyp_id: 2 }));
+      await open(undefined, 2);
+      expect(dialog().querySelector('[role="status"]')?.textContent?.trim()).toBe('Living / Rent');
+      treeRow('Rent').click();
+      await settle();
+      httpMock.expectNone('/api/transactions/assign-category');
+    });
+
+    it('a 409 reports how many rows changed and does not call onAssigned', async () => {
+      await setup(rowA, rowB);
+      const onAssigned: Mock<() => void> = vi.fn<() => void>();
+      await open(onAssigned, 2);
+      treeRow('Living').click();
+      await settle();
+      post().flush(
+        { error: 'conflict', conflictIds: [8] },
+        { status: 409, statusText: 'Conflict' },
+      );
+      await settle();
+      expect(dialog().querySelector('[role="alert"]')?.textContent).toContain(
+        '1 of the selected transactions were changed elsewhere',
+      );
+      expect(onAssigned).not.toHaveBeenCalled();
+      expect(storeRow(0).umsatztyp_id).toBe(2);
+    });
   });
 
   it('Cancel closes without a request', async () => {

@@ -65,3 +65,21 @@ export interface TransactionUpdateRequest {
   readonly expected: TransactionEditableFields;
   readonly next: TransactionEditableFields;
 }
+
+/** One row of a bulk category assignment: its id and the values the page has for it. */
+export interface TransactionAssignItem {
+  readonly id: number;
+  readonly expected: TransactionEditableFields;
+}
+
+/** Body of `POST /api/transactions/assign-category`. `kommentar` is never changed. */
+export interface TransactionAssignRequest {
+  readonly items: readonly TransactionAssignItem[];
+  readonly umsatztyp_id: number | null;
+}
+
+/** `409` body: the rows that no longer hold `expected` (or no longer exist). */
+export interface TransactionAssignConflict {
+  readonly error: 'conflict';
+  readonly conflictIds: readonly number[];
+}

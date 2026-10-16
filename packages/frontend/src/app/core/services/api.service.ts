@@ -9,6 +9,7 @@ import type {
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type {
+  TransactionAssignRequest,
   TransactionRow,
   TransactionUpdateRequest,
   TransactionsResponse,
@@ -59,6 +60,11 @@ export class ApiService {
   /** Saves an edit to one transaction; the backend answers `204 No Content`, `409` on a stale `expected`. */
   updateTransaction(id: number, request: TransactionUpdateRequest): Observable<void> {
     return this.http.patch<void>(`/api/transactions/${id}`, request);
+  }
+
+  /** Assigns one category to many transactions; `204` on success, `409` when any row's `expected` is stale. */
+  assignCategory(request: TransactionAssignRequest): Observable<void> {
+    return this.http.post<void>('/api/transactions/assign-category', request);
   }
 
   getCategories(): Observable<CategoryRow[]> {

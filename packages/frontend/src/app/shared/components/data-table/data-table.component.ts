@@ -8,6 +8,7 @@ import {
   Component,
   TemplateRef,
   ViewContainerRef,
+  afterRenderEffect,
   computed,
   DestroyRef,
   contentChildren,
@@ -55,6 +56,7 @@ import {
 } from './row-details-dialog/row-details-dialog.component';
 import type {
   DataTableAutoSizeStrategy,
+  DataTableRowSelection,
   DataTableContextMenuParams,
   DataTableMenuItem,
   DataTableMenuItemDef,
@@ -69,6 +71,11 @@ import type {
 /** The `matchMode` name a caller-supplied `quickFilter.matcher` is registered under on this
  *  component's own `FilterService` instance — never on the app-wide `providedIn: 'root'` one. */
 const QUICK_FILTER_MATCH_MODE = 'dataTableQuickFilter';
+
+/** Row clicks that belong to a control inside the row, not to the row (see `onRowClick`). */
+const ROW_CONTROL_SELECTOR: string =
+  'input, button, a, label, select, textarea, ' +
+  '[data-pc-column-resizer="true"], [data-pc-section="columnresizer"], .p-treetable-node-toggle-button';
 
 /**
  * Shape of `p-table`'s `(sortFunction)` payload. PrimeNG types this `EventEmitter<any>` (see
@@ -199,6 +206,15 @@ export class DataTableComponent<Row extends object> {
    */
   readonly selectedRowId = model<string | number | null>(null);
 
+  /**
+   * Two-way: the ids (`options.getRowId`) of the selected rows while `options.rowSelection` is
+   * `{ mode: 'multiple' }`. The table prunes it to the selectable rows that pass the current
+   * filters (external, column and quick filter), so a bulk action never reaches a row the user
+   * cannot see — this includes ids the caller sets for rows that are not in `value()` (yet).
+   * Ignored when `rowSelection` is not `'multiple'`.
+   */
+  readonly selectedRowIds = model<ReadonlySet<string | number>>(new Set());
+
   private readonly cellTemplates = contentChildren(DataTableCellDirective<Row>);
   private readonly table = viewChild<Table<Row>>('dt');
   private readonly treeTable = viewChild<TreeTable>('tt');
@@ -240,9 +256,91 @@ export class DataTableComponent<Row extends object> {
     return options;
   });
 
+  /** PrimeNG's own (single) selection; `'multiple'` deliberately bypasses it, see
+   *  `multiSelectionEnabled`. */
   protected readonly rowSelectionEnabled = computed<boolean>(
-    () => this.options().rowSelection !== undefined,
+    () => this.options().rowSelection?.mode === 'single',
   );
+
+  /**
+   * `{ mode: 'multiple' }` is driven by this component's own state (`selectedRowIds`), not by
+   * PrimeNG's selection API. PrimeNG's multiple selection is page-scoped (its header checkbox
+   * covers the rendered page only), has no per-row "not selectable" and no tree-leaf notion, and
+   * keeps the selected *objects* (the column-accessor proxies), which our id-based, pruned model
+   * would have to be mirrored into on every filter and data change. Own state needs none of that.
+   */
+  protected readonly multiSelectionEnabled = computed<boolean>(
+    () => this.options().rowSelection?.mode === 'multiple',
+  );
+
+  /** The leading checkbox column's cell: it shifts every PrimeNG column index by one. */
+  private readonly selectColumnCount = computed<number>(() =>
+    this.multiSelectionEnabled() ? 1 : 0,
+  );
+
+  /** Bumped whenever PrimeNG re-filters or re-sorts (`(onFilter)`/`(onSort)`): `displayRows`
+   *  reads PrimeNG's filtered result, which is not a signal. */
+  private readonly viewVersion = signal(0);
+
+  /**
+   * The raw rows that pass every filter, in display (sorted) order, across all pages — the
+   * universe of the header checkbox, the range select and the pruning. Flat: PrimeNG's
+   * `filteredValue`, else the bound rows (which PrimeNG sorts in place). Tree: a pre-order walk of
+   * PrimeNG's `filteredNodes`, else the nodes, collapsed branches included. Every dependency that
+   * changes the result either is a signal read here or bumps `viewVersion`; each evaluation
+   * returns a new array so an in-place re-sort is seen downstream.
+   */
+  private readonly displayRows = computed<readonly Row[]>(() => {
+    this.viewVersion();
+    if (this.treeMode()) {
+      const nodes: readonly TreeNode<Row>[] = this.treeTable()?.filteredNodes ?? this.treeNodes();
+      const rows: Row[] = [];
+      const visit = (node: TreeNode<Row>): void => {
+        rows.push(getRawRow(requireNodeData(node)));
+        node.children?.forEach(visit);
+      };
+      nodes.forEach(visit);
+      return rows;
+    }
+    const source: readonly Row[] = this.table()?.filteredValue ?? this.boundRows();
+    return source.map((row: Row): Row => getRawRow(row));
+  });
+
+  /** `displayRows` without the rows `isRowSelectable` rejects. */
+  private readonly selectableRows = computed<readonly Row[]>(() => {
+    if (!this.multiSelectionEnabled()) return [];
+    return this.displayRows().filter((row: Row): boolean => this.isRowSelectable(row));
+  });
+
+  private readonly selectableIds = computed<ReadonlySet<string | number>>(() => {
+    const getRowId: (row: Row) => string | number = this.options().getRowId;
+    return new Set(this.selectableRows().map(getRowId));
+  });
+
+  /** The selected raw rows in display order (what `getContextMenuItems` gets). */
+  private readonly selectedRows = computed<readonly Row[]>(() => {
+    const selected: ReadonlySet<string | number> = this.selectedRowIds();
+    const getRowId: (row: Row) => string | number = this.options().getRowId;
+    return this.selectableRows().filter((row: Row): boolean => selected.has(getRowId(row)));
+  });
+
+  /** Header checkbox state: over the selectable rows that pass the filters. */
+  protected readonly headerSelection = computed<{
+    readonly total: number;
+    readonly checked: boolean;
+    readonly indeterminate: boolean;
+  }>(() => {
+    const total: number = this.selectableIds().size;
+    const count: number = this.selectedRows().length;
+    return {
+      total,
+      checked: total > 0 && count === total,
+      indeterminate: count > 0 && count < total,
+    };
+  });
+
+  /** Anchor of the Shift-click range: the row last toggled (not state: never rendered). */
+  private rangeAnchorId: string | number | null = null;
 
   /** The flat table's selected row as PrimeNG sees it (the column-accessor proxy), or `null`. */
   protected readonly selectedFlatRow = computed<Row | null>(() => {
@@ -357,6 +455,7 @@ export class DataTableComponent<Row extends object> {
         row: target.row,
         column: target.column,
         value: this.cellView(target.column, target.row).value,
+        selectedRows: this.selectedRows(),
       };
       return getItems(params).map((item: DataTableMenuItem): DataTableMenuItemDef | 'separator' => {
         if (item === 'separator') return item;
@@ -369,7 +468,9 @@ export class DataTableComponent<Row extends object> {
     },
   );
 
-  protected readonly emptyColspan = computed<number>(() => this.visibleColumns().length);
+  protected readonly emptyColspan = computed<number>(
+    () => this.visibleColumns().length + this.selectColumnCount(),
+  );
 
   protected readonly quickFilterEnabled = computed<boolean>(
     () => this.options().quickFilter !== false,
@@ -576,6 +677,93 @@ export class DataTableComponent<Row extends object> {
     tree.preventSelectionSetterPropagation = false;
   }
 
+  /** `(onFilter)`/`(onSort)` of both PrimeNG tables. */
+  protected onViewChange(): void {
+    this.viewVersion.update((version: number): number => version + 1);
+  }
+
+  private isRowSelectable(row: Row): boolean {
+    const selection: DataTableRowSelection<Row> | undefined = this.options().rowSelection;
+    if (selection?.mode !== 'multiple') {
+      throw new Error("data-table: row selectability asked without rowSelection 'multiple'");
+    }
+    return selection.isRowSelectable?.(row) ?? true;
+  }
+
+  protected isRowChecked(row: Row): boolean {
+    return this.selectedRowIds().has(this.options().getRowId(getRawRow(row)));
+  }
+
+  /** Whether the row gets a checkbox (`isRowSelectable`). */
+  protected isRowCheckable(row: Row): boolean {
+    return this.isRowSelectable(getRawRow(row));
+  }
+
+  protected onHeaderCheckboxClick(): void {
+    const next = new Set<string | number>(this.selectedRowIds());
+    const selectAll = !this.headerSelection().checked;
+    for (const id of this.selectableIds()) {
+      if (selectAll) next.add(id);
+      else next.delete(id);
+    }
+    this.selectedRowIds.set(next);
+  }
+
+  /** The row checkbox. Shift extends to the range (flat only), like a Shift-click on the row. */
+  protected onRowCheckboxClick(event: MouseEvent, row: Row): void {
+    this.toggleRow(getRawRow(row), event.shiftKey);
+  }
+
+  /** A click on the row itself: only Ctrl/Cmd (toggle) and Shift (range) do anything. Clicks that
+   *  belong to a control inside the row (checkbox, tree toggler, inputs, the resize handle) are
+   *  theirs. */
+  protected onRowClick(event: MouseEvent, row: Row): void {
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) return;
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest(ROW_CONTROL_SELECTOR)) return;
+    const raw: Row = getRawRow(row);
+    if (!this.isRowSelectable(raw)) return;
+    this.toggleRow(raw, event.shiftKey && !event.ctrlKey && !event.metaKey);
+  }
+
+  /** Stops the browser's text selection from a Shift-click, which would paint over the range. */
+  protected onRowMouseDown(event: MouseEvent): void {
+    if (event.shiftKey && event.target instanceof Element) {
+      if (!event.target.closest(ROW_CONTROL_SELECTOR)) event.preventDefault();
+    }
+  }
+
+  /**
+   * Toggles `raw`, or — `range`, flat table, with an anchor that is still displayed — adds every
+   * selectable row between the anchor and `raw` in display order. The clicked row becomes the
+   * anchor either way. Reads `selectedRowIds()` at call time and writes one new set, so two clicks
+   * never overwrite each other.
+   */
+  private toggleRow(raw: Row, range: boolean): void {
+    const getRowId: (row: Row) => string | number = this.options().getRowId;
+    const id: string | number = getRowId(raw);
+    const next = new Set<string | number>(this.selectedRowIds());
+    const rows: readonly Row[] = this.displayRows();
+    const anchorIndex: number =
+      range && !this.treeMode() && this.rangeAnchorId !== null
+        ? rows.findIndex((row: Row): boolean => getRowId(row) === this.rangeAnchorId)
+        : -1;
+    if (anchorIndex === -1) {
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+    } else {
+      const clickedIndex: number = rows.findIndex((row: Row): boolean => getRowId(row) === id);
+      if (clickedIndex === -1) throw new Error('data-table: toggled row is not displayed');
+      const from: number = Math.min(anchorIndex, clickedIndex);
+      const to: number = Math.max(anchorIndex, clickedIndex);
+      for (const row of rows.slice(from, to + 1)) {
+        if (this.isRowSelectable(row)) next.add(getRowId(row));
+      }
+    }
+    this.rangeAnchorId = id;
+    this.selectedRowIds.set(next);
+  }
+
   protected readonly rowTrackBy = (_index: number, row: Row): string | number =>
     this.options().getRowId(getRawRow(row));
 
@@ -618,6 +806,20 @@ export class DataTableComponent<Row extends object> {
 
     // The details dialog renders this component's `#cellContent` template, so it must not outlive it.
     this.destroyRef.onDestroy((): void => this.detailsRef?.close());
+
+    // Prune the selection to the selectable rows that pass the filters. After render, not in an
+    // `effect`: PrimeNG applies a new `[value]` and re-filters during change detection, so only
+    // then is its filtered result current. `kept` is a subset of `selected`, so comparing sizes is
+    // exact and the write cannot retrigger itself.
+    afterRenderEffect((): void => {
+      if (!this.multiSelectionEnabled()) return;
+      const selected: ReadonlySet<string | number> = this.selectedRowIds();
+      const allowed: ReadonlySet<string | number> = this.selectableIds();
+      const kept = new Set<string | number>(
+        [...selected].filter((id: string | number): boolean => allowed.has(id)),
+      );
+      if (kept.size !== selected.size) this.selectedRowIds.set(kept);
+    });
 
     // Tree controls into the page's toolbar row, when it offers one. On a tab switch the next
     // table may attach before this one is destroyed: it detaches whatever is there, and this
@@ -803,10 +1005,13 @@ export class DataTableComponent<Row extends object> {
    * self-corrects.
    */
   protected onColReorder(event: DataTableColReorderEvent): void {
-    const { dragIndex, dropIndex } = event;
-    if (dragIndex === undefined || dropIndex === undefined) {
+    const { dragIndex: rawDragIndex, dropIndex: rawDropIndex } = event;
+    if (rawDragIndex === undefined || rawDropIndex === undefined) {
       throw new Error('data-table: onColReorder event missing dragIndex/dropIndex');
     }
+    // PrimeNG counts header cells, the checkbox column's included (it is not reorderable itself).
+    const dragIndex: number = rawDragIndex - this.selectColumnCount();
+    const dropIndex: number = rawDropIndex - this.selectColumnCount();
     const columns = [...this.visibleColumns()];
     if (
       dragIndex < 0 ||

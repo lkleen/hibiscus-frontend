@@ -3,6 +3,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type {
+  TransactionAssignItem,
+  TransactionAssignRequest,
   TransactionEditableFields,
   TransactionRow,
   TransactionUpdateRequest,
@@ -203,6 +205,30 @@ export class TransactionsStore {
       tap((): void => {
         row.kommentar = next.kommentar;
         row.umsatztyp_id = next.umsatztyp_id;
+        this.revision.update((value: number) => value + 1);
+      }),
+    );
+  }
+
+  /**
+   * Assigns one category (or none, when `umsatztypId` is null) to several stored transactions in a
+   * single request. Each item carries the row's current `kommentar` and `umsatztyp_id` as
+   * `expected`, so a stale row makes the backend answer `409`. On success every row is mutated in
+   * place and `revision` is bumped once, like `saveTransaction`. Errors propagate, and the rows
+   * stay untouched.
+   */
+  assignCategory(rows: readonly TransactionRow[], umsatztypId: number | null): Observable<void> {
+    if (rows.length === 0) throw new Error('assignCategory needs at least one transaction');
+    const items: TransactionAssignItem[] = rows.map(
+      (row: TransactionRow): TransactionAssignItem => ({
+        id: row.id,
+        expected: { kommentar: row.kommentar, umsatztyp_id: row.umsatztyp_id },
+      }),
+    );
+    const request: TransactionAssignRequest = { items, umsatztyp_id: umsatztypId };
+    return this.api.assignCategory(request).pipe(
+      tap((): void => {
+        for (const row of rows) row.umsatztyp_id = umsatztypId;
         this.revision.update((value: number) => value + 1);
       }),
     );
