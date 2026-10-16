@@ -5,11 +5,13 @@ import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { categoryPaths } from '../../core/utils/category-path';
 import { DateRange, isInRange } from '../../core/utils/date-range';
 import { quickFilterMatches } from '../../shared/components/data-table/data-table.defaults';
 import {
   colDef,
   type DataTableColDef,
+  type DataTableMenuItem,
   type DataTableOptions,
 } from '../../shared/components/data-table/data-table.model';
 
@@ -46,6 +48,11 @@ export class TransactionsStore {
 
   readonly accountsById = computed<ReadonlyMap<number, AccountRow>>(
     () => new Map(this.accounts().map((account: AccountRow) => [account.id, account])),
+  );
+
+  /** Every category's root-to-leaf name path, computed once per load rather than per cell. */
+  readonly categoryPathsById = computed<ReadonlyMap<number, string>>(() =>
+    categoryPaths(this.categories()),
   );
 
   // Every lookup below is a `valueGetter` calling straight into the live `accountsById()`
@@ -102,6 +109,16 @@ export class TransactionsStore {
     { colId: 'art', headerKey: 'transactions.colBookingType' },
     { colId: 'gvcode', headerKey: 'transactions.colTransactionCode' },
     { colId: 'endtoendid', headerKey: 'transactions.colEndToEndId' },
+    // The *stored* category only, resolved like `konto_id` above — not the pattern-matched one
+    // the by-category tab groups by (skill §2.5).
+    colDef<TransactionRow, string | null>({
+      colId: 'umsatztyp_path',
+      headerKey: 'transactions.colCategory',
+      valueGetter: (row) =>
+        row.umsatztyp_id === null ? null : (this.categoryPathsById().get(row.umsatztyp_id) ?? null),
+    }),
+    { colId: 'kommentar', headerKey: 'transactions.colComment' },
+    { colId: 'flags', headerKey: 'transactions.colFlags', filter: 'numeric' },
     {
       // The column exists only to carry the id tie-break for `listOptions.defaultSort` below.
       colId: 'id',
@@ -123,6 +140,7 @@ export class TransactionsStore {
     scrollHeight: 'flex',
     emptyKey: 'transactions.empty',
     quickFilter: false,
+    getContextMenuItems: (): readonly DataTableMenuItem[] => ['showDetails'],
   };
 
   /**

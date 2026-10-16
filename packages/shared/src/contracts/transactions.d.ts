@@ -26,7 +26,6 @@ export interface TransactionRow {
   art: string | null;
   gvcode: string | null;
   endtoendid: string | null;
-  /** Served for Hibiscus-style category pattern matching and not displayed. */
   kommentar: string | null;
   /** Served for Hibiscus-style category pattern matching and not displayed. */
   purposecode: string | null;
@@ -36,7 +35,10 @@ export interface TransactionRow {
   mandateid: string | null;
   /** Served for Hibiscus-style category pattern matching and not displayed. */
   creditorid: string | null;
+  /** The stored category (`umsatztyp.id`); shown as that category's name. */
   umsatztyp_id: number | null;
+  /** Hibiscus's bitfield, shown as the stored number. */
+  flags: number | null;
 }
 
 /** A `TransactionRow` column name — the DB column name. */

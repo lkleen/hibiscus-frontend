@@ -101,7 +101,9 @@ _holder_ (the same on every account); an account's own label is `bezeichnung`.
 
 The transactions table shows every meaningful `umsatz` column as stored — the ids are the only
 values it resolves: `konto_id` to the account's holder, BIC, account number and label (four plain
-columns looked up from `/api/accounts`). `umsatztyp_id` is served but not shown. What the text
+columns looked up from `/api/accounts`) and `umsatztyp_id` to the stored category's root-to-leaf path (from
+`/api/categories`; not the pattern-matched category of the by-category tab). `kommentar` and
+`flags` are shown as stored. What the text
 columns contain differs by account and over time (bank/Hibiscus import formats), so the table does not interpret them.
 
 ### User settings
@@ -183,9 +185,9 @@ implements this exactly, including Hibiscus's comma-split non-regex patterns and
 a documented exception to the transactions-table skill's "never interpret" rule, scoped to that
 grouping logic only.
 
-**Served but not displayed.** Five columns are served for category matching but not shown in either
-tab: `kommentar`, `purposecode`, `mandateid`, `creditorid`, `customerref`. These appear in the
-assignment patterns as-is, used as searchable fields in `category-assignment.ts`.
+**Served but not displayed.** Four columns are served for category matching but not shown in either
+tab: `purposecode`, `mandateid`, `creditorid`, `customerref`. These (and the displayed `kommentar`)
+appear in the assignment patterns as-is, used as searchable fields in `category-assignment.ts`.
 
 ### Categories page
 

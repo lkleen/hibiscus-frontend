@@ -138,3 +138,65 @@
     outline-offset: 2px;
   }
 }
+
+// The row context menu (rendered in a CDK overlay from this component's own template, so it carries
+// this component's encapsulation attribute). Panel styled like `user-menu`'s.
+.data-table-menu {
+  --data-table-menu-bg: var(--surface-overlay);
+  --data-table-menu-shadow: var(--shadow-overlay);
+  --data-table-menu-radius: var(--radius-base);
+
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 10rem;
+  padding: 0.25rem;
+  background: var(--data-table-menu-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--data-table-menu-radius);
+  box-shadow: var(--data-table-menu-shadow);
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.data-table-menu__separator {
+  margin-block: 0.25rem;
+  border: none;
+  border-block-start: 1px solid var(--surface-border);
+}
+
+.data-table-menu__item {
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--data-table-menu-radius);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+
+  &:disabled {
+    color: var(--text-muted);
+    cursor: default;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background var(--transition-duration) ease;
+  }
+}

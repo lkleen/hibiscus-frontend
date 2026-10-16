@@ -43,14 +43,23 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
 - Only ids are resolved to what they identify: `konto_id` → the account's own columns, added as
   four plain columns (holder `name`, `bic`, `kontonummer`, `bezeichnung`) looked up from
   `GET /api/accounts` by `konto_id` (`konto.name` is the holder, the same on every account);
-  The `konto_id` itself is not shown; `umsatztyp_id` (category) is served but not shown.
+  The `konto_id` itself is not shown. `umsatztyp_id` → the **stored** category's path from its root
+  (`Living / Food / Supermarket`, names joined by `CATEGORY_PATH_SEPARATOR` in
+  `core/utils/category-path.ts`), looked up from `GET /api/categories` by `umsatztyp_id` and the
+  `parent_id` chain (one column; the id itself is not shown). This is not the
+  pattern-matched category of §2.5 — a transaction without a stored id shows the dash.
 - Show every **meaningful** column (filled on real data, not an empty legacy column); omit
-  never-filled ones (`empfaenger_name2`, `primanota`, `flags`, `addkey`, `txid`), plus `id`,
-  `checksum` and `umsatztyp_id`. Five columns are served for category matching (in the by-category
-  view) but not displayed in either tab: `kommentar`, `purposecode`, `mandateid`, `creditorid`,
-  `customerref` (almost always `NONREF`).
+  never-filled ones (`empfaenger_name2`, `primanota`, `addkey`, `txid`), plus `id` and
+  `checksum`. `kommentar` and `flags` are shown as stored (`flags` as the raw number, no bit
+  decoding). Four columns are served for category matching (in the by-category view) but not
+  displayed in either tab: `purposecode`, `mandateid`, `creditorid`, `customerref` (almost always
+  `NONREF`).
 - Header labels come from the translations (`en.json` and `de.json`), never from field names.
   Labels must stay true to the raw column (`Purpose 1/2/3`, not "Type"/"Purpose").
+- The row context menu "Show" opens a details dialog with every displayed column of the list tab
+  (same display rules; the four matching-only fields stay hidden). The by-category tab offers it on
+  transaction rows with the same columns (`showDetailsOf(store.transactionColumns, …)`); its
+  category rows keep the browser's own menu.
 
 ## 2.5. Category assignment (documented exception)
 

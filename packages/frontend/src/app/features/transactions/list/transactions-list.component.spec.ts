@@ -4,8 +4,10 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
+import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { LocaleService } from '../../../core/services/locale.service';
+import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
@@ -20,6 +22,7 @@ function wait(ms: number): Promise<void> {
 interface Loaded {
   accounts?: AccountRow[];
   items?: TransactionRow[];
+  categories?: CategoryRow[];
 }
 
 // Column order in the `#body` template — used to pick a cell out of a row by index rather than
@@ -63,11 +66,11 @@ describe('TransactionsListComponent', () => {
   }
 
   /** Starts the component, answers its requests and lets the table render. */
-  async function load({ accounts = [], items = [] }: Loaded = {}): Promise<void> {
+  async function load({ accounts = [], items = [], categories = [] }: Loaded = {}): Promise<void> {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush(accounts);
     httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));
-    httpMock.expectOne('/api/categories').flush([]);
+    httpMock.expectOne('/api/categories').flush(categories);
     await settle();
   }
 
@@ -121,6 +124,22 @@ describe('TransactionsListComponent', () => {
     expect(text).toContain('2026-09-01');
   });
 
+  it('shows the stored category as its path, and the comment and flags as stored', async () => {
+    await load({
+      categories: [
+        categoryRow({ id: 6, name: 'Living', parent_id: null }),
+        categoryRow({ id: 7, name: 'Groceries', parent_id: 6 }),
+      ],
+      items: [transaction({ umsatztyp_id: 7, kommentar: 'Checked', flags: 2 })],
+    });
+
+    const row: HTMLTableRowElement = bodyRows()[0];
+    const cells: string[] = Array.from(row.querySelectorAll('td')).map(
+      (cell: HTMLTableCellElement) => cell.textContent?.trim() ?? '',
+    );
+    expect(cells.slice(-3)).toEqual(['Living / Groceries', 'Checked', '2']);
+  });
+
   it('shows a dash in the columns a transaction has no value for', async () => {
     await load({ items: [transaction({ empfaenger_name: null, zweck: '', zweck3: null })] });
 
@@ -129,8 +148,8 @@ describe('TransactionsListComponent', () => {
     );
     // The four account columns (account unknown here) and every text column without a value fall
     // back to the dash: recipient name/account/bank, the three purposes, booking type, transaction
-    // code, end-to-end id, balance.
-    expect(dashes.length).toBe(14);
+    // code, end-to-end id, balance, category, comment and flags.
+    expect(dashes.length).toBe(17);
   });
 
   it('sizes the table with a min-width hint and no per-column fixed widths', async () => {
@@ -145,7 +164,7 @@ describe('TransactionsListComponent', () => {
     expect(table.style.width).toBe('max-content');
 
     const headerCells = Array.from(root.querySelectorAll('thead tr:first-child th'));
-    expect(headerCells.length).toBe(17);
+    expect(headerCells.length).toBe(20);
     for (const cell of headerCells) {
       expect((cell as HTMLElement).style.width).toBe('');
       expect((cell as HTMLElement).getAttribute('width')).toBeNull();
@@ -184,6 +203,9 @@ describe('TransactionsListComponent', () => {
       'Buchungsart',
       'Geschäftsvorfallcode',
       'Ende-zu-Ende-Referenz',
+      'Kategorie',
+      'Kommentar',
+      'Flags',
     ]);
     // The old German pager showed a visible "Seitengröße:" label; PrimeNG's rows-per-page
     // dropdown is ARIA-labelled only, so that exact string no longer appears anywhere — the
@@ -279,6 +301,50 @@ describe('TransactionsListComponent', () => {
     expect(root.textContent).toContain('2026-02-15');
     expect(root.textContent).not.toContain('2026-01-15');
     expect(root.textContent).not.toContain('2026-03-15');
+  });
+
+  it('right-click then Show lists the transaction columns in the details dialog', async () => {
+    await load({
+      accounts: [account({ id: 1, name: 'Jane Doe' })],
+      items: [transaction({ zweck: 'Direct debit', empfaenger_name: 'Supermarket' })],
+    });
+
+    const cell: HTMLTableCellElement | undefined = bodyRows()[0].children[COL.zweck] as
+      HTMLTableCellElement | undefined;
+    if (!cell) throw new Error('purpose cell not rendered');
+    cell.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
+    );
+    await settle();
+
+    const showItem: HTMLElement | undefined = Array.from(
+      document.querySelectorAll<HTMLElement>('[cdkMenuItem]'),
+    ).find((el: HTMLElement) => el.textContent?.trim() === 'Show');
+    if (!showItem) throw new Error('Show menu item not rendered');
+    showItem.click();
+    await settle();
+
+    const dialog: HTMLElement | null = document.querySelector('app-data-table-row-details');
+    if (!dialog) throw new Error('details dialog not rendered');
+    const labels: string[] = Array.from(dialog.querySelectorAll('.data-table-details__label')).map(
+      (el: Element) => el.textContent?.trim() ?? '',
+    );
+    const values: string[] = Array.from(dialog.querySelectorAll('.data-table-details__value')).map(
+      (el: Element) => el.textContent?.trim() ?? '',
+    );
+    expect(labels.length).toBe(20);
+    expect(labels).toContain('Account holder');
+    expect(values).toContain('Direct debit');
+    expect(values).toContain('Supermarket');
+    expect(values).toContain('Jane Doe');
+
+    const close: HTMLElement | null = dialog.querySelector<HTMLElement>(
+      '.data-table-details__close',
+    );
+    if (!close) throw new Error('close button not rendered');
+    close.click();
+    await settle();
+    expect(document.querySelectorAll('app-data-table-row-details').length).toBe(0);
   });
 
   it('keeps zebra striping enabled for greenbar', async () => {

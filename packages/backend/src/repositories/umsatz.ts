@@ -32,6 +32,7 @@ export const TRANSACTION_COLUMNS: TransactionColumn[] = [
   'mandateid',
   'creditorid',
   'umsatztyp_id',
+  'flags',
 ];
 
 export async function listTransactions(): Promise<TransactionsResponse> {

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { TranslationService } from '../../../core/services/translation.service';
 import { accountLabel } from '../../../core/utils/account-label';
 import { toCssColor } from '../../../core/utils/category-color';
@@ -8,7 +9,9 @@ import { DataTableCellDirective } from '../../../shared/components/data-table/da
 import { DataTableComponent } from '../../../shared/components/data-table/data-table.component';
 import {
   colDef,
+  showDetailsOf,
   type DataTableColDef,
+  type DataTableMenuItem,
   type DataTableOptions,
 } from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
@@ -131,6 +134,11 @@ export class TransactionsByCategoryComponent {
     scrollHeight: 'flex',
     emptyKey: 'transactions.byCategory.empty',
     quickFilter: false,
+    // A transaction shows the list tab's details (its own columns); category rows have no menu.
+    getContextMenuItems: ({ row }): readonly DataTableMenuItem[] =>
+      row.kind === 'transaction'
+        ? [showDetailsOf<TransactionRow>(this.store.transactionColumns, row.transaction)]
+        : [],
   };
 
   private transactionText(

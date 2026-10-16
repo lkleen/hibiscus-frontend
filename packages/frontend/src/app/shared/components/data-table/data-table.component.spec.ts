@@ -6,7 +6,7 @@ import { By } from '@angular/platform-browser';
 import { ColumnFilter, ReorderableColumn, Table } from 'primeng/table';
 import { DataTableComponent } from './data-table.component';
 import type { DataTableColDef, DataTableOptions } from './data-table.model';
-import { colDef } from './data-table.model';
+import { colDef, showDetailsOf } from './data-table.model';
 import { DataTableCellDirective } from './data-table-cell.directive';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 
@@ -989,5 +989,180 @@ describe('DataTableComponent', () => {
 
     const pTable = root.querySelector<HTMLElement>('p-table');
     expect(pTable?.classList.contains('p-datatable-hoverable')).toBe(false);
+  });
+  describe('row context menu', () => {
+    function overlayText(selector: string): HTMLElement[] {
+      return Array.from(document.querySelectorAll<HTMLElement>(selector));
+    }
+
+    function rightClick(cell: Element): MouseEvent {
+      const event: MouseEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 10,
+        clientY: 10,
+      });
+      cell.dispatchEvent(event);
+      return event;
+    }
+
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach((el) => (el.innerHTML = ''));
+    });
+
+    it('30. without getContextMenuItems the native menu is left alone', async () => {
+      host.rows.set([toyRow()]);
+      await settle();
+
+      const event: MouseEvent = rightClick(bodyRows()[0].children[0]);
+      await settle();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(overlayText('.data-table-menu').length).toBe(0);
+    });
+
+    it('31. opens the menu with params, separator, and runs a custom action', async () => {
+      const action = vi.fn();
+      const seen: { row: ToyRow; colId: string; value: unknown }[] = [];
+      host.rows.set([toyRow({ id: 7, name: 'Seven' })]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        getContextMenuItems: (params) => {
+          seen.push({ row: params.row, colId: params.column.colId, value: params.value });
+          return [{ nameKey: 'table.expandAll', action }, 'separator', 'showDetails'];
+        },
+      });
+      await settle();
+
+      rightClick(bodyRows()[0].children[0]);
+      await settle();
+
+      expect(seen[0].row.id).toBe(7);
+      expect(seen[0].colId).toBe('name');
+      expect(seen[0].value).toBe('Seven');
+      expect(overlayText('[cdkMenuItem]').map((el) => el.textContent?.trim())).toEqual([
+        'Expand all',
+        'Show',
+      ]);
+      expect(overlayText('hr[role="separator"]').length).toBe(1);
+
+      overlayText('[cdkMenuItem]')[0].click();
+      await settle();
+      expect(action).toHaveBeenCalledTimes(1);
+      expect(overlayText('.data-table-menu').length).toBe(0);
+    });
+
+    it('32. showDetails lists every visible column with its rendered cell and closes', async () => {
+      host.rows.set([toyRow({ name: 'Detail Name' })]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        getContextMenuItems: () => ['showDetails'],
+      });
+      await settle();
+
+      rightClick(bodyRows()[0].children[0]);
+      await settle();
+      overlayText('[cdkMenuItem]')[0].click();
+      await settle();
+
+      const labels: string[] = overlayText('.data-table-details__label').map(
+        (el) => el.textContent?.trim() ?? '',
+      );
+      expect(labels.length).toBe(6);
+      expect(overlayText('.data-table-details__value')[0].textContent?.trim()).toBe('Detail Name');
+      expect(overlayText('.custom-cell')[0].textContent).toContain('custom:Detail Name');
+
+      overlayText('.data-table-details__close')[0].click();
+      await settle();
+      expect(overlayText('app-data-table-row-details').length).toBe(0);
+    });
+
+    it('34. tree mode: a tree row opens the menu with the raw row and clicked column', async () => {
+      const seen: { id: number; colId: string }[] = [];
+      host.rows.set([toyRow({ id: 3, name: 'Leaf' })]);
+      host.columns.set(host.columnsBase().filter((c) => ['name', 'amount'].includes(c.colId)));
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        treeData: { getParentId: (): null => null, groupColId: 'name' },
+        getContextMenuItems: (params) => {
+          seen.push({ id: params.row.id, colId: params.column.colId });
+          return ['showDetails'];
+        },
+      });
+      await settle();
+
+      rightClick(bodyRows()[0].children[1]);
+      await settle();
+
+      expect(seen).toEqual([{ id: 3, colId: 'amount' }]);
+      expect(overlayText('[cdkMenuItem]').map((el) => el.textContent?.trim())).toEqual(['Show']);
+    });
+
+    it('33. destroying the table closes an open details dialog', async () => {
+      host.rows.set([toyRow()]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        getContextMenuItems: () => ['showDetails'],
+      });
+      await settle();
+      rightClick(bodyRows()[0].children[0]);
+      await settle();
+      overlayText('[cdkMenuItem]')[0].click();
+      await settle();
+      expect(overlayText('app-data-table-row-details').length).toBe(1);
+
+      fixture.destroy();
+      expect(overlayText('app-data-table-row-details').length).toBe(0);
+    });
+
+    it('35. an empty item list for a cell leaves the native menu alone', async () => {
+      host.rows.set([toyRow()]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        getContextMenuItems: () => [],
+      });
+      await settle();
+
+      const event: MouseEvent = rightClick(bodyRows()[0].children[0]);
+      await settle();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(overlayText('.data-table-menu').length).toBe(0);
+    });
+
+    it('36. showDetailsOf lists the given columns of the given record', async () => {
+      interface Other {
+        readonly label: string;
+        readonly secret: string;
+      }
+      const otherColumns: DataTableColDef<Other>[] = [
+        { colId: 'label', headerKey: 'transactions.colRecipient' },
+        { colId: 'secret', hide: true },
+      ];
+      host.rows.set([toyRow({ name: 'Clicked' })]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        getContextMenuItems: () => [
+          showDetailsOf<Other>(otherColumns, { label: 'Other record', secret: 'x' }),
+        ],
+      });
+      await settle();
+
+      rightClick(bodyRows()[0].children[0]);
+      await settle();
+      overlayText('[cdkMenuItem]')[0].click();
+      await settle();
+
+      expect(overlayText('.data-table-details__label').map((el) => el.textContent?.trim())).toEqual(
+        ['Recipient'],
+      );
+      expect(overlayText('.data-table-details__value')[0].textContent?.trim()).toBe('Other record');
+    });
   });
 });

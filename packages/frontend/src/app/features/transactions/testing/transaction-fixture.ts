@@ -30,6 +30,7 @@ export function transaction(overrides: Partial<TransactionRow> = {}): Transactio
     mandateid: null,
     creditorid: null,
     umsatztyp_id: null,
+    flags: null,
     ...overrides,
   };
 }

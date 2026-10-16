@@ -201,6 +201,12 @@ interface DataTableOptionsBase<Row> {
    *  `--app-table-row-hover-bg` (`_primeng-table.scss`). Defaults to `true`, see
    *  `DEFAULT_TABLE_OPTIONS`. */
   readonly rowHover?: boolean;
+  /** ag-Grid's `getContextMenuItems`: the entries of the row context menu (right-click), called
+   *  with the raw row and the clicked cell's column. Unset (default) or an empty list for a cell:
+   *  no custom menu, the browser's own one shows. */
+  readonly getContextMenuItems?: (
+    params: DataTableContextMenuParams<Row>,
+  ) => readonly DataTableMenuItem[];
   /** `false` disables the table's own scroll container (no `scrollable`/`scrollHeight`).
    *  `'flex'` makes the table fill its parent instead of a fixed height; the parent must then be a
    *  flex column with a bounded height (see `data-table.component.scss`). */
@@ -258,6 +264,57 @@ export interface DataTableTreeData<Row> {
   /** ag-Grid's `groupDefaultExpanded`: `-1` expands every level, `0` none, `n` the first `n`
    *  levels. Also what `collapseAll()`/`expandAll()` are relative to. Default `-1`. */
   readonly groupDefaultExpanded?: number;
+}
+
+/** ag-Grid's `GetContextMenuItemsParams`. */
+export interface DataTableContextMenuParams<Row> {
+  /** The raw row. */
+  readonly row: Row;
+  /** The right-clicked cell's column. */
+  readonly column: DataTableVisibleColDef<Row, unknown>;
+  /** That column's `valueGetter` result. */
+  readonly value: unknown;
+}
+
+/** ag-Grid's `MenuItemDef`; `action` closes over the params like in ag-Grid. */
+export interface DataTableMenuItemDef {
+  readonly nameKey: TranslationKey;
+  readonly action: () => void;
+  readonly disabled?: boolean;
+}
+
+/** The `'showDetails'` entry for another record than the clicked row — e.g. the transaction a
+ *  tree leaf wraps, shown with the columns of the table that lists it in full. Build it with
+ *  `showDetailsOf()`. */
+export interface DataTableShowDetailsItem {
+  readonly showDetails: {
+    readonly columns: readonly DataTableColDef<object, unknown>[];
+    readonly row: object;
+  };
+}
+
+/** Built-ins as strings, like ag-Grid's `'copy'`/`'separator'`. `'showDetails'` opens the
+ *  row-details dialog (every visible column: label + rendered cell); `showDetailsOf()` opens it
+ *  for other columns and another row. */
+export type DataTableMenuItem =
+  DataTableMenuItemDef | DataTableShowDetailsItem | 'separator' | 'showDetails';
+
+/**
+ * The "Show" entry for `row`, listing the visible ones of `columns`. Hidden columns are skipped.
+ * Their `cellRenderer` names must be registered on the table that opens the menu (it renders the
+ * dialog's cells). Widens the columns like `colDef()`, for the same reason and with the same
+ * safety argument: the dialog only ever calls these columns' lambdas with this very `row`.
+ */
+export function showDetailsOf<DetailRow extends object>(
+  columns: readonly DataTableColDef<DetailRow, unknown>[],
+  row: DetailRow,
+): DataTableShowDetailsItem {
+  return {
+    showDetails: {
+      columns: columns as unknown as readonly DataTableColDef<object, unknown>[],
+      row,
+    },
+  };
 }
 
 /** The default table: a flat list, optionally paginated. */

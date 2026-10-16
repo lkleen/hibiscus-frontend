@@ -1,4 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { CdkMenu, CdkMenuItem, CdkContextMenuTrigger } from '@angular/cdk/menu';
+import { Dialog, type DialogRef } from '@angular/cdk/dialog';
 import { CdkPortalOutlet, TemplatePortal } from '@angular/cdk/portal';
 import {
   ChangeDetectionStrategy,
@@ -7,6 +9,7 @@ import {
   TemplateRef,
   ViewContainerRef,
   computed,
+  DestroyRef,
   contentChildren,
   effect,
   inject,
@@ -42,9 +45,20 @@ import {
 } from './data-table-tree';
 import type { TreeAggregates } from './data-table-tree';
 import { DataTableToolbarOutlet } from './data-table-toolbar-outlet';
-import { isVisibleColumn } from './data-table.model';
+import { isVisibleColumn, showDetailsOf } from './data-table.model';
+import {
+  DataTableRowDetailsComponent,
+  ROW_DETAILS_BACKDROP_CLASS,
+  ROW_DETAILS_PANEL_CLASS,
+  ROW_DETAILS_TITLE_ID,
+  type DataTableRowDetailsData,
+} from './row-details-dialog/row-details-dialog.component';
 import type {
   DataTableAutoSizeStrategy,
+  DataTableContextMenuParams,
+  DataTableMenuItem,
+  DataTableMenuItemDef,
+  DataTableShowDetailsItem,
   DataTableColDef,
   DataTableFilterType,
   DataTableOptions,
@@ -132,7 +146,14 @@ interface DataTableColReorderEvent {
   templateUrl: './data-table.component.html',
   styleUrl: './data-table.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TableModule, TreeTableModule, NgTemplateOutlet],
+  imports: [
+    TableModule,
+    TreeTableModule,
+    NgTemplateOutlet,
+    CdkContextMenuTrigger,
+    CdkMenu,
+    CdkMenuItem,
+  ],
   providers: [FilterService],
   host: { '[class.data-table-host--fill]': "scrollHeight() === 'flex'" },
 })
@@ -141,12 +162,15 @@ export class DataTableComponent<Row extends object> {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly filterService = inject(FilterService);
   private readonly viewContainerRef = inject(ViewContainerRef);
+  private readonly dialog = inject(Dialog);
+  private readonly destroyRef = inject(DestroyRef);
   /** A page-owned toolbar row for the tree controls (see `DataTableToolbarOutlet`); optional — no
    *  provider means the controls render in this table's own filters form. */
   protected readonly toolbarOutlet: DataTableToolbarOutlet | null = inject(DataTableToolbarOutlet, {
     optional: true,
   });
   private readonly treeActions = viewChild.required<TemplateRef<unknown>>('treeActions');
+  private readonly cellContent = viewChild.required<TemplateRef<unknown>>('cellContent');
 
   readonly value = input.required<readonly Row[]>();
   readonly columns = input.required<readonly DataTableColDef<Row, unknown>[]>();
@@ -273,6 +297,48 @@ export class DataTableComponent<Row extends object> {
 
   protected readonly reorderEnabled = computed<boolean>(
     () => this.options().columnReorder ?? DEFAULT_TABLE_OPTIONS.columnReorder,
+  );
+
+  protected readonly contextMenuEnabled = computed<boolean>(
+    () => this.options().getContextMenuItems !== undefined,
+  );
+
+  /** The cell last right-clicked. Written by the `<td>`'s `contextmenu` handler, which runs before
+   *  the `<tr>`'s CDK trigger opens the menu (bubbling), so the menu always reads the clicked
+   *  cell; a second right-click overwrites it and CDK replaces the open menu. */
+  private readonly contextTarget = signal<{
+    readonly column: DataTableVisibleColDef<Row, unknown>;
+    readonly row: Row;
+  } | null>(null);
+
+  /** The open details dialog, if any. */
+  private detailsRef: DialogRef<void, DataTableRowDetailsComponent<object>> | null = null;
+
+  /** `getContextMenuItems` of the right-clicked cell, with the details entries resolved. Read by
+   *  `onCellContextMenu` (empty: no menu) and by the menu template. */
+  protected readonly contextMenuItems = computed<readonly (DataTableMenuItemDef | 'separator')[]>(
+    () => {
+      const target: { column: DataTableVisibleColDef<Row, unknown>; row: Row } | null =
+        this.contextTarget();
+      if (!target) throw new Error('data-table: context menu opened without a clicked cell');
+      const getItems:
+        ((params: DataTableContextMenuParams<Row>) => readonly DataTableMenuItem[]) | undefined =
+        this.options().getContextMenuItems;
+      if (!getItems) throw new Error('data-table: context menu opened without getContextMenuItems');
+      const params: DataTableContextMenuParams<Row> = {
+        row: target.row,
+        column: target.column,
+        value: this.cellView(target.column, target.row).value,
+      };
+      return getItems(params).map((item: DataTableMenuItem): DataTableMenuItemDef | 'separator' => {
+        if (item === 'separator') return item;
+        if (item === 'showDetails') {
+          return this.showDetailsEntry(showDetailsOf(this.visibleColumns(), target.row));
+        }
+        if ('showDetails' in item) return this.showDetailsEntry(item);
+        return item;
+      });
+    },
   );
 
   protected readonly emptyColspan = computed<number>(() => this.visibleColumns().length);
@@ -481,6 +547,9 @@ export class DataTableComponent<Row extends object> {
       },
     );
 
+    // The details dialog renders this component's `#cellContent` template, so it must not outlive it.
+    this.destroyRef.onDestroy((): void => this.detailsRef?.close());
+
     // Tree controls into the page's toolbar row, when it offers one. On a tab switch the next
     // table may attach before this one is destroyed: it detaches whatever is there, and this
     // cleanup then only detaches its own portal.
@@ -493,6 +562,45 @@ export class DataTableComponent<Row extends object> {
       onCleanup((): void => {
         if (outlet.portal === portal) outlet.detach();
       });
+    });
+  }
+
+  /** Runs before the `<tr>`'s CDK trigger. A cell without menu entries stops the event there, so
+   *  the trigger never opens an empty menu and the browser's own one shows. */
+  protected onCellContextMenu(
+    event: MouseEvent,
+    column: DataTableVisibleColDef<Row, unknown>,
+    row: Row,
+  ): void {
+    if (!this.contextMenuEnabled()) return;
+    this.contextTarget.set({ column, row: getRawRow(row) });
+    if (this.contextMenuItems().length === 0) event.stopPropagation();
+  }
+
+  private showDetailsEntry(details: DataTableShowDetailsItem): DataTableMenuItemDef {
+    return { nameKey: 'table.menuShowDetails', action: (): void => this.openRowDetails(details) };
+  }
+
+  private openRowDetails({ showDetails }: DataTableShowDetailsItem): void {
+    this.detailsRef?.close();
+    const data: DataTableRowDetailsData<object> = {
+      cellContent: this.cellContent(),
+      columns: showDetails.columns.filter(isVisibleColumn),
+      row: showDetails.row,
+    };
+    const ref: DialogRef<void, DataTableRowDetailsComponent<object>> = this.dialog.open<
+      void,
+      DataTableRowDetailsData<object>,
+      DataTableRowDetailsComponent<object>
+    >(DataTableRowDetailsComponent, {
+      data,
+      ariaLabelledBy: ROW_DETAILS_TITLE_ID,
+      panelClass: ROW_DETAILS_PANEL_CLASS,
+      backdropClass: ROW_DETAILS_BACKDROP_CLASS,
+    });
+    this.detailsRef = ref;
+    ref.closed.subscribe((): void => {
+      if (this.detailsRef === ref) this.detailsRef = null;
     });
   }
 

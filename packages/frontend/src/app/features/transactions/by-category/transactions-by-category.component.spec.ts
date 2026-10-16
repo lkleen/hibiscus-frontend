@@ -119,6 +119,54 @@ describe('TransactionsByCategoryComponent', () => {
     expect(warning?.textContent).toContain('Broken');
   });
 
+  it('opens Show with the full transaction details on a transaction, no menu on a category', async () => {
+    await load({ items: [transaction({ id: 1, zweck: 'Bakery', kommentar: 'Noted' })] });
+
+    function rightClick(cell: Element): MouseEvent {
+      const event: MouseEvent = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      cell.dispatchEvent(event);
+      return event;
+    }
+    function overlay(selector: string): HTMLElement[] {
+      return Array.from(document.querySelectorAll<HTMLElement>(selector));
+    }
+
+    const categoryCell: Element | null = root.querySelector('tbody tr td');
+    if (!categoryCell) throw new Error('category row not rendered');
+    expect(rightClick(categoryCell).defaultPrevented).toBe(false);
+    expect(overlay('.data-table-menu').length).toBe(0);
+
+    const toggler: HTMLElement | null = root.querySelector<HTMLElement>('tbody tr button');
+    if (!toggler) throw new Error('tree toggler not rendered');
+    toggler.click();
+    fixture.detectChanges();
+    await wait(50);
+    fixture.detectChanges();
+
+    const leafCell: Element | undefined = root.querySelectorAll('tbody tr')[1]?.children[0];
+    if (!leafCell) throw new Error('transaction row not rendered');
+    expect(rightClick(leafCell).defaultPrevented).toBe(true);
+    fixture.detectChanges();
+    await wait(50);
+    const show: HTMLElement | undefined = overlay('[cdkMenuItem]').find(
+      (el: HTMLElement) => el.textContent?.trim() === 'Show',
+    );
+    if (!show) throw new Error('Show menu item not rendered');
+    show.click();
+    fixture.detectChanges();
+    await wait(50);
+    fixture.detectChanges();
+
+    const labels: HTMLElement[] = overlay('.data-table-details__label');
+    const values: string[] = overlay('.data-table-details__value').map(
+      (el: HTMLElement) => el.textContent?.trim() ?? '',
+    );
+    expect(labels.length).toBe(20);
+    expect(values).toContain('Bakery');
+    expect(values).toContain('Noted');
+    overlay('.data-table-details__close')[0].click();
+  });
+
   it('shows no warning when every pattern is valid', async () => {
     await load({ categories: [categoryRow({ id: 1, pattern: 'x' })] });
 

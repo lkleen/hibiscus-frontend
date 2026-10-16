@@ -95,9 +95,16 @@
       </tr>
     </ng-template>
     <ng-template #body let-serialized>
-      <tr [ttRow]="serialized">
+      <tr
+        [ttRow]="serialized"
+        [cdkContextMenuTriggerFor]="rowMenu"
+        [cdkContextMenuDisabled]="!contextMenuEnabled()"
+      >
         @for (column of visibleColumns(); track column.colId) {
-          <td [class.data-table__col--end]="column.align === 'end'">
+          <td
+            [class.data-table__col--end]="column.align === 'end'"
+            (contextmenu)="onCellContextMenu($event, column, serialized.node.data)"
+          >
             @if (column.colId === treeGroupColId()) {
               <span class="data-table__group-cell">
                 <p-treeTableToggler [rowNode]="serialized" />
@@ -206,9 +213,12 @@
       </tr>
     </ng-template>
     <ng-template #body let-row>
-      <tr>
+      <tr [cdkContextMenuTriggerFor]="rowMenu" [cdkContextMenuDisabled]="!contextMenuEnabled()">
         @for (column of visibleColumns(); track column.colId) {
-          <td [class.data-table__col--end]="column.align === 'end'">
+          <td
+            [class.data-table__col--end]="column.align === 'end'"
+            (contextmenu)="onCellContextMenu($event, column, row)"
+          >
             <ng-container
               [ngTemplateOutlet]="cellContent"
               [ngTemplateOutletContext]="{ column: column, row: row }"
@@ -226,6 +236,27 @@
     </ng-template>
   </p-table>
 }
+
+<!-- The row context menu (options.getContextMenuItems), opened by the rows' CDK trigger at the pointer. -->
+<ng-template #rowMenu>
+  <div class="data-table-menu" cdkMenu>
+    @for (item of contextMenuItems(); track $index) {
+      @if (item === 'separator') {
+        <hr class="data-table-menu__separator" role="separator" />
+      } @else {
+        <button
+          type="button"
+          class="data-table-menu__item"
+          cdkMenuItem
+          [cdkMenuItemDisabled]="item.disabled === true"
+          (cdkMenuItemTriggered)="item.action()"
+        >
+          {{ i18n.t(item.nameKey) }}
+        </button>
+      }
+    }
+  </div>
+</ng-template>
 
 <!-- One cell's content, shared by the flat and the tree body: the caller's renderer or the
      formatted value. `row` is the bound row (a column-accessor proxy); the renderer gets the raw
