@@ -46,6 +46,7 @@ function toyRow(overrides: Partial<ToyRow> = {}): ToyRow {
       [columns]="columns()"
       [options]="options()"
       [externalFilter]="externalFilter()"
+      [(selectedRowId)]="selectedId"
       [loading]="false"
     >
       <span appDataTableToolbar class="toolbar-probe">toolbar</span>
@@ -106,6 +107,7 @@ class TestHostComponent {
   ]);
   readonly columns = signal<readonly DataTableColDef<ToyRow, unknown>[]>([]);
   readonly externalFilter = signal<((row: ToyRow) => boolean) | null>(null);
+  readonly selectedId = signal<string | number | null>(null);
   readonly options = signal<DataTableOptions<ToyRow>>({
     getRowId: (row: ToyRow): number => row.id,
     emptyKey: 'transactions.empty',
@@ -115,6 +117,42 @@ class TestHostComponent {
     // Initialize columns from base computed
     this.columns.set(this.columnsBase());
   }
+}
+
+/** A tree of toy rows (1 > 2, 3) for the selection specs, with a two-way `selectedRowId`. */
+@Component({
+  selector: 'app-test-selection-tree-host',
+  template: `
+    <app-data-table
+      [value]="rows"
+      [columns]="columns"
+      [options]="options"
+      [(selectedRowId)]="selectedId"
+    />
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DataTableComponent],
+})
+class SelectionTreeHostComponent {
+  readonly rows: readonly (ToyRow & { readonly parentId: number | null })[] = [
+    { ...toyRow({ id: 1, name: 'Parent' }), parentId: null },
+    { ...toyRow({ id: 2, name: 'Child A' }), parentId: 1 },
+    { ...toyRow({ id: 3, name: 'Child B' }), parentId: 1 },
+  ];
+  readonly columns: readonly DataTableColDef<ToyRow, unknown>[] = [
+    colDef<ToyRow, string | null>({ colId: 'name', headerKey: 'transactions.colRecipient' }),
+  ];
+  readonly options: DataTableOptions<ToyRow> = {
+    getRowId: (row: ToyRow): number => row.id,
+    emptyKey: 'transactions.empty',
+    rowSelection: { mode: 'single' },
+    treeData: {
+      getParentId: (row: ToyRow): number | null =>
+        (row as ToyRow & { readonly parentId: number | null }).parentId,
+      groupColId: 'name',
+    },
+  } as DataTableOptions<ToyRow>;
+  readonly selectedId = signal<string | number | null>(null);
 }
 
 describe('DataTableComponent', () => {
@@ -1043,7 +1081,7 @@ describe('DataTableComponent', () => {
       expect(seen[0].value).toBe('Seven');
       expect(overlayText('[cdkMenuItem]').map((el) => el.textContent?.trim())).toEqual([
         'Expand all',
-        'Show',
+        'View',
       ]);
       expect(overlayText('hr[role="separator"]').length).toBe(1);
 
@@ -1098,7 +1136,7 @@ describe('DataTableComponent', () => {
       await settle();
 
       expect(seen).toEqual([{ id: 3, colId: 'amount' }]);
-      expect(overlayText('[cdkMenuItem]').map((el) => el.textContent?.trim())).toEqual(['Show']);
+      expect(overlayText('[cdkMenuItem]').map((el) => el.textContent?.trim())).toEqual(['View']);
     });
 
     it('33. destroying the table closes an open details dialog', async () => {
@@ -1163,6 +1201,123 @@ describe('DataTableComponent', () => {
         ['Recipient'],
       );
       expect(overlayText('.data-table-details__value')[0].textContent?.trim()).toBe('Other record');
+    });
+  });
+  describe('row selection', () => {
+    const FLAT_SELECTED = 'p-datatable-row-selected';
+
+    function selectedIds(selector: string): string[] {
+      return Array.from(root.querySelectorAll<HTMLElement>(`tbody tr.${selector}`)).map(
+        (row) => row.textContent?.trim() ?? '',
+      );
+    }
+
+    async function flatTable(): Promise<void> {
+      host.rows.set([toyRow({ id: 1, name: 'One' }), toyRow({ id: 2, name: 'Two' })]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        rowSelection: { mode: 'single' },
+        pagination: false,
+      });
+      await settle();
+    }
+
+    it('is off by default: rows are not selectable and a click selects nothing', async () => {
+      host.rows.set([toyRow({ id: 1, name: 'One' })]);
+      await settle();
+
+      expect(root.querySelector('tbody tr.p-datatable-selectable-row')).toBeNull();
+      bodyRows()[0].click();
+      await settle();
+
+      expect(host.selectedId()).toBeNull();
+      expect(root.querySelector(`tbody tr.${FLAT_SELECTED}`)).toBeNull();
+    });
+
+    it('flat: highlights the initial selectedRowId and follows later changes', async () => {
+      host.selectedId.set(2);
+      await flatTable();
+
+      expect(selectedIds(FLAT_SELECTED)).toHaveLength(1);
+      expect(selectedIds(FLAT_SELECTED)[0]).toContain('Two');
+
+      host.selectedId.set(1);
+      await settle();
+
+      expect(selectedIds(FLAT_SELECTED)).toHaveLength(1);
+      expect(selectedIds(FLAT_SELECTED)[0]).toContain('One');
+    });
+
+    it('flat: a click sets selectedRowId; clicking the selected row again keeps it', async () => {
+      await flatTable();
+
+      bodyRows()[1].click();
+      await settle();
+      expect(host.selectedId()).toBe(2);
+      expect(selectedIds(FLAT_SELECTED)[0]).toContain('Two');
+
+      bodyRows()[1].click();
+      await settle();
+      expect(host.selectedId()).toBe(2);
+      expect(selectedIds(FLAT_SELECTED)).toHaveLength(1);
+
+      // The swallowed re-click must not leave PrimeNG deaf to the next external change.
+      host.selectedId.set(1);
+      await settle();
+      expect(selectedIds(FLAT_SELECTED)).toHaveLength(1);
+      expect(selectedIds(FLAT_SELECTED)[0]).toContain('One');
+    });
+
+    describe('tree', () => {
+      let treeFixture: ComponentFixture<SelectionTreeHostComponent>;
+      let treeRoot: HTMLElement;
+
+      beforeEach(() => {
+        treeFixture = TestBed.createComponent(SelectionTreeHostComponent);
+        treeRoot = treeFixture.nativeElement as HTMLElement;
+      });
+
+      afterEach(() => treeFixture.destroy());
+
+      async function treeSettle(): Promise<void> {
+        treeFixture.detectChanges();
+        await treeFixture.whenStable();
+        await wait(50);
+        treeFixture.detectChanges();
+      }
+
+      function treeSelected(): string[] {
+        return Array.from(
+          treeRoot.querySelectorAll<HTMLElement>('tbody tr.p-treetable-row-selected'),
+        ).map((row) => row.textContent?.trim() ?? '');
+      }
+
+      function treeRows(): HTMLTableRowElement[] {
+        return Array.from(treeRoot.querySelectorAll<HTMLTableRowElement>('tbody tr'));
+      }
+
+      it('highlights the initial selectedRowId, a click sets it and a re-click keeps it', async () => {
+        treeFixture.componentInstance.selectedId.set(3);
+        await treeSettle();
+        expect(treeSelected()).toHaveLength(1);
+        expect(treeSelected()[0]).toContain('Child B');
+
+        treeRows()[1].click();
+        await treeSettle();
+        expect(treeFixture.componentInstance.selectedId()).toBe(2);
+        expect(treeSelected()[0]).toContain('Child A');
+
+        treeRows()[1].click();
+        await treeSettle();
+        expect(treeFixture.componentInstance.selectedId()).toBe(2);
+        expect(treeSelected()).toHaveLength(1);
+
+        treeFixture.componentInstance.selectedId.set(1);
+        await treeSettle();
+        expect(treeSelected()).toHaveLength(1);
+        expect(treeSelected()[0]).toContain('Parent');
+      });
     });
   });
 });

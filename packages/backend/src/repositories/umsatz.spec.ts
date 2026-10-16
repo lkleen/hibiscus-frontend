@@ -1,4 +1,8 @@
 import type { Pool } from 'mysql2/promise';
+import type {
+  TransactionEditableFields,
+  TransactionUpdateRequest,
+} from '@hibiscus-frontend/shared/contracts/transactions';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/pool', () => ({
@@ -6,7 +10,7 @@ vi.mock('../db/pool', () => ({
 }));
 
 import { getPool } from '../db/pool';
-import { TRANSACTION_COLUMNS, listTransactions } from './umsatz';
+import { TRANSACTION_COLUMNS, listTransactions, updateTransaction } from './umsatz';
 
 interface FakePool {
   query: ReturnType<typeof vi.fn>;
@@ -57,5 +61,63 @@ describe('listTransactions', () => {
     const result = await listTransactions();
 
     expect(result.rows).toBe(rows);
+  });
+});
+
+describe('updateTransaction', () => {
+  let pool: FakePool;
+
+  beforeEach(() => {
+    pool = makeFakePool();
+    vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
+  });
+
+  const request: TransactionUpdateRequest = {
+    expected: { kommentar: null, umsatztyp_id: 3 },
+    next: { kommentar: 'Miete', umsatztyp_id: null },
+  };
+
+  it('writes only kommentar and umsatztyp_id, guarded by the expected values', async () => {
+    pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const result = await updateTransaction(42, request);
+
+    expect(result).toBe('updated');
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    const [sql, params] = pool.query.mock.calls[0] as [string, unknown[]];
+    expect(sql.replace(/\s+/g, ' ')).toBe(
+      'UPDATE umsatz SET kommentar = ?, umsatztyp_id = ? WHERE id = ? AND kommentar <=> ? AND umsatztyp_id <=> ?',
+    );
+    expect(params).toEqual(['Miete', null, 42, null, 3]);
+  });
+
+  it('treats an update to identical values as updated', async () => {
+    pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const same: TransactionEditableFields = { kommentar: 'x', umsatztyp_id: 1 };
+    const result = await updateTransaction(1, { expected: same, next: same });
+
+    expect(result).toBe('updated');
+  });
+
+  it('reports not-found when nothing matched and the row does not exist', async () => {
+    pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]).mockResolvedValueOnce([[]]);
+
+    expect(await updateTransaction(42, request)).toBe('not-found');
+    const [sql, params] = pool.query.mock.calls[1] as [string, unknown[]];
+    expect(sql).toBe('SELECT 1 FROM umsatz WHERE id = ?');
+    expect(params).toEqual([42]);
+  });
+
+  it('reports conflict when nothing matched but the row exists', async () => {
+    pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]).mockResolvedValueOnce([[{ 1: 1 }]]);
+
+    expect(await updateTransaction(42, request)).toBe('conflict');
+  });
+
+  it('throws on an unexpected affected row count', async () => {
+    pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]);
+
+    await expect(updateTransaction(42, request)).rejects.toThrow('affected 2 rows');
   });
 });

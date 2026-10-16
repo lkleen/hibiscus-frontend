@@ -7,6 +7,7 @@ import { DataTableToolbarOutlet } from '../../shared/components/data-table/data-
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
 import { TabNavComponent } from '../../shared/components/tab-nav/tab-nav.component';
 import { AccountFilterComponent } from './account-filter/account-filter.component';
+import { TransactionEditDialog } from './edit-dialog/transaction-edit-dialog';
 import { TRANSACTIONS_TABS, TransactionsTab } from './transactions-tabs';
 import { TransactionsStore } from './transactions.store';
 
@@ -21,7 +22,7 @@ import { TransactionsStore } from './transactions.store';
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [TransactionsStore, DataTableToolbarOutlet],
+  providers: [TransactionsStore, TransactionEditDialog, DataTableToolbarOutlet],
   imports: [
     CdkPortalOutlet,
     RouterOutlet,

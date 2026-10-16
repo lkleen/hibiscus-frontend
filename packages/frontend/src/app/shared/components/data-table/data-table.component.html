@@ -31,6 +31,7 @@
     [class.data-table--fit-contents]="fitContents()"
     [class.data-table--striped]="striped()"
     [class.data-table--row-hover]="rowHover()"
+    [class.data-table--selectable]="rowSelectionEnabled()"
     [style.--data-table-tree-max-height]="treeMaxHeight()"
     [value]="treeNodes()"
     [rowTrackBy]="treeRowTrackBy"
@@ -44,6 +45,11 @@
     [scrollable]="false"
     [autoLayout]="true"
     [rowHover]="rowHover()"
+    [selectionMode]="rowSelectionEnabled() ? 'single' : undefined"
+    [selection]="selectedTreeNode()"
+    (selectionChange)="onTreeSelectionChange($event)"
+    [metaKeySelection]="false"
+    compareSelectionBy="equals"
     [resizableColumns]="resizeEnabled()"
     [columnResizeMode]="resizeMode()"
     [reorderableColumns]="reorderEnabled()"
@@ -97,6 +103,8 @@
     <ng-template #body let-serialized>
       <tr
         [ttRow]="serialized"
+        [ttSelectableRow]="serialized"
+        [ttSelectableRowDisabled]="!rowSelectionEnabled()"
         [cdkContextMenuTriggerFor]="rowMenu"
         [cdkContextMenuDisabled]="!contextMenuEnabled()"
       >
@@ -158,6 +166,11 @@
     [showCurrentPageReport]="true"
     [stripedRows]="striped()"
     [rowHover]="rowHover()"
+    [selectionMode]="rowSelectionEnabled() ? 'single' : null"
+    [selection]="selectedFlatRow()"
+    (selectionChange)="onFlatSelectionChange($event)"
+    [metaKeySelection]="false"
+    compareSelectionBy="equals"
     [scrollable]="scrollable()"
     [scrollHeight]="scrollHeight()"
     [resizableColumns]="resizeEnabled()"
@@ -212,8 +225,14 @@
         }
       </tr>
     </ng-template>
-    <ng-template #body let-row>
-      <tr [cdkContextMenuTriggerFor]="rowMenu" [cdkContextMenuDisabled]="!contextMenuEnabled()">
+    <ng-template #body let-row let-rowIndex="rowIndex">
+      <tr
+        [pSelectableRow]="row"
+        [pSelectableRowIndex]="rowIndex"
+        [pSelectableRowDisabled]="!rowSelectionEnabled()"
+        [cdkContextMenuTriggerFor]="rowMenu"
+        [cdkContextMenuDisabled]="!contextMenuEnabled()"
+      >
         @for (column of visibleColumns(); track column.colId) {
           <td
             [class.data-table__col--end]="column.align === 'end'"

@@ -8,14 +8,11 @@ import {
   inject,
 } from '@angular/core';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { APP_DIALOG_CLASS } from '../../../dialog/dialog-classes';
 import type { DataTableVisibleColDef } from '../data-table.model';
 
 /** The `ariaLabelledBy` target of the dialog (`DataTableComponent.openRowDetails`). */
 export const ROW_DETAILS_TITLE_ID = 'data-table-row-details-title';
-
-/** Panel/backdrop classes the dialog is opened with; styled by this component (see its scss). */
-export const ROW_DETAILS_PANEL_CLASS = 'data-table-details-panel';
-export const ROW_DETAILS_BACKDROP_CLASS = 'data-table-details-backdrop';
 
 /** What `DataTableComponent` hands to the dialog. */
 export interface DataTableRowDetailsData<Row> {
@@ -34,6 +31,7 @@ export interface DataTableRowDetailsData<Row> {
   // None: the CDK overlay pane and backdrop live outside this component's view, and the host
   // element is the dialog sheet.
   encapsulation: ViewEncapsulation.None,
+  host: { class: APP_DIALOG_CLASS },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgTemplateOutlet],
 })

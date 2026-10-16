@@ -48,6 +48,10 @@
   --app-table-header-color: var(--text-muted);
   --app-table-row-alt-bg: transparent;
   --app-table-row-hover-bg: var(--surface-hover);
+  // The selected row (`options.rowSelection`): the accent mixed into the table background, so it
+  // reads against hover (`--surface-hover`), greenbar's stripe and both colour schemes alike —
+  // `--color-accent-subtle` alone is too close to the hover tint in some themes.
+  --app-table-row-selected-bg: color-mix(in srgb, var(--app-table-accent) 22%, var(--app-table-bg));
   --app-table-radius: var(--radius-base);
   --app-table-font-family: var(--font-sans);
   --app-table-font-size: var(--text-sm);
@@ -110,9 +114,7 @@ app-data-table {
   // Zebra striping — a live theme feature; greenbar overrides `--app-table-row-alt-bg` on top of
   // this (see _theme-greenbar.scss), every other theme keeps it `transparent`.
   --p-datatable-row-striped-background: var(--app-table-row-alt-bg);
-  // No selection styling existed under ag-Grid (baseTableTheme never set a selected-row color), so
-  // there is no layer-1 token to reuse — fall back to the global accent-tint token directly.
-  --p-datatable-row-selected-background: var(--color-accent-subtle);
+  --p-datatable-row-selected-background: var(--app-table-row-selected-bg);
   --p-datatable-row-selected-color: var(--app-table-color);
 
   --p-datatable-header-background: var(--app-table-header-bg);
@@ -168,7 +170,7 @@ app-data-table {
   --p-treetable-row-color: var(--app-table-color);
   --p-treetable-row-hover-background: var(--app-table-row-hover-bg);
   --p-treetable-row-hover-color: var(--app-table-color);
-  --p-treetable-row-selected-background: var(--color-accent-subtle);
+  --p-treetable-row-selected-background: var(--app-table-row-selected-bg);
   --p-treetable-row-selected-color: var(--app-table-color);
 
   --p-treetable-header-background: var(--app-table-header-bg);

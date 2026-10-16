@@ -180,6 +180,11 @@ export type DataTableAutoSizeStrategy =
   | { readonly type: 'fitProvidedWidth'; readonly width: number } // px
   | { readonly type: 'fitCellContents' };
 
+/** `options.rowSelection`; `'single'` is the only mode. */
+export interface DataTableRowSelection {
+  readonly mode: 'single';
+}
+
 /**
  * Grid-level options, modelled on ag-Grid's `GridOptions`. Runtime-changing behaviour is not an
  * option but a component input: see `DataTableComponent.externalFilter` (ag-Grid's external
@@ -201,6 +206,10 @@ interface DataTableOptionsBase<Row> {
    *  `--app-table-row-hover-bg` (`_primeng-table.scss`). Defaults to `true`, see
    *  `DEFAULT_TABLE_OPTIONS`. */
   readonly rowHover?: boolean;
+  /** ag-Grid's `rowSelection: { mode: 'singleRow' }`: clicking (or Enter/Space on) a row selects
+   *  it, flat and tree alike. Off when unset (default); the selected row's id (`getRowId`) is the
+   *  component's two-way `selectedRowId`. Clicking the selected row again keeps it selected. */
+  readonly rowSelection?: DataTableRowSelection;
   /** ag-Grid's `getContextMenuItems`: the entries of the row context menu (right-click), called
    *  with the raw row and the clicked cell's column. Unset (default) or an empty list for a cell:
    *  no custom menu, the browser's own one shows. */
@@ -300,7 +309,7 @@ export type DataTableMenuItem =
   DataTableMenuItemDef | DataTableShowDetailsItem | 'separator' | 'showDetails';
 
 /**
- * The "Show" entry for `row`, listing the visible ones of `columns`. Hidden columns are skipped.
+ * The "View" entry for `row`, listing the visible ones of `columns`. Hidden columns are skipped.
  * Their `cellRenderer` names must be registered on the table that opens the menu (it renders the
  * dialog's cells). Widens the columns like `colDef()`, for the same reason and with the same
  * safety argument: the dialog only ever calls these columns' lambdas with this very `row`.

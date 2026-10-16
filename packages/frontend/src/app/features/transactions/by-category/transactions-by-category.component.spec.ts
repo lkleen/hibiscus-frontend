@@ -6,6 +6,7 @@ import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
+import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionsByCategoryComponent } from './transactions-by-category.component';
@@ -29,7 +30,12 @@ describe('TransactionsByCategoryComponent', () => {
     installMutationObserverMock();
     TestBed.configureTestingModule({
       imports: [TransactionsByCategoryComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), TransactionsStore],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        TransactionsStore,
+        TransactionEditDialog,
+      ],
     });
     fixture = TestBed.createComponent(TransactionsByCategoryComponent);
     httpMock = TestBed.inject(HttpTestingController);
@@ -119,7 +125,7 @@ describe('TransactionsByCategoryComponent', () => {
     expect(warning?.textContent).toContain('Broken');
   });
 
-  it('opens Show with the full transaction details on a transaction, no menu on a category', async () => {
+  it('opens View with the full transaction details on a transaction, no menu on a category', async () => {
     await load({ items: [transaction({ id: 1, zweck: 'Bakery', kommentar: 'Noted' })] });
 
     function rightClick(cell: Element): MouseEvent {
@@ -149,9 +155,13 @@ describe('TransactionsByCategoryComponent', () => {
     fixture.detectChanges();
     await wait(50);
     const show: HTMLElement | undefined = overlay('[cdkMenuItem]').find(
-      (el: HTMLElement) => el.textContent?.trim() === 'Show',
+      (el: HTMLElement) => el.textContent?.trim() === 'View',
     );
-    if (!show) throw new Error('Show menu item not rendered');
+    if (!show) throw new Error('View menu item not rendered');
+    expect(overlay('[cdkMenuItem]').map((el: HTMLElement) => el.textContent?.trim())).toEqual([
+      'View',
+      'Edit',
+    ]);
     show.click();
     fixture.detectChanges();
     await wait(50);

@@ -9,6 +9,7 @@ import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transac
 import { LocaleService } from '../../../core/services/locale.service';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
+import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionsListComponent } from './transactions-list.component';
@@ -44,7 +45,12 @@ describe('TransactionsListComponent', () => {
     installMutationObserverMock();
     TestBed.configureTestingModule({
       imports: [TransactionsListComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), TransactionsStore],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        TransactionsStore,
+        TransactionEditDialog,
+      ],
     });
     fixture = TestBed.createComponent(TransactionsListComponent);
     httpMock = TestBed.inject(HttpTestingController);
@@ -303,7 +309,56 @@ describe('TransactionsListComponent', () => {
     expect(root.textContent).not.toContain('2026-03-15');
   });
 
-  it('right-click then Show lists the transaction columns in the details dialog', async () => {
+  it('right-click then Edit saves a new comment and category, and the list repaints in place', async () => {
+    await load({
+      accounts: [account({ id: 1 })],
+      items: [transaction({ id: 5, zweck: 'Direct debit', kommentar: 'Old note' })],
+      categories: [categoryRow({ id: 9, name: 'Groceries' })],
+    });
+
+    const cell: Element | undefined = bodyRows()[0].children[COL.zweck];
+    cell.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
+    );
+    await settle();
+
+    const labels: string[] = Array.from(
+      document.querySelectorAll<HTMLElement>('[cdkMenuItem]'),
+    ).map((el: HTMLElement) => el.textContent?.trim() ?? '');
+    expect(labels).toEqual(['View', 'Edit']);
+    document.querySelectorAll<HTMLElement>('[cdkMenuItem]')[1].click();
+    await settle();
+
+    const dialog: HTMLElement | null = document.querySelector('app-transaction-edit-dialog');
+    if (!dialog) throw new Error('edit dialog not rendered');
+    const textarea: HTMLTextAreaElement | null = dialog.querySelector('textarea');
+    if (!textarea) throw new Error('textarea not rendered');
+    textarea.value = 'New note';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const groceries: HTMLElement | undefined = Array.from(
+      dialog.querySelectorAll<HTMLElement>('tbody tr'),
+    ).find((el: HTMLElement) => el.textContent?.trim() === 'Groceries');
+    if (!groceries) throw new Error('category row not rendered');
+    groceries.click();
+    await settle();
+
+    const save: HTMLButtonElement | undefined = Array.from(
+      dialog.querySelectorAll<HTMLButtonElement>('button'),
+    ).find((el: HTMLButtonElement) => el.textContent?.trim() === 'Save');
+    if (!save) throw new Error('Save button not rendered');
+    save.click();
+    httpMock
+      .expectOne({ method: 'PATCH', url: '/api/transactions/5' })
+      .flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+
+    expect(document.querySelector('app-transaction-edit-dialog')).toBeNull();
+    expect(root.textContent).toContain('New note');
+    expect(root.textContent).not.toContain('Old note');
+    expect(root.textContent).toContain('Groceries');
+  });
+
+  it('right-click then View lists the transaction columns in the details dialog', async () => {
     await load({
       accounts: [account({ id: 1, name: 'Jane Doe' })],
       items: [transaction({ zweck: 'Direct debit', empfaenger_name: 'Supermarket' })],
@@ -319,8 +374,8 @@ describe('TransactionsListComponent', () => {
 
     const showItem: HTMLElement | undefined = Array.from(
       document.querySelectorAll<HTMLElement>('[cdkMenuItem]'),
-    ).find((el: HTMLElement) => el.textContent?.trim() === 'Show');
-    if (!showItem) throw new Error('Show menu item not rendered');
+    ).find((el: HTMLElement) => el.textContent?.trim() === 'View');
+    if (!showItem) throw new Error('View menu item not rendered');
     showItem.click();
     await settle();
 

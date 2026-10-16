@@ -1,7 +1,20 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  inject,
+  untracked,
+  viewChild,
+} from '@angular/core';
+import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { DataTableCellDirective } from '../../../shared/components/data-table/data-table-cell.directive';
 import { DataTableComponent } from '../../../shared/components/data-table/data-table.component';
+import type {
+  DataTableMenuItem,
+  DataTableOptions,
+} from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
+import { TransactionEditDialog } from '../edit-dialog/transaction-edit-dialog';
 import { TransactionsStore } from '../transactions.store';
 
 /**
@@ -18,6 +31,32 @@ import { TransactionsStore } from '../transactions.store';
 })
 export class TransactionsListComponent {
   protected readonly store = inject(TransactionsStore);
+  private readonly editDialog = inject(TransactionEditDialog);
+  private readonly table = viewChild.required(DataTableComponent<TransactionRow>);
+
+  /** The store's options plus the row menu: View, and Edit (opens the edit dialog). */
+  protected readonly options: DataTableOptions<TransactionRow> = {
+    ...this.store.listOptions,
+    getContextMenuItems: ({ row }): readonly DataTableMenuItem[] => [
+      'showDetails',
+      { nameKey: 'transactions.menuEdit', action: (): void => this.editDialog.open(row) },
+    ],
+  };
+
+  constructor() {
+    // A saved edit mutates its row in place (see `TransactionsStore.saveTransaction`), so the
+    // table only needs a repaint, which keeps its page and filters. The first run is skipped:
+    // nothing has been edited yet.
+    let seenRevision: number = this.store.revision();
+    effect((): void => {
+      const revision: number = this.store.revision();
+      untracked((): void => {
+        if (revision === seenRevision) return;
+        seenRevision = revision;
+        this.table().refresh();
+      });
+    });
+  }
 
   // `DataTableCellContext.value` is `unknown` by design — a cell renderer can be shared by columns
   // with different `Value` types, so the data-table component has no honest concrete type to hand

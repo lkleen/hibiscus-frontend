@@ -2,8 +2,12 @@ import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angul
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
-import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import { forkJoin } from 'rxjs';
+import type {
+  TransactionEditableFields,
+  TransactionRow,
+  TransactionUpdateRequest,
+} from '@hibiscus-frontend/shared/contracts/transactions';
+import { Observable, forkJoin, tap } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { categoryPaths } from '../../core/utils/category-path';
 import { DateRange, isInRange } from '../../core/utils/date-range';
@@ -11,7 +15,6 @@ import { quickFilterMatches } from '../../shared/components/data-table/data-tabl
 import {
   colDef,
   type DataTableColDef,
-  type DataTableMenuItem,
   type DataTableOptions,
 } from '../../shared/components/data-table/data-table.model';
 
@@ -33,6 +36,12 @@ export class TransactionsStore {
   readonly categories = signal<readonly CategoryRow[]>([]);
   readonly loading = signal(true);
   readonly error = signal(false);
+
+  /**
+   * Bumped after every saved edit. The derived views read it so they recompute; `rowFilter` does
+   * not, so an edit never changes the filter and the list keeps its page.
+   */
+  readonly revision = signal<number>(0);
 
   /** Session-only; the date filter picks its initial value (the first preset) itself. */
   readonly range = signal<DateRange | null>(null);
@@ -128,7 +137,8 @@ export class TransactionsStore {
   ];
 
   // Earliest value date first, ties broken by the oldest id.
-  // The shell owns the search field, so the table's own is off.
+  // The shell owns the search field, so the table's own is off. The row menu lives in
+  // `TransactionsListComponent` (its Edit entry opens a dialog, which the store must not know).
   readonly listOptions: DataTableOptions<TransactionRow> = {
     getRowId: (row) => row.id,
     defaultSort: [
@@ -140,7 +150,6 @@ export class TransactionsStore {
     scrollHeight: 'flex',
     emptyKey: 'transactions.empty',
     quickFilter: false,
-    getContextMenuItems: (): readonly DataTableMenuItem[] => ['showDetails'],
   };
 
   /**
@@ -159,6 +168,7 @@ export class TransactionsStore {
   });
 
   readonly filteredTransactions = computed<readonly TransactionRow[]>(() => {
+    this.revision(); // Recompute after an in-place edit (see `saveTransaction`).
     const filter: ((row: TransactionRow) => boolean) | null = this.rowFilter();
     const transactions: readonly TransactionRow[] = this.transactions();
     return filter ? transactions.filter(filter) : transactions;
@@ -169,6 +179,7 @@ export class TransactionsStore {
    * filters, so a transaction's category does not depend on what is currently shown.
    */
   readonly categoryAssignment = computed<CategoryAssignment>(() => {
+    this.revision(); // Recompute after an in-place edit (see `saveTransaction`).
     if (this.loading()) return { byTransactionId: new Map(), invalidPatterns: [] };
     return assignCategories({
       transactions: this.transactions(),
@@ -176,6 +187,26 @@ export class TransactionsStore {
       accountsById: this.accountsById(),
     });
   });
+
+  /**
+   * Saves an edit to a stored transaction. On success the row is mutated in place instead of
+   * replaced: swapping the row or the array would reset PrimeNG's page (`transactions-table`
+   * skill §3). `revision` then tells the derived views that the stored values changed. Errors
+   * propagate to the caller, and the row stays untouched.
+   */
+  saveTransaction(row: TransactionRow, next: TransactionEditableFields): Observable<void> {
+    const request: TransactionUpdateRequest = {
+      expected: { kommentar: row.kommentar, umsatztyp_id: row.umsatztyp_id },
+      next,
+    };
+    return this.api.updateTransaction(row.id, request).pipe(
+      tap((): void => {
+        row.kommentar = next.kommentar;
+        row.umsatztyp_id = next.umsatztyp_id;
+        this.revision.update((value: number) => value + 1);
+      }),
+    );
+  }
 
   constructor() {
     // The effect's cleanup clears a pending timer on every change and on destroy.

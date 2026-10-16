@@ -56,3 +56,12 @@ export interface TransactionsResponse {
   columns: TransactionColumn[];
   rows: TransactionValue[][];
 }
+
+/** The `umsatz` fields this app may change; everything else is bank-imported and read-only. */
+export type TransactionEditableFields = Pick<TransactionRow, 'kommentar' | 'umsatztyp_id'>;
+
+/** Body of `PATCH /api/transactions/:id`. `expected`: the values the edit started from. */
+export interface TransactionUpdateRequest {
+  readonly expected: TransactionEditableFields;
+  readonly next: TransactionEditableFields;
+}

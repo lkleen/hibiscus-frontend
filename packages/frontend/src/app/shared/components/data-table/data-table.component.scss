@@ -104,6 +104,12 @@
   &.data-table--row-hover ::ng-deep tbody > tr:hover {
     background: var(--app-table-row-hover-bg);
   }
+
+  // Unlayered too, and after the two rules above: the selected row keeps its colour under greenbar's
+  // zebra stripe and under the pointer (PrimeNG's own selected rule is layered and loses to both).
+  &.data-table--selectable ::ng-deep tbody > tr.p-treetable-row-selected {
+    background: var(--app-table-row-selected-bg);
+  }
 }
 
 // `scrollHeight: 'flex'`: the wrapper takes whatever the search field leaves (the host/`.data-table`

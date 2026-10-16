@@ -51,27 +51,32 @@ Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope is limited to per-user settings (date range presets, table density) in `hf_user_setting`.
-Transactions and categories are read-only (`GET /api/transactions`, `GET /api/categories`).
-It does not edit bank-imported transaction fields (amount, date, counterparty) — those are
-synced from the bank by the desktop client and are not this app's data to change.
+Write scope is per-user settings (date range presets, table density) in `hf_user_setting`, and two
+user-maintained fields of `umsatz`: `kommentar` and `umsatztyp_id` (the category), via
+`PATCH /api/transactions/:id`. Both are written in one atomic `UPDATE ... WHERE` that only succeeds
+while the row still holds the values the edit started from (`expected`); otherwise the API answers
+`409`, e.g. when the row was changed in the Hibiscus desktop client. No other column of `umsatz` is
+ever written, and categories stay read-only (`GET /api/categories`). Bank-imported transaction
+fields (amount, date, counterparty) are synced from the bank by the desktop client and are not this
+app's data to change.
 
 ## API (v1)
 
 All routes are under `/api` and require authentication (see below) except `/api/me`, which
 itself requires authentication too — there is no unauthenticated route in this app at all.
 
-| Method & path                       | Purpose                                                                                   |
-| ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `GET /api/me`                       | Echoes the authenticated identity                                                         |
-| `GET /api/accounts`                 | List `konto` rows, as stored (`AccountRow`)                                               |
-| `GET /api/transactions`             | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`) |
-| `GET /api/categories`               | List `umsatztyp` rows, as stored (`CategoryRow`)                                          |
-| `GET /api/settings/date-presets`    | User's date presets; defaults if not stored                                               |
-| `PUT /api/settings/date-presets`    | Save whole preset list (zod-validated); answers `204`                                     |
-| `DELETE /api/settings/date-presets` | Restore defaults; answers `204`                                                           |
-| `GET /api/settings/table-density`   | User's table density; `normal` if not stored                                              |
-| `PUT /api/settings/table-density`   | Save the density (zod-validated); answers `204`                                           |
+| Method & path                       | Purpose                                                                                                                                                                                                     |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/me`                       | Echoes the authenticated identity                                                                                                                                                                           |
+| `GET /api/accounts`                 | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                 |
+| `GET /api/transactions`             | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                   |
+| `PATCH /api/transactions/:id`       | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected` |
+| `GET /api/categories`               | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                            |
+| `GET /api/settings/date-presets`    | User's date presets; defaults if not stored                                                                                                                                                                 |
+| `PUT /api/settings/date-presets`    | Save whole preset list (zod-validated); answers `204`                                                                                                                                                       |
+| `DELETE /api/settings/date-presets` | Restore defaults; answers `204`                                                                                                                                                                             |
+| `GET /api/settings/table-density`   | User's table density; `normal` if not stored                                                                                                                                                                |
+| `PUT /api/settings/table-density`   | Save the density (zod-validated); answers `204`                                                                                                                                                             |
 
 ### Shared contracts
 

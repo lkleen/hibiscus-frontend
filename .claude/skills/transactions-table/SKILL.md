@@ -32,8 +32,12 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
 - `TransactionRow` (shared package) mirrors the selected columns one-to-one and is declared once;
   `TransactionColumn`/`TransactionValue`/`TransactionsResponse` are derived from it, and the
   backend and frontend import the same types. Never re-declare it, never add a second "view model" type for the API.
-- Transactions are read-only (see the write scope in `docs/architecture.md`): there is no
-  write route for `umsatz`. Bank-imported fields are never edited.
+- The only write to `umsatz` is `PATCH /api/transactions/:id` (see the write scope in
+  `docs/architecture.md`), and it writes only `kommentar` and `umsatztyp_id` (`TransactionEditableFields`),
+  in one atomic `UPDATE … WHERE kommentar <=> expected AND umsatztyp_id <=> expected`. A stale save
+  (the row no longer holds the values the edit started from, e.g. changed in the Hibiscus desktop
+  client) answers `409`; it is never overwritten. Every other column, bank-imported fields above all,
+  is never written.
 
 ## 2. Columns are displayed exactly as stored (frontend)
 
@@ -56,10 +60,11 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
   `NONREF`).
 - Header labels come from the translations (`en.json` and `de.json`), never from field names.
   Labels must stay true to the raw column (`Purpose 1/2/3`, not "Type"/"Purpose").
-- The row context menu "Show" opens a details dialog with every displayed column of the list tab
-  (same display rules; the four matching-only fields stay hidden). The by-category tab offers it on
-  transaction rows with the same columns (`showDetailsOf(store.transactionColumns, …)`); its
-  category rows keep the browser's own menu.
+- The row context menu has "View", which opens a details dialog with every displayed column of the
+  list tab (same display rules; the four matching-only fields stay hidden), and "Edit", which opens
+  the edit dialog for `kommentar` and the category (picked in a category tree, or unset with "No
+  category"). Both tabs offer them on transaction rows (`showDetailsOf(store.transactionColumns, …)`
+  for View); the by-category tab's category rows keep the browser's own menu.
 
 ## 2.5. Category assignment (documented exception)
 
@@ -111,7 +116,9 @@ regex patterns are reported as a visible warning, never silently ignored.
 - `globalFilterFields` is computed by `<app-data-table>` from the column definitions
   (one function per column with a `getQuickFilterText` lambda). Maintain the columns, and search
   updates automatically.
-- To change a row in place, mutate the raw row and call `dataTable().refresh()`. Never replace
+- To change a row in place, mutate the raw row and call `dataTable().refresh()`. In the transactions
+  store, `saveTransaction` is the one place that does this, and only after a confirmed `204`; it
+  bumps `revision`, so `filteredTransactions` and `categoryAssignment` recompute. Never replace
   the row object or the `value` array: PrimeNG resets the page to 1 whenever the bound array's
   identity changes while a filter is active, and `filteredValue` holds the same (cached proxy)
   references, so a replaced object would stay rendered stale.

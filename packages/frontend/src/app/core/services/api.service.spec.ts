@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import type {
   TransactionRow,
+  TransactionUpdateRequest,
   TransactionsResponse,
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
@@ -67,6 +68,19 @@ describe('ApiService', () => {
     const response: TransactionsResponse = { columns: ['id', 'konto_id'], rows: [[1]] };
 
     expect(() => toTransactionRows(response)).toThrow(/1 values for 2 columns/);
+  });
+
+  it('patches one transaction with the expected and next values', () => {
+    const request: TransactionUpdateRequest = {
+      expected: { kommentar: null, umsatztyp_id: 3 },
+      next: { kommentar: 'Groceries', umsatztyp_id: null },
+    };
+    service.updateTransaction(42, request).subscribe();
+
+    const req = httpMock.expectOne('/api/transactions/42');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual(request);
+    req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
   it('requests the date presets', () => {

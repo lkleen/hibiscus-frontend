@@ -1,0 +1,94 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">{{ i18n.t('transactions.edit.title') }}</h2>
+</header>
+
+<div class="app-dialog__body">
+  <dl class="transaction-edit__summary">
+    <div class="transaction-edit__fact">
+      <dt>{{ i18n.t('transactions.colValuta') }}</dt>
+      <dd>{{ row.valuta }}</dd>
+    </div>
+    <div class="transaction-edit__fact">
+      <dt>{{ i18n.t('transactions.colAmount') }}</dt>
+      <dd><app-transaction-amount-cell [amount]="row.betrag" /></dd>
+    </div>
+    <div class="transaction-edit__fact transaction-edit__fact--wide">
+      <dt>{{ i18n.t('transactions.colRecipient') }}</dt>
+      <dd>{{ row.empfaenger_name ?? '—' }}</dd>
+    </div>
+    <div class="transaction-edit__fact transaction-edit__fact--wide">
+      <dt>{{ i18n.t('transactions.colPurpose1') }}</dt>
+      <dd>{{ row.zweck ?? '—' }}</dd>
+    </div>
+  </dl>
+
+  <div class="transaction-edit__field">
+    <label class="transaction-edit__label" [for]="commentId">{{
+      i18n.t('transactions.edit.commentLabel')
+    }}</label>
+    <textarea
+      class="transaction-edit__comment"
+      rows="3"
+      [id]="commentId"
+      [value]="comment()"
+      (input)="onCommentInput($event)"
+    ></textarea>
+  </div>
+
+  <fieldset class="transaction-edit__field transaction-edit__category">
+    <legend class="transaction-edit__label">{{ i18n.t('transactions.edit.categoryLabel') }}</legend>
+    <div class="transaction-edit__current">
+      <p class="transaction-edit__current-label" role="status">{{ categoryLabel() }}</p>
+      <button
+        type="button"
+        class="transaction-edit__button"
+        [disabled]="categoryId() === null"
+        (click)="clearCategory()"
+      >
+        {{ i18n.t('transactions.edit.noCategory') }}
+      </button>
+    </div>
+    <app-data-table
+      [value]="categories()"
+      [columns]="columns"
+      [options]="options"
+      [selectedRowId]="categoryId()"
+      (selectedRowIdChange)="onCategoryPicked($event)"
+    >
+      <ng-template appDataTableCell="categoryName" let-row let-name="valueFormatted">
+        <span class="transaction-edit__name">
+          @if (swatchColor(row); as color) {
+            <span
+              class="transaction-edit__swatch"
+              [style.background-color]="color"
+              aria-hidden="true"
+            ></span>
+          }
+          {{ name }}
+        </span>
+      </ng-template>
+    </app-data-table>
+  </fieldset>
+
+  @if (error(); as failure) {
+    <p class="transaction-edit__error" role="alert">
+      {{
+        i18n.t(failure === 'conflict' ? 'transactions.edit.conflict' : 'transactions.edit.error')
+      }}
+    </p>
+  }
+</div>
+
+<footer class="app-dialog__footer">
+  <button type="button" class="transaction-edit__button" [disabled]="saving()" (click)="cancel()">
+    {{ i18n.t('transactions.edit.cancel') }}
+  </button>
+  <button
+    type="button"
+    class="transaction-edit__button transaction-edit__button--primary"
+    [disabled]="!canSave()"
+    (click)="save()"
+  >
+    {{ i18n.t('transactions.edit.save') }}
+  </button>
+</footer>

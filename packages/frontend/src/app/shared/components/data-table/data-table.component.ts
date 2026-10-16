@@ -15,15 +15,17 @@ import {
   inject,
   input,
   linkedSignal,
+  model,
   signal,
   viewChild,
 } from '@angular/core';
 import { FilterMatchMode, FilterService } from 'primeng/api';
-import type { TreeNode } from 'primeng/api';
+import type { TreeNode, TreeTableNode } from 'primeng/api';
 import { Table, TableModule } from 'primeng/table';
 import { TreeTable, TreeTableModule } from 'primeng/treetable';
 import type { TreeTableSortEvent } from 'primeng/treetable';
 import type { TranslationKey } from '../../../core/models/translation.model';
+import { APP_DIALOG_BACKDROP_CLASS, APP_DIALOG_PANEL_CLASS } from '../../dialog/dialog-classes';
 import { TranslationService } from '../../../core/services/translation.service';
 import { getRawRow, createColumnAccessorProxyFactory } from './column-accessor-proxy';
 import { DataTableCellDirective, type DataTableCellContext } from './data-table-cell.directive';
@@ -48,8 +50,6 @@ import { DataTableToolbarOutlet } from './data-table-toolbar-outlet';
 import { isVisibleColumn, showDetailsOf } from './data-table.model';
 import {
   DataTableRowDetailsComponent,
-  ROW_DETAILS_BACKDROP_CLASS,
-  ROW_DETAILS_PANEL_CLASS,
   ROW_DETAILS_TITLE_ID,
   type DataTableRowDetailsData,
 } from './row-details-dialog/row-details-dialog.component';
@@ -191,6 +191,14 @@ export class DataTableComponent<Row extends object> {
    */
   readonly externalFilter = input<((row: Row) => boolean) | null>(null);
 
+  /**
+   * Two-way: the id (`options.getRowId`) of the selected row while `options.rowSelection` is set,
+   * `null` for none. A click on a row (or Enter/Space on a focused one) sets it; the caller may set
+   * it too (e.g. to preselect). An id with no row in `value()` highlights nothing and is kept, so a
+   * selection survives a reload that brings the row back. Ignored when `rowSelection` is unset.
+   */
+  readonly selectedRowId = model<string | number | null>(null);
+
   private readonly cellTemplates = contentChildren(DataTableCellDirective<Row>);
   private readonly table = viewChild<Table<Row>>('dt');
   private readonly treeTable = viewChild<TreeTable>('tt');
@@ -232,6 +240,19 @@ export class DataTableComponent<Row extends object> {
     return options;
   });
 
+  protected readonly rowSelectionEnabled = computed<boolean>(
+    () => this.options().rowSelection !== undefined,
+  );
+
+  /** The flat table's selected row as PrimeNG sees it (the column-accessor proxy), or `null`. */
+  protected readonly selectedFlatRow = computed<Row | null>(() => {
+    const id: string | number | null = this.selectedRowId();
+    if (id === null || !this.rowSelectionEnabled()) return null;
+    const getRowId: (row: Row) => string | number = this.options().getRowId;
+    const raw: Row | undefined = this.value().find((row: Row): boolean => getRowId(row) === id);
+    return raw === undefined ? null : this.proxyFactory.getProxy(raw);
+  });
+
   protected readonly treeMode = computed<boolean>(() => this.treeOptions() !== null);
 
   protected readonly treeGroupColId = computed<string>(
@@ -265,6 +286,13 @@ export class DataTableComponent<Row extends object> {
             ? indexTreeNodes(previous.value)
             : new Map<string, TreeNode<Row>>(),
       }),
+  });
+
+  /** The tree's selected node, or `null` (see `selectedFlatRow`). Node keys are `String(id)`. */
+  protected readonly selectedTreeNode = computed<TreeNode<Row> | null>(() => {
+    const id: string | number | null = this.selectedRowId();
+    if (id === null || !this.rowSelectionEnabled()) return null;
+    return indexTreeNodes(this.treeNodes()).get(String(id)) ?? null;
   });
 
   /** `aggFunc` aggregates of the current `treeNodes` (empty when no column aggregates); recomputed
@@ -507,6 +535,47 @@ export class DataTableComponent<Row extends object> {
   // there is nothing to default or guard here — the type system is the fail-loud mechanism.
   protected readonly emptyKey = computed<TranslationKey>(() => this.options().emptyKey);
 
+  /**
+   * `(selectionChange)` of both PrimeNG tables. With `metaKeySelection` off, PrimeNG toggles a
+   * click on the selected row off and emits `null`: that is not a selection change here, so the
+   * selection is put back (`restoreSelection`). Anything else is the clicked row/node.
+   */
+  protected onFlatSelectionChange(selection: Row | null): void {
+    if (selection === null) {
+      this.restoreSelection();
+      return;
+    }
+    this.selectedRowId.set(this.options().getRowId(getRawRow(selection)));
+  }
+
+  protected onTreeSelectionChange(selection: TreeTableNode | TreeTableNode[] | null): void {
+    if (selection === null) {
+      this.restoreSelection();
+      return;
+    }
+    if (Array.isArray(selection)) throw new Error('data-table: single selection emitted an array');
+    this.selectedRowId.set(this.options().getRowId(getRawRow(requireNodeData(selection))));
+  }
+
+  /**
+   * PrimeNG dropped its own selection on the re-click, while our `[selection]` binding still holds
+   * the same object and so will never push it again. Write it back, and clear the flag PrimeNG
+   * sets for "the next `[selection]` change comes from my own click": that change never arrives, so
+   * the flag would swallow the next (external) one and leave the highlight stale.
+   */
+  private restoreSelection(): void {
+    const table: Table<Row> | undefined = this.table();
+    if (table) {
+      table.selection = this.selectedFlatRow();
+      table.preventSelectionSetterPropagation = false;
+      return;
+    }
+    const tree: TreeTable | undefined = this.treeTable();
+    if (!tree) throw new Error('data-table: selection changed without a rendered table');
+    tree.selection = this.selectedTreeNode();
+    tree.preventSelectionSetterPropagation = false;
+  }
+
   protected readonly rowTrackBy = (_index: number, row: Row): string | number =>
     this.options().getRowId(getRawRow(row));
 
@@ -578,7 +647,7 @@ export class DataTableComponent<Row extends object> {
   }
 
   private showDetailsEntry(details: DataTableShowDetailsItem): DataTableMenuItemDef {
-    return { nameKey: 'table.menuShowDetails', action: (): void => this.openRowDetails(details) };
+    return { nameKey: 'table.menuView', action: (): void => this.openRowDetails(details) };
   }
 
   private openRowDetails({ showDetails }: DataTableShowDetailsItem): void {
@@ -595,8 +664,8 @@ export class DataTableComponent<Row extends object> {
     >(DataTableRowDetailsComponent, {
       data,
       ariaLabelledBy: ROW_DETAILS_TITLE_ID,
-      panelClass: ROW_DETAILS_PANEL_CLASS,
-      backdropClass: ROW_DETAILS_BACKDROP_CLASS,
+      panelClass: APP_DIALOG_PANEL_CLASS,
+      backdropClass: APP_DIALOG_BACKDROP_CLASS,
     });
     this.detailsRef = ref;
     ref.closed.subscribe((): void => {
