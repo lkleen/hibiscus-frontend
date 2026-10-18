@@ -64,16 +64,18 @@ describe('TransactionsComponent (shell)', () => {
     await TestBed.inject(Router).navigateByUrl('/en/transactions/categories');
     await settle();
     expect(root.querySelector('app-transactions-by-category')).not.toBeNull();
-    // The by-category tree's expand/collapse-all buttons join the shell's toolbar row.
+    // The tab's selection bar and the tree's expand/collapse-all buttons join the shell's toolbar
+    // row (the Clear button has no aria-label, its text labels it).
     const shellActions = (): string[] =>
       Array.from(
         root.querySelector('form.filters')?.querySelectorAll('.filters__action') ?? [],
-      ).map((button) => button.getAttribute('aria-label') ?? '');
-    expect(shellActions()).toEqual(['Expand all', 'Collapse all']);
+      ).map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '');
+    expect(shellActions()).toEqual(['Clear selection', 'Expand all', 'Collapse all']);
 
     await TestBed.inject(Router).navigateByUrl('/en/transactions/list');
     await settle();
-    expect(shellActions()).toEqual([]);
+    // Back on the list: only its selection bar, no tree controls.
+    expect(shellActions()).toEqual(['Clear selection']);
     // httpMock.verify() in afterEach fails on any further request.
     expect(root.querySelector('app-transactions-list')).not.toBeNull();
   });

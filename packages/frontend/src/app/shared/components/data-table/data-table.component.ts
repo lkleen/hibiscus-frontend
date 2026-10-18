@@ -171,12 +171,12 @@ export class DataTableComponent<Row extends object> {
   private readonly viewContainerRef = inject(ViewContainerRef);
   private readonly dialog = inject(Dialog);
   private readonly destroyRef = inject(DestroyRef);
-  /** A page-owned toolbar row for the tree controls (see `DataTableToolbarOutlet`); optional — no
-   *  provider means the controls render in this table's own filters form. */
+  /** A page-owned toolbar row for the trailing toolbar controls (see `DataTableToolbarOutlet`);
+   *  optional — no provider means the controls render in this table's own filters form. */
   protected readonly toolbarOutlet: DataTableToolbarOutlet | null = inject(DataTableToolbarOutlet, {
     optional: true,
   });
-  private readonly treeActions = viewChild.required<TemplateRef<unknown>>('treeActions');
+  private readonly toolbarActions = viewChild.required<TemplateRef<unknown>>('toolbarActions');
   private readonly cellContent = viewChild.required<TemplateRef<unknown>>('cellContent');
 
   readonly value = input.required<readonly Row[]>();
@@ -821,13 +821,17 @@ export class DataTableComponent<Row extends object> {
       if (kept.size !== selected.size) this.selectedRowIds.set(kept);
     });
 
-    // Tree controls into the page's toolbar row, when it offers one. On a tab switch the next
+    // Trailing toolbar controls (projected toolbar content, tree controls) into the page's toolbar
+    // row, when it offers one. On a tab switch the next
     // table may attach before this one is destroyed: it detaches whatever is there, and this
     // cleanup then only detaches its own portal.
     effect((onCleanup): void => {
       const outlet: CdkPortalOutlet | undefined = this.toolbarOutlet?.outlet();
-      if (!outlet || !this.treeMode()) return;
-      const portal: TemplatePortal = new TemplatePortal(this.treeActions(), this.viewContainerRef);
+      if (!outlet) return;
+      const portal: TemplatePortal = new TemplatePortal(
+        this.toolbarActions(),
+        this.viewContainerRef,
+      );
       if (outlet.hasAttached()) outlet.detach();
       outlet.attach(portal);
       onCleanup((): void => {

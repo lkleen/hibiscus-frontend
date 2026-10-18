@@ -1,6 +1,6 @@
 // The `.filters__actions` / `.filters__action` look comes from the global filter bar styles.
 :host(.selection-bar--idle) {
-  visibility: hidden;
+  display: none;
 }
 
 .selection-bar__count {

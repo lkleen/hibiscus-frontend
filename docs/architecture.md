@@ -21,7 +21,8 @@
   PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
   fully expanded by default with expand-all/collapse-all controls (icon buttons with a tooltip at the end of the
   toolbar row; a page that owns the toolbar row, like the transactions shell, provides
-  `DataTableToolbarOutlet` and the table attaches them to that page's `cdkPortalOutlet` instead;
+  `DataTableToolbarOutlet` and the table attaches them, together with its projected
+  `[appDataTableToolbar]` content, to that page's `cdkPortalOutlet` instead;
   nodes are updated in place by row id when `value` changes, so expansion survives data changes); the quick filter is lenient
   (keeping ancestors of matches), sorting and resizing work, and pagination is not available.
   In tree mode a column may set `aggFunc: 'sum'`: group nodes then show and sort by the sum of their
@@ -163,7 +164,8 @@ state is the set of unchecked account ids), a search input (debounced 300 ms via
 → `debouncedSearch` to avoid recomputing filters on every keystroke), and
 `<app-date-range-filter>` (filters on `datum`, starting on the user's first preset, session-only). The
 row ends in a `cdkPortalOutlet` (`DataTableToolbarOutlet`) where the active tab's table controls
-appear — the by-category tree's expand/collapse-all buttons.
+appear — its selection bar and the by-category tree's expand/collapse-all buttons — so the tables
+need no toolbar row of their own.
 
 **`TransactionsStore`.** Loaded once at shell creation via `forkJoin` (accounts, transactions,
 categories), it exposes: `accounts`, `transactions` (the raw 10,000 rows, about 530 KB on the wire;
@@ -209,7 +211,8 @@ grouping logic only.
 (in the by-category tree only transaction rows are selectable). The header checkbox selects every row
 passing the shared filters, across all pages; Ctrl/Cmd-click toggles a row, and in the list Shift-click
 selects a range. The selection is pruned to the rows passing the filters whenever they change, and the
-toolbar shows "N selected" with a Clear action. Right-clicking a row inside a multi-row selection
+shell's filter row shows "N selected" with a Clear action (taking no space while nothing is
+selected). Right-clicking a row inside a multi-row selection
 disables View and Edit and makes Assign assign all selected rows in one request
 (`TransactionsStore.assignCategory`, see the write scope above); right-clicking outside the selection
 opens the single-row menu. After a successful bulk assign the selection is cleared.

@@ -2,10 +2,9 @@ import { ChangeDetectionStrategy, Component, inject, input, output } from '@angu
 import { TranslationService } from '../../../core/services/translation.service';
 
 /**
- * "N selected" and a Clear button for the table toolbar (project it with `appDataTableToolbar`).
- * It is always rendered, so the toolbar row never appears or collapses when the first row is
- * ticked; with nothing selected its content is `visibility: hidden` (kept in the layout, out of
- * the tab order and the accessibility tree).
+ * "N selected" and a Clear button for the table toolbar (project it with `appDataTableToolbar`;
+ * the transactions shell shows it at the end of its filter row). With nothing selected it is
+ * `display: none`, so it takes no space in that row until the first row is ticked.
  */
 @Component({
   selector: 'app-transactions-selection-bar',
