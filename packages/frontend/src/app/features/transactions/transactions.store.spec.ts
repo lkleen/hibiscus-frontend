@@ -3,6 +3,10 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
+  CategoryEditableFields,
+  CategoryRow,
+} from '@hibiscus-frontend/shared/contracts/categories';
+import type {
   TransactionEditableFields,
   TransactionRow,
 } from '@hibiscus-frontend/shared/contracts/transactions';
@@ -332,5 +336,68 @@ describe('TransactionsStore', () => {
     expect(row.kommentar).toBe('old');
     expect(row.umsatztyp_id).toBe(7);
     expect(store.revision()).toBe(0);
+  });
+
+  /** Loads the store with the given categories and no transactions. */
+  function loadCategories(categories: CategoryRow[]): void {
+    httpMock.expectOne('/api/accounts').flush([]);
+    httpMock.expectOne('/api/transactions').flush(transactionsResponse([]));
+    httpMock.expectOne('/api/categories').flush(categories);
+  }
+
+  it('posts a new category and appends the row the backend answers', () => {
+    loadCategories([categoryRow({ id: 7, name: 'Housing' })]);
+    const { id, ...editable }: CategoryRow = categoryRow({ name: 'Food' });
+    let created: CategoryRow | null = null;
+
+    store
+      .saveCategory({ kind: 'create', fields: editable })
+      .subscribe((row: CategoryRow) => (created = row));
+    const req = httpMock.expectOne('/api/categories');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(editable);
+    req.flush(categoryRow({ id: 9, name: 'Food' }), { status: 201, statusText: 'Created' });
+
+    expect(id).toBe(1);
+    expect(created).toEqual(categoryRow({ id: 9, name: 'Food' }));
+    expect(store.categories().map((row: CategoryRow) => row.id)).toEqual([7, 9]);
+  });
+
+  it('puts an edit with the starting values as expected and replaces the row in place', () => {
+    const housing: CategoryRow = categoryRow({ id: 7, name: 'Housing', pattern: 'rent' });
+    loadCategories([housing, categoryRow({ id: 8, name: 'Food' })]);
+    const { id, ...expected }: CategoryRow = housing;
+    const next: CategoryEditableFields = { ...expected, name: 'Rent', pattern: 'miete' };
+
+    store.saveCategory({ kind: 'update', category: housing, next }).subscribe();
+    const req = httpMock.expectOne('/api/categories/7');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ expected, next });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+
+    expect(id).toBe(7);
+    expect(store.categories().map((row: CategoryRow) => row.id)).toEqual([7, 8]);
+    expect(store.categories()[0]).toEqual({ id: 7, ...next });
+    expect(store.categories()[0]).not.toBe(housing);
+  });
+
+  it('leaves the categories untouched when the save fails', () => {
+    const housing: CategoryRow = categoryRow({ id: 7, name: 'Housing' });
+    loadCategories([housing]);
+    const before: readonly CategoryRow[] = store.categories();
+    const { id, ...expected }: CategoryRow = housing;
+    let failure: unknown = null;
+
+    store
+      .saveCategory({ kind: 'update', category: housing, next: { ...expected, name: 'Rent' } })
+      .subscribe({ error: (error: unknown) => (failure = error) });
+    httpMock
+      .expectOne('/api/categories/7')
+      .flush('changed elsewhere', { status: 409, statusText: 'Conflict' });
+
+    expect(id).toBe(7);
+    expect(failure).not.toBeNull();
+    expect(store.categories()).toBe(before);
+    expect(store.categories()[0]?.name).toBe('Housing');
   });
 });

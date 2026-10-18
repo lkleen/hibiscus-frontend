@@ -8,6 +8,13 @@ import type {
   TransactionsResponse,
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
+import type {
+  CategoryCreateRequest,
+  CategoryEditableFields,
+  CategoryRow,
+  CategoryUpdateRequest,
+} from '@hibiscus-frontend/shared/contracts/categories';
+import { categoryRow } from '../utils/testing/category-row-fixture';
 import {
   transaction,
   transactionsResponse,
@@ -96,6 +103,60 @@ describe('ApiService', () => {
 
     const req = httpMock.expectOne('/api/transactions/assign-category');
     expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(request);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('posts a new category and answers the stored row', () => {
+    const request: CategoryCreateRequest = {
+      name: 'Rent',
+      nummer: null,
+      pattern: 'rent',
+      isregex: 0,
+      umsatztyp: 0,
+      parent_id: null,
+      color: null,
+      customcolor: null,
+      kommentar: null,
+      konto_id: null,
+      konto_kategorie: null,
+      flags: null,
+    };
+    const stored: CategoryRow = categoryRow({ id: 9, name: 'Rent', pattern: 'rent', umsatztyp: 0 });
+    let received: CategoryRow | undefined = undefined;
+    service.createCategory(request).subscribe((row: CategoryRow) => (received = row));
+
+    const req = httpMock.expectOne('/api/categories');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(request);
+    req.flush(stored, { status: 201, statusText: 'Created' });
+
+    expect(received).toEqual(stored);
+  });
+
+  it('puts one category with the expected and next values', () => {
+    const expected: CategoryEditableFields = {
+      name: 'Rent',
+      nummer: null,
+      pattern: 'rent',
+      isregex: 0,
+      umsatztyp: 0,
+      parent_id: null,
+      color: null,
+      customcolor: null,
+      kommentar: null,
+      konto_id: null,
+      konto_kategorie: null,
+      flags: null,
+    };
+    const request: CategoryUpdateRequest = {
+      expected,
+      next: { ...expected, name: 'Housing', parent_id: 3 },
+    };
+    service.updateCategory(9, request).subscribe();
+
+    const req = httpMock.expectOne('/api/categories/9');
+    expect(req.request.method).toBe('PUT');
     expect(req.request.body).toEqual(request);
     req.flush(null, { status: 204, statusText: 'No Content' });
   });

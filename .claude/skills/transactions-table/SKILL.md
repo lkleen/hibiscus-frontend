@@ -69,8 +69,10 @@ tabs; `transactions-tabs.ts` is the single source for both tab definitions).
   category"), and "Assign" (with a tooltip), which opens a dialog with the same searchable category
   tree where a pick saves the category at once ("No category" unassigns; the comment stays). Both
   tabs offer them on transaction rows (`showDetailsOf(store.transactionColumns, …)` for View,
-  `TransactionDialogs.menuItems(row)` for Edit and Assign); the by-category tab's category rows keep
-  the browser's own menu.
+  `TransactionDialogs.menuItems(row)` for Edit and Assign; `CategoryDialogs` for Create category).
+  "Create category" is in the single-row menu only and disabled in the bulk menu; it opens the category
+  dialog prefilled from the transaction (`categoryDraftFrom`). The by-category tab's category nodes,
+  except "Unassigned", offer Edit (the category dialog).
 - Multi-row selection (checkbox column, `<app-data-table>` `rowSelection: { mode: 'multiple' }`) works
   in both tabs; in the by-category tree only transaction rows are selectable. Right-clicking a row in
   a multi-row selection disables View and Edit, and Assign assigns the whole selection through
@@ -86,7 +88,7 @@ when its type and account scope fit, and its pattern (if set) matches the transa
 fields. This is a deliberate interpretation of stored values, and **the only one** allowed in the
 transactions views (see §1). It is scoped strictly to grouping: displayed values in both tabs stay
 raw, and no value is modified by the assignment. The `assignCategories()` function
-(`by-category/category-assignment.ts`) implements the rule exactly, including Hibiscus's comma-split
+(`core/utils/category-matching.ts`) implements the rule exactly, including Hibiscus's comma-split
 non-regex patterns and full-match regex (`Java matches()`, emulated with `^(?:pattern)$`). Invalid
 regex patterns are reported as a visible warning, never silently ignored.
 

@@ -30,7 +30,7 @@ interface Fields {
   readonly ref: string;
 }
 
-interface CompiledCategory {
+export interface CompiledCategory {
   readonly category: CategoryRow;
   readonly regex: RegExp | null;
   readonly terms: readonly string[];
@@ -70,7 +70,7 @@ function toFields(t: TransactionRow): Fields {
   };
 }
 
-function compare(a: CategoryRow, b: CategoryRow): number {
+export function compareCategories(a: CategoryRow, b: CategoryRow): number {
   // MySQL's default collation is case-insensitive but accent-sensitive here, like `sensitivity: 'accent'`.
   const byNumber: number = (a.nummer ?? '').localeCompare(b.nummer ?? '', undefined, {
     sensitivity: 'accent',
@@ -83,9 +83,11 @@ function compare(a: CategoryRow, b: CategoryRow): number {
 /**
  * Java `matches()` is a full match, emulated by anchoring. Java and JS regex dialects differ
  * (possessive quantifiers, `\p{Alpha}`-style classes, inline flags other than the leading ones, ...);
- * a Java-only construct is reported as an invalid pattern here.
+ * a Java-only construct is reported as invalid here.
  */
-function compile(category: CategoryRow, invalid: CategoryRow[]): CompiledCategory {
+export function compileCategory(
+  category: CategoryRow,
+): CompiledCategory | { readonly invalid: true; readonly category: CategoryRow } {
   const pattern: string = category.pattern ?? '';
   if (pattern.trim() === '') return { category, regex: null, terms: [] };
   if (category.isregex === 1) {
@@ -93,8 +95,7 @@ function compile(category: CategoryRow, invalid: CategoryRow[]): CompiledCategor
       return { category, regex: new RegExp('^(?:' + pattern + ')$', 'i'), terms: [] };
     } catch (error: unknown) {
       if (!(error instanceof SyntaxError)) throw error;
-      invalid.push(category);
-      return { category, regex: null, terms: [] };
+      return { invalid: true, category };
     }
   }
   const terms: string[] = pattern
@@ -150,12 +151,51 @@ function termsMatch(terms: readonly string[], values: readonly string[], id: num
   );
 }
 
+/** A transaction's fields, computed once and shared by every category tested against it. */
+interface Candidate {
+  readonly transaction: TransactionRow;
+  readonly account: AccountRow;
+  readonly fields: Fields;
+  readonly values: readonly string[];
+  lowered: readonly string[] | null;
+}
+
+function toCandidate(transaction: TransactionRow, account: AccountRow): Candidate {
+  const fields: Fields = toFields(transaction);
+  return { transaction, account, fields, values: fieldValues(fields), lowered: null };
+}
+
+function candidateMatches(c: CompiledCategory, candidate: Candidate): boolean {
+  const { transaction: t, account } = candidate;
+  if (!typeAccepts(c.category, t.betrag) || !accountAccepts(c.category, t, account)) return false;
+  if (c.regex !== null) return regexMatches(c.regex, candidate.values);
+  if (c.terms.length === 0) return false;
+  candidate.lowered ??= termValues(candidate.fields);
+  return termsMatch(c.terms, candidate.lowered, t.id);
+}
+
+/** Type + account scope + pattern, exactly as in the assignment loop; an empty pattern never matches. */
+export function matchesCategory(
+  compiled: CompiledCategory,
+  transaction: TransactionRow,
+  account: AccountRow,
+): boolean {
+  return candidateMatches(compiled, toCandidate(transaction, account));
+}
+
 /** Assigns each transaction to a category exactly like Hibiscus (`UmsatzImpl.getUmsatzTyp`). */
 export function assignCategories(input: CategoryAssignmentInput): CategoryAssignment {
   const invalidPatterns: CategoryRow[] = [];
-  const compiled: CompiledCategory[] = [...input.categories]
-    .sort(compare)
-    .map((category: CategoryRow) => compile(category, invalidPatterns));
+  const compiled: CompiledCategory[] = [];
+  for (const category of [...input.categories].sort(compareCategories)) {
+    const result: ReturnType<typeof compileCategory> = compileCategory(category);
+    if ('invalid' in result) {
+      invalidPatterns.push(category);
+      compiled.push({ category, regex: null, terms: [] });
+    } else {
+      compiled.push(result);
+    }
+  }
   const categoriesById = new Map<number, CategoryRow>(
     input.categories.map((category: CategoryRow): [number, CategoryRow] => [category.id, category]),
   );
@@ -168,26 +208,11 @@ export function assignCategories(input: CategoryAssignmentInput): CategoryAssign
     }
     const account: AccountRow | undefined = input.accountsById.get(t.konto_id);
     if (!account) throw new Error(`account ${t.konto_id} of transaction ${t.id} is not loaded`);
-    const fields: Fields = toFields(t);
-    const values: readonly string[] = fieldValues(fields);
-    let lowered: readonly string[] | null = null;
-    let assigned: CategoryRow | null = null;
-    for (const c of compiled) {
-      if (!typeAccepts(c.category, t.betrag) || !accountAccepts(c.category, t, account)) continue;
-      let hit: boolean;
-      if (c.regex !== null) {
-        hit = regexMatches(c.regex, values);
-      } else {
-        if (c.terms.length === 0) continue;
-        lowered ??= termValues(fields);
-        hit = termsMatch(c.terms, lowered, t.id);
-      }
-      if (hit) {
-        assigned = c.category;
-        break;
-      }
-    }
-    byTransactionId.set(t.id, assigned);
+    const candidate: Candidate = toCandidate(t, account);
+    const hit: CompiledCategory | undefined = compiled.find((c: CompiledCategory) =>
+      candidateMatches(c, candidate),
+    );
+    byTransactionId.set(t.id, hit?.category ?? null);
   }
   return { byTransactionId, invalidPatterns };
 }

@@ -11,6 +11,11 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import { Observable, forkJoin, tap } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import type {
+  CategorySave,
+  CategoryEditSource,
+} from '../categories/edit-dialog/category-edit-dialog.model';
+import { saveCategoryInto } from '../categories/save-category';
 import { categoryPaths } from '../../core/utils/category-path';
 import { DateRange, isInRange } from '../../core/utils/date-range';
 import { quickFilterMatches } from '../../shared/components/data-table/data-table.defaults';
@@ -20,7 +25,7 @@ import {
   type DataTableOptions,
 } from '../../shared/components/data-table/data-table.model';
 
-import { assignCategories, type CategoryAssignment } from './by-category/category-assignment';
+import { assignCategories, type CategoryAssignment } from '../../core/utils/category-matching';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -30,7 +35,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * the shell and switching tabs never refetches.
  */
 @Injectable()
-export class TransactionsStore {
+export class TransactionsStore implements CategoryEditSource {
   private readonly api = inject(ApiService);
 
   readonly accounts = signal<readonly AccountRow[]>([]);
@@ -208,6 +213,16 @@ export class TransactionsStore {
         this.revision.update((value: number) => value + 1);
       }),
     );
+  }
+
+  /**
+   * Saves a category from the category dialog. A create appends the row the backend answers; an
+   * update replaces the stored row at the same position with the saved values. Both swap the
+   * array rather than mutating it, so `categoryPathsById` and `categoryAssignment` recompute.
+   * Errors propagate to the caller, and `categories` stays untouched.
+   */
+  saveCategory(save: CategorySave): Observable<CategoryRow> {
+    return saveCategoryInto(this.api, this.categories, save);
   }
 
   /**

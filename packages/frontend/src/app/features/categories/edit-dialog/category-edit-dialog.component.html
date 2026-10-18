@@ -1,0 +1,223 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">
+    {{ i18n.t(isEdit ? 'categories.edit.titleEdit' : 'categories.edit.titleCreate') }}
+  </h2>
+</header>
+
+<div class="app-dialog__body category-edit">
+  <div class="category-edit__layout">
+    <form class="category-edit__form" (submit)="$event.preventDefault()">
+      <div class="category-edit__field">
+        <label class="category-edit__label" [for]="nameId">{{
+          i18n.t('categories.colName')
+        }}</label>
+        <input
+          class="category-edit__control"
+          type="text"
+          required
+          autocomplete="off"
+          [id]="nameId"
+          [value]="name()"
+          (input)="name.set(valueOf($event))"
+        />
+      </div>
+
+      <fieldset class="category-edit__field category-edit__fieldset">
+        <legend class="category-edit__label">{{ i18n.t('categories.edit.parent') }}</legend>
+        <div class="app-dialog__current">
+          <p class="app-dialog__current-label" role="status">{{ parentLabel() }}</p>
+          <button
+            type="button"
+            class="app-dialog__button"
+            [disabled]="parentId() === null"
+            (click)="clearParent()"
+          >
+            {{ i18n.t('categories.edit.noParent') }}
+          </button>
+        </div>
+        <app-category-picker [categories]="parentCandidates()" [(selectedId)]="parentId" />
+      </fieldset>
+
+      <div class="category-edit__field">
+        <label class="category-edit__label" for="category-edit-pattern">{{
+          i18n.t('categories.colPattern')
+        }}</label>
+        <input
+          class="category-edit__control"
+          type="text"
+          id="category-edit-pattern"
+          autocomplete="off"
+          spellcheck="false"
+          [attr.aria-invalid]="patternInvalid() ? 'true' : null"
+          [attr.aria-describedby]="patternInvalid() ? patternErrorId : null"
+          [value]="pattern()"
+          (input)="pattern.set(valueOf($event))"
+        />
+        <label class="category-edit__check">
+          <input type="checkbox" [checked]="isRegex()" (change)="isRegex.set(checkedOf($event))" />
+          {{ i18n.t('categories.colIsRegex') }}
+        </label>
+        @if (patternInvalid()) {
+          <p class="category-edit__problem" role="alert" [id]="patternErrorId">
+            {{ i18n.t('categories.edit.patternInvalid') }}
+          </p>
+        } @else if (!hasPattern()) {
+          <p class="category-edit__hint">{{ i18n.t('categories.edit.noPattern') }}</p>
+        }
+      </div>
+
+      <div class="category-edit__pair">
+        <div class="category-edit__field">
+          <label class="category-edit__label" for="category-edit-type">{{
+            i18n.t('categories.colType')
+          }}</label>
+          <select
+            class="category-edit__control"
+            id="category-edit-type"
+            [value]="typeChoice()"
+            (change)="onTypeChange($event)"
+          >
+            @for (choice of typeChoices; track choice) {
+              <option [value]="choice" [selected]="choice === typeChoice()">
+                {{ i18n.t(typeLabelKey(choice)) }}
+              </option>
+            }
+          </select>
+        </div>
+        <div class="category-edit__field">
+          <label class="category-edit__label" for="category-edit-account">{{
+            i18n.t('categories.colAccount')
+          }}</label>
+          <select
+            class="category-edit__control"
+            id="category-edit-account"
+            (change)="onAccountChange($event)"
+          >
+            <option value="" [selected]="accountId() === null">
+              {{ i18n.t('categories.edit.anyAccount') }}
+            </option>
+            @for (account of accounts(); track account.id) {
+              <option [value]="account.id" [selected]="account.id === accountId()">
+                {{ accountName(account) }}
+              </option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="category-edit__pair">
+        <div class="category-edit__field">
+          <label class="category-edit__label" for="category-edit-account-category">{{
+            i18n.t('categories.colAccountCategory')
+          }}</label>
+          <input
+            class="category-edit__control"
+            type="text"
+            id="category-edit-account-category"
+            autocomplete="off"
+            [value]="accountCategory()"
+            (input)="accountCategory.set(valueOf($event))"
+          />
+        </div>
+        <div class="category-edit__field">
+          <label class="category-edit__label" for="category-edit-number">{{
+            i18n.t('categories.colNumber')
+          }}</label>
+          <input
+            class="category-edit__control"
+            type="text"
+            id="category-edit-number"
+            autocomplete="off"
+            [value]="number()"
+            (input)="number.set(valueOf($event))"
+          />
+        </div>
+      </div>
+
+      <div class="category-edit__row">
+        <label class="category-edit__check">
+          <input
+            type="checkbox"
+            [checked]="customColor()"
+            (change)="customColor.set(checkedOf($event))"
+          />
+          {{ i18n.t('categories.colCustomColor') }}
+        </label>
+        <input
+          class="category-edit__color"
+          type="color"
+          [attr.aria-label]="i18n.t('categories.colColor')"
+          [value]="colorHex()"
+          (input)="onColorInput($event)"
+        />
+      </div>
+
+      <label class="category-edit__check">
+        <input
+          type="checkbox"
+          [checked]="skipReports()"
+          (change)="skipReports.set(checkedOf($event))"
+        />
+        {{ i18n.t('categories.flag.skipReports') }}
+      </label>
+
+      <div class="category-edit__field">
+        <label class="category-edit__label" for="category-edit-comment">{{
+          i18n.t('categories.colComment')
+        }}</label>
+        <textarea
+          class="category-edit__control"
+          id="category-edit-comment"
+          rows="3"
+          [value]="comment()"
+          (input)="comment.set(valueOf($event))"
+        ></textarea>
+      </div>
+    </form>
+
+    <section class="category-edit__preview" aria-labelledby="category-edit-preview-title">
+      <h3 class="category-edit__preview-title" id="category-edit-preview-title">
+        {{ i18n.t('categories.edit.previewTitle') }}
+      </h3>
+      <p class="category-edit__summary" aria-live="polite">{{ summary() }}</p>
+      <app-data-table [value]="rows()" [columns]="columns" [options]="options">
+        <ng-template appDataTableCell="status" let-row let-label="value">
+          <span class="category-edit__status category-edit__status--{{ row.status }}">
+            <span class="category-edit__marker" aria-hidden="true"></span>
+            {{ asText(label) }}
+          </span>
+        </ng-template>
+        <ng-template appDataTableCell="amount" let-value="value">
+          <app-transaction-amount-cell [amount]="asAmount(value)" />
+        </ng-template>
+      </app-data-table>
+    </section>
+  </div>
+</div>
+
+<footer class="app-dialog__footer">
+  @if (error(); as failure) {
+    <p class="app-dialog__error" role="alert">
+      {{
+        i18n.t(
+          failure === 'conflict'
+            ? 'categories.edit.conflict'
+            : failure === 'cycle'
+              ? 'categories.edit.cycle'
+              : 'categories.edit.error'
+        )
+      }}
+    </p>
+  }
+  <button type="button" class="app-dialog__button" [disabled]="saving()" (click)="cancel()">
+    {{ i18n.t('categories.edit.cancel') }}
+  </button>
+  <button
+    type="button"
+    class="app-dialog__button app-dialog__button--primary"
+    [disabled]="!canSave()"
+    (click)="save()"
+  >
+    {{ i18n.t(isEdit ? 'categories.edit.apply' : 'categories.edit.create') }}
+  </button>
+</footer>

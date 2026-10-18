@@ -59,8 +59,10 @@ while the row still holds the values the edit started from (`expected`); otherwi
 (`POST /api/transactions/assign-category`) writes only `umsatztyp_id` and only compares `kommentar`.
 It runs one `UPDATE ... WHERE` per row, in ascending id order, inside a single DB transaction: if any
 row does not match its `expected` values, the whole batch is rolled back and nothing is saved. The JSON
-body limit for this route is 10 MB (`server.ts`). No other column of `umsatz` is ever written, and
-categories stay read-only (`GET /api/categories`). Bank-imported transaction
+body limit for this route is 10 MB (`server.ts`). No other column of `umsatz` is ever written. The category table `umsatztyp` is written too, every
+column but `id`: `POST /api/categories` inserts a row, and `PUT /api/categories/:id` updates one
+(`expected`/`next`) with one `UPDATE … WHERE` that compares every column with `<=>`, in one DB
+transaction, under the same `409` guard as transaction edits. There is no delete. Bank-imported transaction
 fields (amount, date, counterparty) are synced from the bank by the desktop client and are not this
 app's data to change.
 
@@ -77,6 +79,8 @@ itself requires authentication too — there is no unauthenticated route in this
 | `PATCH /api/transactions/:id`            | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                   |
 | `POST /api/transactions/assign-category` | Set `umsatztyp_id` on 1–10,000 selected rows (`TransactionAssignRequest`: `items` of `{ id, expected: { kommentar, umsatztyp_id } }`, `umsatztyp_id`); one DB transaction, all-or-nothing; `204`; `400` invalid body or unknown category; `409` `{ error: 'conflict', conflictIds }` if any row no longer holds its `expected`, nothing saved |
 | `GET /api/categories`                    | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                                                                                                                                                              |
+| `POST /api/categories`                   | Create a `umsatztyp` row (`CategoryCreateRequest`: every column but `id`, zod-validated); answers `201` with the created `CategoryRow` as stored; `400` invalid body or unknown parent/account                                                                                                                                                |
+| `PUT /api/categories/:id`                | Change every editable column (`CategoryUpdateRequest`: `expected`, `next`); one DB transaction; `204`; `400` invalid body, unknown parent/account, or `{ error: 'cycle' }` when the new parent is the category itself or one of its descendants; `404` no such row; `409` if the row no longer holds `expected`                               |
 | `GET /api/settings/date-presets`         | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                   |
 | `PUT /api/settings/date-presets`         | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                         |
 | `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                               |
@@ -94,7 +98,10 @@ the package needs no build step and the backend's `dist/` layout is unchanged.
 `GET /api/categories` returns `CategoryRow` rows: the `umsatztyp` columns as stored. The `color`
 column is stored as `"r,g,b"` (comma-separated bytes, as Hibiscus writes it); rows edited by this
 app's former categories page may hold `#rrggbb` instead. The colour is displayed only when `customcolor = 1`. The frontend
-converts both formats to CSS via `toCssColor()` (`core/utils/category-color.ts`).
+converts both formats to CSS via `toCssColor()` (`core/utils/category-color.ts`). New colours are
+written back in the `"r,g,b"` format. The category write routes use `CategoryEditableFields` (every
+column but `id`), `CategoryCreateRequest`, `CategoryUpdateRequest` and `CategoryCycleError`, all
+declared in `@hibiscus-frontend/shared/contracts/categories`.
 
 `GET /api/transactions` returns the selected `umsatz` columns exactly as the DB has them
 (`TransactionRow`: `konto_id`, `empfaenger_name`, `betrag`, `zweck`, `umsatztyp_id`, …). To keep
@@ -192,7 +199,7 @@ nodes at once. Invalid category regex patterns are listed in a visible warning a
 rule: stored `umsatztyp_id` wins; when NULL or unknown, the first matching category by `ORDER BY
 COALESCE(nummer,''), name` is used; when no category matches, the transaction is unassigned. A
 category matches when its type and account scope fit and its pattern (if set) matches the
-transaction's searchable fields. The `assignCategories()` function in `category-assignment.ts`
+transaction's searchable fields. The `assignCategories()` function in `core/utils/category-matching.ts`
 implements this exactly, including Hibiscus's comma-split non-regex patterns and full-match regex
 (Java `matches()`, emulated with `^(?:pattern)$`). Grouping only — displayed values stay raw. This is
 a documented exception to the transactions-table skill's "never interpret" rule, scoped to that
@@ -209,15 +216,41 @@ opens the single-row menu. After a successful bulk assign the selection is clear
 
 **Served but not displayed.** Four columns are served for category matching but not shown in either
 tab: `purposecode`, `mandateid`, `creditorid`, `customerref`. These (and the displayed `kommentar`)
-appear in the assignment patterns as-is, used as searchable fields in `category-assignment.ts`.
+appear in the assignment patterns as-is, used as searchable fields in `core/utils/category-matching.ts`.
 
 ### Categories page
 
-A read-only `/:locale/categories` page in the navigation shows the entire `umsatztyp` tree as a
+A `/:locale/categories` page in the navigation shows the entire `umsatztyp` tree as a
 table with expand-all/collapse-all controls. Every column is rendered as stored: `type` is
 translated (`0` = expense, `1` = income, `2` or `NULL` = any), `konto_id` is resolved to the
 account label via `/api/accounts`, and the `flags` column's bit 1 (`FLAG_SKIP_REPORTS = 1`)
-indicates "skip in reports". The `color` column is rendered via `toCssColor`. Category editing is planned as a later step.
+indicates "skip in reports". The `color` column is rendered via `toCssColor`. Right-clicking a category and choosing Edit opens the
+category dialog (below). The page has its own `CategoriesStore` (`features/categories/categories.store.ts`),
+which also loads the transactions for the dialog's preview.
+
+### Category dialog
+
+`CategoryEditDialogComponent` (`features/categories/edit-dialog/`), opened by `CategoryDialogs`, creates
+or edits a category and covers every `umsatztyp` column: name, parent (`<app-category-picker>`, which
+excludes the category itself and its descendants), pattern with the regex flag, type, account, account
+category, number, colour, comment and the skip-in-reports flag.
+
+A live preview table (`<app-data-table>`) lists every transaction that the draft's pattern, type and
+account scope match, updated as you type (debounced 300 ms). Its status column shows "assigned here",
+"stored as ‹category›" or "claimed first by ‹earlier category›"; the last is computed by running
+`assignCategories()` over the hits with the draft in place of the stored category. An invalid regex
+shows an inline error and disables saving.
+
+Nothing is saved until Create (new category) or Apply (edit). Saves go through a `CategoryEditSource`,
+implemented by `TransactionsStore` and `CategoriesStore`, which puts the stored row into its
+`categories` signal so the trees and the assignments recompute. Edits are protected by `expected` and
+`409`, like transaction edits.
+
+Entry points: the transactions list and the by-category transaction rows offer "Create category" in the
+row menu (single-row menu only; disabled in the bulk menu). It opens the dialog prefilled from the
+transaction (`categoryDraftFrom`, `features/categories/category-draft.ts`): name and pattern are the
+counterparty name with commas escaped, and the type follows the amount's sign. On the by-category tab,
+category nodes (not "Unassigned") offer Edit.
 
 ## Authentication
 

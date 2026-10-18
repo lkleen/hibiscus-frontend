@@ -6,6 +6,8 @@ import {
   APP_DIALOG_PANEL_CLASS,
 } from '../../shared/dialog/dialog-classes';
 import type { DataTableMenuItem } from '../../shared/components/data-table/data-table.model';
+import { CategoryDialogs } from '../categories/category-dialogs';
+import { categoryDraftFrom } from '../categories/category-draft';
 import {
   TRANSACTION_ASSIGN_TITLE_ID,
   TransactionAssignDialogComponent,
@@ -32,6 +34,7 @@ import { TransactionsStore } from './transactions.store';
 export class TransactionDialogs {
   private readonly dialog = inject(Dialog);
   private readonly store = inject(TransactionsStore);
+  private readonly categoryDialogs = inject(CategoryDialogs);
   private ref: DialogRef<void> | null = null;
 
   constructor() {
@@ -39,7 +42,7 @@ export class TransactionDialogs {
   }
 
   /**
-   * The row-menu entries for `params.row`: View, Edit, Assign. On a row that is part of a
+   * The row-menu entries for `params.row`: View, Edit, Assign, Create category. On a row that is part of a
    * multi-row selection, View and Edit are disabled and Assign acts on the whole selection;
    * otherwise they act on the row alone and the selection is left alone.
    */
@@ -59,6 +62,11 @@ export class TransactionDialogs {
           tooltipKey: 'transactions.menuAssignTooltip',
           action: (): void => this.openAssign([row]),
         },
+        {
+          nameKey: 'transactions.menuCreateCategory',
+          tooltipKey: 'transactions.menuCreateCategoryTooltip',
+          action: (): void => this.categoryDialogs.openCreate(this.store, categoryDraftFrom(row)),
+        },
       ];
     }
     return [
@@ -68,6 +76,12 @@ export class TransactionDialogs {
         nameKey: 'transactions.menuAssign',
         tooltipKey: 'transactions.menuAssignBulkTooltip',
         action: (): void => this.openAssign(selectedRows, onBulkAssigned),
+      },
+      {
+        nameKey: 'transactions.menuCreateCategory',
+        tooltipKey: 'transactions.menuCreateCategoryTooltip',
+        action: (): void => undefined,
+        disabled: true,
       },
     ];
   }

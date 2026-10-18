@@ -12,6 +12,7 @@ import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transac
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 import { TransactionDialogs } from '../transaction-dialogs';
+import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 
@@ -32,6 +33,7 @@ describe('TransactionAssignDialogComponent', () => {
         provideHttpClientTesting(),
         TransactionsStore,
         TransactionDialogs,
+        CategoryDialogs,
       ],
     });
     httpMock = TestBed.inject(HttpTestingController);

@@ -1,4 +1,4 @@
-import { toCssColor } from './category-color';
+import { toCssColor, toHexColor, toStoredColor } from './category-color';
 
 describe('toCssColor', () => {
   it('returns null when customcolor is 0', () => {
@@ -45,5 +45,42 @@ describe('toCssColor', () => {
 
   it('throws on unknown color format', () => {
     expect(() => toCssColor({ color: 'red', customcolor: 1 })).toThrow(/Invalid color format/);
+  });
+});
+
+describe('toStoredColor', () => {
+  it('converts #rrggbb to "r,g,b"', () => {
+    expect(toStoredColor('#ff0080')).toBe('255,0,128');
+    expect(toStoredColor('#A1B2C3')).toBe('161,178,195');
+  });
+
+  it('throws on anything else', () => {
+    expect(() => toStoredColor('ff0080')).toThrow(/Invalid color format/);
+    expect(() => toStoredColor('#fff')).toThrow(/Invalid color format/);
+    expect(() => toStoredColor('255,0,0')).toThrow(/Invalid color format/);
+  });
+});
+
+describe('toHexColor', () => {
+  it('returns null for null', () => {
+    expect(toHexColor(null)).toBe(null);
+  });
+
+  it('converts "r,g,b" to #rrggbb', () => {
+    expect(toHexColor('255,0,128')).toBe('#ff0080');
+    expect(toHexColor(' 1, 2 ,3')).toBe('#010203');
+  });
+
+  it('normalises hex to lowercase', () => {
+    expect(toHexColor('#A1B2C3')).toBe('#a1b2c3');
+  });
+
+  it('round-trips with toStoredColor', () => {
+    expect(toStoredColor(toHexColor('12,34,56') as string)).toBe('12,34,56');
+  });
+
+  it('throws on malformed values', () => {
+    expect(() => toHexColor('300,0,0')).toThrow(/> 255/);
+    expect(() => toHexColor('red')).toThrow(/Invalid color format/);
   });
 });

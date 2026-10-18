@@ -16,6 +16,7 @@ import {
 } from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
 import { TransactionsSelectionBarComponent } from '../selection-bar/transactions-selection-bar.component';
+import { CategoryDialogs } from '../../categories/category-dialogs';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
 import { buildCategoryReport, type CategoryReportRow } from './category-report';
@@ -66,6 +67,7 @@ export class TransactionsByCategoryComponent {
   protected readonly store = inject(TransactionsStore);
   protected readonly i18n = inject(TranslationService);
   private readonly dialogs = inject(TransactionDialogs);
+  private readonly categoryDialogs = inject(CategoryDialogs);
 
   /** The ticked transaction leaves (ids); the table prunes it to the rows that pass the filters. */
   protected readonly selectedRowIds = signal<ReadonlySet<string | number>>(new Set());
@@ -151,10 +153,19 @@ export class TransactionsByCategoryComponent {
       isRowSelectable: (row: CategoryReportRow): boolean => row.kind === 'transaction',
     },
     // A transaction shows the list tab's details (its own columns) and can be edited or assigned;
-    // category rows have no menu. In a multi-row selection the entries act on the selected
-    // transactions (see `TransactionDialogs.menuItems`).
+    // a category node can be edited, the Unassigned node has no menu. In a multi-row selection the
+    // transaction entries act on the selected transactions (see `TransactionDialogs.menuItems`).
     getContextMenuItems: ({ row, selectedRows }): readonly DataTableMenuItem[] => {
-      if (row.kind !== 'transaction') return [];
+      if (row.kind === 'category') {
+        const category: CategoryRow | null = row.category;
+        if (category === null) return [];
+        return [
+          {
+            nameKey: 'categories.menuEdit',
+            action: (): void => this.categoryDialogs.openEdit(this.store, category),
+          },
+        ];
+      }
       const transaction: TransactionRow = row.transaction;
       return this.dialogs.menuItems({
         row: transaction,

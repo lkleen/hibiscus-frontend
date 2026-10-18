@@ -7,7 +7,11 @@ import type {
   TableDensity,
 } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
-import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type {
+  CategoryCreateRequest,
+  CategoryRow,
+  CategoryUpdateRequest,
+} from '@hibiscus-frontend/shared/contracts/categories';
 import type {
   TransactionAssignRequest,
   TransactionRow,
@@ -69,6 +73,16 @@ export class ApiService {
 
   getCategories(): Observable<CategoryRow[]> {
     return this.http.get<CategoryRow[]>('/api/categories');
+  }
+
+  /** Answers `201 Created` with the new row as stored. */
+  createCategory(request: CategoryCreateRequest): Observable<CategoryRow> {
+    return this.http.post<CategoryRow>('/api/categories', request);
+  }
+
+  /** Saves an edit to one category; `204` on success, `409` when `expected` is stale, `400` `{ error: 'cycle' }` for a parent cycle. */
+  updateCategory(id: number, request: CategoryUpdateRequest): Observable<void> {
+    return this.http.put<void>(`/api/categories/${id}`, request);
   }
 
   /** The backend answers the stored list, or the defaults when the user has none stored. */

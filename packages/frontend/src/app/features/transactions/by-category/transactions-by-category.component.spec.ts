@@ -1,12 +1,14 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type { MockInstance } from 'vitest';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 import { TransactionDialogs } from '../transaction-dialogs';
+import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionsByCategoryComponent } from './transactions-by-category.component';
@@ -35,6 +37,7 @@ describe('TransactionsByCategoryComponent', () => {
         provideHttpClientTesting(),
         TransactionsStore,
         TransactionDialogs,
+        CategoryDialogs,
       ],
     });
     fixture = TestBed.createComponent(TransactionsByCategoryComponent);
@@ -162,6 +165,7 @@ describe('TransactionsByCategoryComponent', () => {
       'View',
       'Edit',
       'Assign',
+      'Create category',
     ]);
     expect(overlay('[cdkMenuItem]')[2].getAttribute('title')).toBe(
       'Assign this transaction to a category, or remove its category',
@@ -179,6 +183,39 @@ describe('TransactionsByCategoryComponent', () => {
     expect(values).toContain('Bakery');
     expect(values).toContain('Noted');
     overlay('.data-table-details__close')[0].click();
+  });
+
+  it('offers only Edit on a category node, which opens its dialog; the Unassigned node has no menu', async () => {
+    const housing: CategoryRow = categoryRow({ id: 1, name: 'Housing', pattern: 'rent' });
+    await load({
+      categories: [housing],
+      items: [
+        transaction({ id: 1, zweck: 'rent', betrag: -100 }),
+        transaction({ id: 2, zweck: 'other', betrag: 20 }),
+      ],
+    });
+    const dialogs: CategoryDialogs = TestBed.inject(CategoryDialogs);
+    const store: TransactionsStore = TestBed.inject(TransactionsStore);
+    const openEdit: MockInstance<CategoryDialogs['openEdit']> = vi
+      .spyOn(dialogs, 'openEdit')
+      .mockImplementation(() => undefined);
+
+    function contextMenu(row: number): HTMLElement[] {
+      const cell: Element | undefined = root.querySelectorAll('tbody tr')[row]?.children[1];
+      if (!cell) throw new Error('row not rendered');
+      cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('[cdkMenuItem]'));
+    }
+
+    const housingItems: HTMLElement[] = contextMenu(0);
+    expect(housingItems.map((el: HTMLElement) => el.textContent?.trim())).toEqual(['Edit']);
+    housingItems[0].click();
+    fixture.detectChanges();
+    expect(openEdit).toHaveBeenCalledWith(store, housing);
+
+    expect(contextMenu(1)).toEqual([]);
+    expect(openEdit).toHaveBeenCalledTimes(1);
   });
 
   it('shows no warning when every pattern is valid', async () => {
@@ -244,6 +281,7 @@ describe('TransactionsByCategoryComponent', () => {
         'true',
         'true',
         null,
+        'true',
       ]);
       items[2].click();
       await settle();
@@ -272,6 +310,7 @@ describe('TransactionsByCategoryComponent', () => {
       await expandAndTick(2);
       const items: HTMLElement[] = menu(3);
       expect(items.map((el: HTMLElement) => el.getAttribute('aria-disabled'))).toEqual([
+        null,
         null,
         null,
         null,

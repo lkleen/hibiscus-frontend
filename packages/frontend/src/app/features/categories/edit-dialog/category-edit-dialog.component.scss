@@ -1,0 +1,185 @@
+// The sheet, header, body and footer come from the shared dialog styles (`styles/_dialog.scss`).
+
+// The body is the query container: the form and the preview sit side by side once the dialog
+// itself is wide enough, whatever the viewport.
+.category-edit {
+  container-type: inline-size;
+}
+
+.category-edit__layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+
+  @container (min-width: 44rem) {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+  }
+}
+
+.category-edit__form,
+.category-edit__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  min-width: 0;
+}
+
+.category-edit__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.category-edit__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.875rem;
+}
+
+.category-edit__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.category-edit__label {
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.category-edit__control {
+  --category-edit-input-bg: var(--surface-card);
+  --category-edit-input-color: var(--text-color);
+  --category-edit-input-border-color: var(--surface-border);
+  --category-edit-input-radius: var(--radius-base);
+
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  background: var(--category-edit-input-bg);
+  color: var(--category-edit-input-color);
+  border: 1px solid var(--category-edit-input-border-color);
+  border-radius: var(--category-edit-input-radius);
+  font-family: inherit;
+  font-size: var(--text-sm);
+
+  &[aria-invalid='true'] {
+    --category-edit-input-border-color: var(--color-danger);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+}
+
+textarea.category-edit__control {
+  resize: vertical;
+}
+
+.category-edit__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+
+  input {
+    accent-color: var(--color-accent);
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+}
+
+.category-edit__color {
+  inline-size: 3rem;
+  block-size: 2rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-base);
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  @media (pointer: coarse) {
+    block-size: 2.75rem;
+  }
+}
+
+.category-edit__problem,
+.category-edit__hint {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.category-edit__problem {
+  color: var(--color-danger);
+}
+
+.category-edit__hint {
+  color: var(--text-muted);
+}
+
+.category-edit__preview-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.category-edit__summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.category-edit__status {
+  --category-edit-marker-color: var(--text-muted);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  // The marker's shape carries the status as well as its colour: filled disc = assigned by this
+  // pattern, filled square = already stored here, ring = stored elsewhere, dashed ring = another
+  // category's pattern comes first.
+  &--assignedHere,
+  &--storedHere {
+    --category-edit-marker-color: var(--color-accent);
+  }
+}
+
+.category-edit__marker {
+  flex: none;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  background: var(--category-edit-marker-color);
+  border: 2px solid var(--category-edit-marker-color);
+  border-radius: 50%;
+
+  .category-edit__status--storedHere & {
+    border-radius: 0.125rem;
+  }
+
+  .category-edit__status--storedElsewhere &,
+  .category-edit__status--claimed & {
+    background: transparent;
+  }
+
+  .category-edit__status--claimed & {
+    border-style: dashed;
+  }
+}

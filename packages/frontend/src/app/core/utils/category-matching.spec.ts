@@ -1,9 +1,15 @@
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
-import { account, transaction } from '../testing/transaction-fixture';
-import { assignCategories, type CategoryAssignment } from './category-assignment';
+import { account, transaction } from '../../features/transactions/testing/transaction-fixture';
+import {
+  assignCategories,
+  compileCategory,
+  matchesCategory,
+  type CategoryAssignment,
+  type CompiledCategory,
+} from './category-matching';
+import { categoryRow } from './testing/category-row-fixture';
 
 function run(
   transactions: TransactionRow[],
@@ -181,5 +187,64 @@ describe('assignCategories', () => {
     );
     expect(assignedId(result, 42)).toBe(1);
     expect(assignedId(result, 4)).toBeNull();
+  });
+});
+
+function compiled(category: CategoryRow): CompiledCategory {
+  const result: ReturnType<typeof compileCategory> = compileCategory(category);
+  if ('invalid' in result) throw new Error('category did not compile');
+  return result;
+}
+
+describe('compileCategory', () => {
+  it('flags a regex that does not compile', () => {
+    const category: CategoryRow = categoryRow({ id: 1, pattern: '(', isregex: 1 });
+    expect(compileCategory(category)).toEqual({ invalid: true, category });
+  });
+
+  it('compiles a valid regex and non-regex terms', () => {
+    expect(compiled(categoryRow({ id: 1, pattern: 'a.*', isregex: 1 })).regex).not.toBeNull();
+    expect(compiled(categoryRow({ id: 1, pattern: 'Foo, bar', isregex: 0 })).terms).toEqual([
+      'foo',
+      'bar',
+    ]);
+  });
+});
+
+describe('matchesCategory', () => {
+  const giro: AccountRow = account({ id: 1, kategorie: 'Giro' });
+
+  it('respects the category type', () => {
+    const income: CompiledCategory = compiled(
+      categoryRow({ id: 1, pattern: 'rewe', umsatztyp: 1 }),
+    );
+    expect(matchesCategory(income, transaction({ zweck: 'rewe', betrag: -5 }), giro)).toBe(false);
+    expect(matchesCategory(income, transaction({ zweck: 'rewe', betrag: 5 }), giro)).toBe(true);
+  });
+
+  it('respects the account scope', () => {
+    const scoped: CompiledCategory = compiled(categoryRow({ id: 1, pattern: 'rewe', konto_id: 2 }));
+    expect(matchesCategory(scoped, transaction({ zweck: 'rewe', konto_id: 1 }), giro)).toBe(false);
+    const byKind: CompiledCategory = compiled(
+      categoryRow({ id: 1, pattern: 'rewe', konto_kategorie: 'Tagesgeld' }),
+    );
+    expect(matchesCategory(byKind, transaction({ zweck: 'rewe' }), giro)).toBe(false);
+  });
+
+  it('matches non-regex terms as substrings, case-insensitively', () => {
+    const c: CompiledCategory = compiled(categoryRow({ id: 1, pattern: 'xyz, REWE' }));
+    expect(matchesCategory(c, transaction({ zweck: 'Einkauf Rewe Markt' }), giro)).toBe(true);
+    expect(matchesCategory(c, transaction({ zweck: 'Aldi' }), giro)).toBe(false);
+  });
+
+  it('matches a regex against the whole value', () => {
+    const c: CompiledCategory = compiled(categoryRow({ id: 1, pattern: 'rewe', isregex: 1 }));
+    expect(matchesCategory(c, transaction({ zweck: 'rewe' }), giro)).toBe(true);
+    expect(matchesCategory(c, transaction({ zweck: 'rewe markt' }), giro)).toBe(false);
+  });
+
+  it('never matches an empty pattern', () => {
+    const c: CompiledCategory = compiled(categoryRow({ id: 1, pattern: '  ' }));
+    expect(matchesCategory(c, transaction({ zweck: 'anything' }), giro)).toBe(false);
   });
 });

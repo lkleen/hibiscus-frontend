@@ -34,3 +34,20 @@ export interface CategoryRow {
   /** Bitfield: bit 1 set means skip in reports. */
   flags: number | null;
 }
+
+/** Every `umsatztyp` column except the id: what `POST`/`PUT /api/categories` write. */
+export type CategoryEditableFields = Omit<CategoryRow, 'id'>;
+
+/** Body of `POST /api/categories`; answered `201` with the created `CategoryRow` as stored. */
+export type CategoryCreateRequest = CategoryEditableFields;
+
+/** Body of `PUT /api/categories/:id`. `expected`: the values the edit started from. */
+export interface CategoryUpdateRequest {
+  readonly expected: CategoryEditableFields;
+  readonly next: CategoryEditableFields;
+}
+
+/** `400` body of `PUT /api/categories/:id` when `next.parent_id` is the row or a descendant. */
+export interface CategoryCycleError {
+  readonly error: 'cycle';
+}

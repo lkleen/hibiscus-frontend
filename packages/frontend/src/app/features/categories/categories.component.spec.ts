@@ -1,12 +1,20 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type { MockInstance } from 'vitest';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
 import { categoryRow } from '../../core/utils/testing/category-row-fixture';
+import type {
+  DataTableContextMenuParams,
+  DataTableMenuItem,
+  DataTableOptions,
+} from '../../shared/components/data-table/data-table.model';
 import { account } from '../transactions/testing/transaction-fixture';
 import { CategoriesComponent } from './categories.component';
+import { CategoryDialogs } from './category-dialogs';
+import { CategoriesStore } from './categories.store';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,6 +64,7 @@ describe('CategoriesComponent', () => {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush(accounts);
     httpMock.expectOne('/api/categories').flush(categories);
+    httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
     await settle();
   }
 
@@ -166,6 +175,7 @@ describe('CategoriesComponent', () => {
   it('shows an error when the categories cannot be loaded', async () => {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush([]);
+    httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
     httpMock
       .expectOne('/api/categories')
       .flush('boom', { status: 500, statusText: 'Server Error' });
@@ -174,5 +184,36 @@ describe('CategoriesComponent', () => {
     expect(root.querySelector('.status-text--error')?.textContent).toContain(
       'Could not load categories.',
     );
+  });
+
+  it('offers only Edit in the row menu, which opens the category dialog for that row', async () => {
+    await load([categoryRow({ id: 1, name: 'Food' })]);
+    const options: DataTableOptions<CategoryRow> = fixture.componentInstance['options'];
+    if (!options.getContextMenuItems) throw new Error('getContextMenuItems is not set');
+    const dialogs: CategoryDialogs = fixture.debugElement.injector.get(CategoryDialogs);
+    const store: CategoriesStore = fixture.debugElement.injector.get(CategoriesStore);
+    const openEdit: MockInstance<CategoryDialogs['openEdit']> = vi
+      .spyOn(dialogs, 'openEdit')
+      .mockImplementation(() => undefined);
+    const row: CategoryRow = categoryRow({ id: 1, name: 'Food' });
+    // The menu reads only `row`; the other params are not needed for this assertion.
+    const params: DataTableContextMenuParams<CategoryRow> = {
+      row,
+      selectedRows: [],
+    } as unknown as DataTableContextMenuParams<CategoryRow>;
+
+    const items: readonly DataTableMenuItem[] = options.getContextMenuItems(params);
+
+    expect(items.length).toBe(1);
+    const edit: DataTableMenuItem = items[0];
+    if (
+      typeof edit === 'string' ||
+      !('nameKey' in edit) ||
+      edit.nameKey !== 'categories.menuEdit'
+    ) {
+      throw new Error('expected the Edit entry');
+    }
+    edit.action();
+    expect(openEdit).toHaveBeenCalledWith(store, row);
   });
 });

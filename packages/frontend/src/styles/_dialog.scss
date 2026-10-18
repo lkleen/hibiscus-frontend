@@ -26,6 +26,10 @@
   }
 }
 
+.app-dialog-panel--wide {
+  --app-dialog-width: 72rem;
+}
+
 .app-dialog {
   --app-dialog-bg: var(--surface-overlay);
   --app-dialog-shadow: var(--shadow-overlay);

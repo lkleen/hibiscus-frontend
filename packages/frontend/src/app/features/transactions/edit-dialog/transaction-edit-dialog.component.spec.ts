@@ -13,6 +13,7 @@ import { installMutationObserverMock } from '../../../core/utils/testing/mutatio
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionDialogs } from '../transaction-dialogs';
+import { CategoryDialogs } from '../../categories/category-dialogs';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,6 +33,7 @@ describe('TransactionEditDialogComponent', () => {
         provideHttpClientTesting(),
         TransactionsStore,
         TransactionDialogs,
+        CategoryDialogs,
       ],
     });
     httpMock = TestBed.inject(HttpTestingController);

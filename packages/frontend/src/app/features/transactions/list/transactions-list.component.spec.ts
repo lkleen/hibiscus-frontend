@@ -10,6 +10,7 @@ import { LocaleService } from '../../../core/services/locale.service';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 import { TransactionDialogs } from '../transaction-dialogs';
+import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
 import { TransactionsListComponent } from './transactions-list.component';
@@ -50,6 +51,7 @@ describe('TransactionsListComponent', () => {
         provideHttpClientTesting(),
         TransactionsStore,
         TransactionDialogs,
+        CategoryDialogs,
       ],
     });
     fixture = TestBed.createComponent(TransactionsListComponent);
@@ -326,7 +328,7 @@ describe('TransactionsListComponent', () => {
     const labels: string[] = Array.from(
       document.querySelectorAll<HTMLElement>('[cdkMenuItem]'),
     ).map((el: HTMLElement) => el.textContent?.trim() ?? '');
-    expect(labels).toEqual(['View', 'Edit', 'Assign']);
+    expect(labels).toEqual(['View', 'Edit', 'Assign', 'Create category']);
     expect(document.querySelectorAll<HTMLElement>('[cdkMenuItem]')[2].title).toBe(
       'Assign this transaction to a category, or remove its category',
     );
@@ -454,7 +456,7 @@ describe('TransactionsListComponent', () => {
       boxes()[1].click();
       await settle();
       const items: HTMLElement[] = menu(0);
-      expect(disabledFlags(items)).toEqual(['true', 'true', null]);
+      expect(disabledFlags(items)).toEqual(['true', 'true', null, 'true']);
       items[2].click();
       await settle();
       const dialog: HTMLElement | null = document.querySelector('app-transaction-assign-dialog');
@@ -482,11 +484,11 @@ describe('TransactionsListComponent', () => {
       await load({ items: [tx(1), tx(2), tx(3)] });
       boxes()[0].click();
       await settle();
-      expect(disabledFlags(menu(0))).toEqual([null, null, null]);
+      expect(disabledFlags(menu(0))).toEqual([null, null, null, null]);
       document.body.click();
       boxes()[1].click();
       await settle();
-      expect(disabledFlags(menu(2))).toEqual([null, null, null]);
+      expect(disabledFlags(menu(2))).toEqual([null, null, null, null]);
     });
   });
 

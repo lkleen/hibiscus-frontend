@@ -1,17 +1,7 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
-import { forkJoin } from 'rxjs';
 import { accountLabel } from '../../core/utils/account-label';
-import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { toCssColor } from '../../core/utils/category-color';
 import { DataTableCellDirective } from '../../shared/components/data-table/data-table-cell.directive';
@@ -19,9 +9,12 @@ import { DataTableComponent } from '../../shared/components/data-table/data-tabl
 import {
   colDef,
   type DataTableColDef,
+  type DataTableMenuItem,
   type DataTableOptions,
 } from '../../shared/components/data-table/data-table.model';
 import { ColorCellComponent } from './cells/color-cell/color-cell.component';
+import { CategoryDialogs } from './category-dialogs';
+import { CategoriesStore } from './categories.store';
 
 /** Hibiscus `umsatztyp.flags` bit 1 (`FLAG_SKIP_REPORTS`). */
 const FLAG_SKIP_REPORTS = 1;
@@ -38,20 +31,12 @@ const DASH = '—';
   styleUrl: './categories.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DataTableComponent, DataTableCellDirective, ColorCellComponent],
+  providers: [CategoriesStore, CategoryDialogs],
 })
 export class CategoriesComponent {
-  private readonly api = inject(ApiService);
   protected readonly i18n = inject(TranslationService);
-  private readonly destroyRef = inject(DestroyRef);
-
-  protected readonly items = signal<CategoryRow[]>([]);
-  private readonly accounts = signal<AccountRow[]>([]);
-  protected readonly loading = signal(true);
-  protected readonly error = signal(false);
-
-  private readonly accountsById = computed(
-    () => new Map(this.accounts().map((account) => [account.id, account])),
-  );
+  protected readonly store = inject(CategoriesStore);
+  private readonly categoryDialogs = inject(CategoryDialogs);
 
   // Lookups and translations are lambdas evaluated live (they read signals when the table calls
   // them), so the array itself is built once.
@@ -119,24 +104,14 @@ export class CategoriesComponent {
     autoSizeStrategy: { type: 'fitCellContents' },
     scrollHeight: 'flex',
     emptyKey: 'categories.empty',
+    // Edit only: the page has no transaction to prefill a new category from.
+    getContextMenuItems: ({ row }): readonly DataTableMenuItem[] => [
+      {
+        nameKey: 'categories.menuEdit',
+        action: (): void => this.categoryDialogs.openEdit(this.store, row),
+      },
+    ],
   };
-
-  constructor() {
-    // Both are needed before the first render: a `konto_id` that is not among the accounts throws.
-    forkJoin({ accounts: this.api.getAccounts(), categories: this.api.getCategories() })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: ({ accounts, categories }) => {
-          this.accounts.set(accounts);
-          this.items.set(categories);
-          this.loading.set(false);
-        },
-        error: () => {
-          this.error.set(true);
-          this.loading.set(false);
-        },
-      });
-  }
 
   // `DataTableCellContext.value` is `unknown`; the "color" renderer is only wired to the `color`
   // column, whose value is `string | null`. Anything else means a mis-wired column.
@@ -169,7 +144,7 @@ export class CategoriesComponent {
 
   private rowAccountLabel(row: CategoryRow): string | null {
     if (row.konto_id === null) return null;
-    const account: AccountRow | undefined = this.accountsById().get(row.konto_id);
+    const account: AccountRow | undefined = this.store.accountsById().get(row.konto_id);
     if (!account) throw new Error(`category ${row.id}: account ${row.konto_id} is not loaded`);
     return accountLabel(account);
   }
