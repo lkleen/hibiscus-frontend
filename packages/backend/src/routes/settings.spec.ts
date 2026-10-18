@@ -2,7 +2,7 @@ import express, { Express } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
 import { DEFAULT_DATE_PRESETS } from '../settings/date-presets';
-import { DEFAULT_TABLE_DENSITY } from '../settings/table-density';
+import { DEFAULT_TABLE_DENSITIES } from '../settings/table-density';
 import { createSettingsRouter } from './settings';
 
 vi.mock('../repositories/user-setting', () => ({
@@ -66,7 +66,7 @@ describe('settings router', () => {
       new Promise<void>((resolve) => {
         // Create Express app once for all tests
         app = express();
-        // strict: false, as in server.ts: the table density body is a bare JSON string.
+        // Same JSON options as server.ts.
         app.use(express.json({ strict: false }));
 
         // Auth middleware that sets user from x-test-user header
@@ -385,58 +385,113 @@ describe('settings router', () => {
     });
   });
 
-  describe('GET /settings/table-density', () => {
-    it('returns the default when no stored row exists', async () => {
+  describe('GET /settings/table-densities', () => {
+    it('returns the default empty map when no stored row exists', async () => {
       vi.mocked(getUserSetting).mockResolvedValueOnce(undefined);
 
-      const response = await fetchSettings({ path: '/settings/table-density', method: 'GET' });
+      const response = await fetchSettings({ path: '/settings/table-densities', method: 'GET' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toBe(DEFAULT_TABLE_DENSITY);
-      expect(getUserSetting).toHaveBeenCalledWith('alice', 'table-density');
+      expect(response.body).toEqual(DEFAULT_TABLE_DENSITIES);
+      expect(getUserSetting).toHaveBeenCalledWith('alice', 'table-densities');
     });
 
-    it('returns the stored valid density', async () => {
-      vi.mocked(getUserSetting).mockResolvedValueOnce('spacious');
+    it('returns the stored valid density map', async () => {
+      const stored: Record<string, string> = {
+        'transactions-list': 'spacious',
+        categories: 'compact',
+      };
+      vi.mocked(getUserSetting).mockResolvedValueOnce(stored);
 
-      const response = await fetchSettings({ path: '/settings/table-density', method: 'GET' });
+      const response = await fetchSettings({ path: '/settings/table-densities', method: 'GET' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toBe('spacious');
+      expect(response.body).toEqual(stored);
     });
 
-    it('returns 500 when the stored value is corrupt', async () => {
-      vi.mocked(getUserSetting).mockResolvedValueOnce('huge');
+    it('returns 500 when the stored value is corrupt (unknown density)', async () => {
+      vi.mocked(getUserSetting).mockResolvedValueOnce({ 'transactions-list': 'huge' });
 
-      const response = await fetchSettings({ path: '/settings/table-density', method: 'GET' });
+      const response = await fetchSettings({ path: '/settings/table-densities', method: 'GET' });
+
+      expect(response.status).toBe(500);
+    });
+
+    it('returns 500 when the stored value has an unknown view key', async () => {
+      vi.mocked(getUserSetting).mockResolvedValueOnce({ 'no-such-view': 'compact' });
+
+      const response = await fetchSettings({ path: '/settings/table-densities', method: 'GET' });
 
       expect(response.status).toBe(500);
     });
   });
 
-  describe('PUT /settings/table-density', () => {
-    it('saves a valid density and returns 204', async () => {
+  describe('PUT /settings/table-densities', () => {
+    it('saves a valid density map and returns 204', async () => {
       vi.mocked(putUserSetting).mockResolvedValueOnce(undefined);
+      const densities: Record<string, string> = {
+        'transactions-list': 'compact',
+        'transactions-by-category': 'comfortable',
+      };
 
       const response = await fetchSettings({
-        path: '/settings/table-density',
+        path: '/settings/table-densities',
         method: 'PUT',
-        body: 'compact',
+        body: densities,
       });
 
       expect(response.status).toBe(204);
       expect(putUserSetting).toHaveBeenCalledWith({
         user: 'alice',
-        key: 'table-density',
-        value: 'compact',
+        key: 'table-densities',
+        value: densities,
+      });
+    });
+
+    it('saves an empty map and returns 204', async () => {
+      vi.mocked(putUserSetting).mockResolvedValueOnce(undefined);
+
+      const response = await fetchSettings({
+        path: '/settings/table-densities',
+        method: 'PUT',
+        body: {},
+      });
+
+      expect(response.status).toBe(204);
+      expect(putUserSetting).toHaveBeenCalledWith({
+        user: 'alice',
+        key: 'table-densities',
+        value: {},
       });
     });
 
     it('rejects an unknown density with 400', async () => {
       const response = await fetchSettings({
-        path: '/settings/table-density',
+        path: '/settings/table-densities',
         method: 'PUT',
-        body: 'huge',
+        body: { categories: 'huge' },
+      });
+
+      expect(response.status).toBe(400);
+      expect(putUserSetting).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown view key with 400', async () => {
+      const response = await fetchSettings({
+        path: '/settings/table-densities',
+        method: 'PUT',
+        body: { 'no-such-view': 'compact' },
+      });
+
+      expect(response.status).toBe(400);
+      expect(putUserSetting).not.toHaveBeenCalled();
+    });
+
+    it('rejects a bare string body with 400', async () => {
+      const response = await fetchSettings({
+        path: '/settings/table-densities',
+        method: 'PUT',
+        body: 'compact',
       });
 
       expect(response.status).toBe(400);

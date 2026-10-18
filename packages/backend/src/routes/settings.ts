@@ -6,9 +6,9 @@ import {
   DatePresetListSchema,
 } from '../settings/date-presets';
 import {
-  DEFAULT_TABLE_DENSITY,
-  TABLE_DENSITY_SETTING_KEY,
-  TableDensitySchema,
+  DEFAULT_TABLE_DENSITIES,
+  TABLE_DENSITIES_SETTING_KEY,
+  TableDensitiesSchema,
 } from '../settings/table-density';
 import { deleteUserSetting, getUserSetting, putUserSetting } from '../repositories/user-setting';
 import { respondWithValidationError } from './zod-validation';
@@ -67,17 +67,17 @@ export function createSettingsRouter(): Router {
   });
 
   /**
-   * GET /table-density: retrieve the user's table density, or the default if not yet chosen.
+   * GET /table-densities: retrieve the user's density per table view, or the defaults if none chosen.
    * A stored value is re-validated against the schema; a corrupt row throws a 500.
    */
-  router.get('/table-density', (_req: Request, res: Response, next: NextFunction): void => {
+  router.get('/table-densities', (_req: Request, res: Response, next: NextFunction): void => {
     const user = res.locals['user'] as string;
-    getUserSetting(user, TABLE_DENSITY_SETTING_KEY)
+    getUserSetting(user, TABLE_DENSITIES_SETTING_KEY)
       .then((value: unknown | undefined) => {
-        const density: unknown = value === undefined ? DEFAULT_TABLE_DENSITY : value;
-        const parseResult = TableDensitySchema.safeParse(density);
+        const densities: unknown = value === undefined ? DEFAULT_TABLE_DENSITIES : value;
+        const parseResult = TableDensitiesSchema.safeParse(densities);
         if (!parseResult.success) {
-          next(new Error(`Stored table density is invalid: ${parseResult.error.message}`));
+          next(new Error(`Stored table densities are invalid: ${parseResult.error.message}`));
           return;
         }
         res.json(parseResult.data);
@@ -86,11 +86,11 @@ export function createSettingsRouter(): Router {
   });
 
   /**
-   * PUT /table-density: save the user's table density (body is a bare JSON string).
+   * PUT /table-densities: save the user's density per table view. Validates the whole map, then saves.
    */
-  router.put('/table-density', (req: Request, res: Response, next: NextFunction): void => {
+  router.put('/table-densities', (req: Request, res: Response, next: NextFunction): void => {
     const user = res.locals['user'] as string;
-    const parseResult = TableDensitySchema.safeParse(req.body);
+    const parseResult = TableDensitiesSchema.safeParse(req.body);
     if (!parseResult.success) {
       respondWithValidationError(res, parseResult.error);
       return;
@@ -98,7 +98,7 @@ export function createSettingsRouter(): Router {
 
     putUserSetting({
       user,
-      key: TABLE_DENSITY_SETTING_KEY,
+      key: TABLE_DENSITIES_SETTING_KEY,
       value: parseResult.data,
     })
       .then(() => res.status(204).send())

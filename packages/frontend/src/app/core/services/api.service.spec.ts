@@ -7,7 +7,10 @@ import type {
   TransactionUpdateRequest,
   TransactionsResponse,
 } from '@hibiscus-frontend/shared/contracts/transactions';
-import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
+import type {
+  DatePresetList,
+  TableDensities,
+} from '@hibiscus-frontend/shared/contracts/user-settings';
 import type {
   CategoryCreateRequest,
   CategoryEditableFields,
@@ -158,6 +161,24 @@ describe('ApiService', () => {
     const req = httpMock.expectOne('/api/categories/9');
     expect(req.request.method).toBe('PUT');
     expect(req.request.body).toEqual(request);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('requests the table densities', () => {
+    service.getTableDensities().subscribe();
+
+    const req = httpMock.expectOne('/api/settings/table-densities');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('puts the whole table density map as JSON', () => {
+    const densities: TableDensities = { categories: 'compact' };
+    service.saveTableDensities(densities).subscribe();
+
+    const req = httpMock.expectOne('/api/settings/table-densities');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(densities);
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 

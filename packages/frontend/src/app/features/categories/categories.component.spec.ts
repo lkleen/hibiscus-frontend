@@ -1,5 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { MockInstance } from 'vitest';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
@@ -11,6 +12,8 @@ import type {
   DataTableMenuItem,
   DataTableOptions,
 } from '../../shared/components/data-table/data-table.model';
+import { TableDensityService } from '../../core/services/table-density.service';
+import type { TableDensity } from '@hibiscus-frontend/shared/contracts/user-settings';
 import { account } from '../transactions/testing/transaction-fixture';
 import { CategoriesComponent } from './categories.component';
 import { CategoryDialogs } from './category-dialogs';
@@ -65,6 +68,7 @@ describe('CategoriesComponent', () => {
     httpMock.expectOne('/api/accounts').flush(accounts);
     httpMock.expectOne('/api/categories').flush(categories);
     httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
+    httpMock.expectOne('/api/settings/table-densities').flush({});
     await settle();
   }
 
@@ -172,10 +176,52 @@ describe('CategoriesComponent', () => {
     expect(cellText(rowByName('b'), COL.color)).toBe('—');
   });
 
+  it('renders a ribbon with a Filter and a View tab', async () => {
+    await load([categoryRow({ id: 1, name: 'Food' })]);
+
+    const tabs: string[] = Array.from(root.querySelectorAll('.ribbon__tab')).map(
+      (t) => t.textContent?.trim() ?? '',
+    );
+    expect(tabs.length).toBe(2);
+  });
+
+  it('filters the tree with the search field and shows the text as ribbon state', async () => {
+    await load([categoryRow({ id: 1, name: 'Food' }), categoryRow({ id: 2, name: 'Zoo' })]);
+    const input: HTMLInputElement = root.querySelector<HTMLInputElement>('#categories-search')!;
+
+    input.value = 'zoo';
+    input.dispatchEvent(new Event('input'));
+    await settle();
+
+    expect(bodyRows().map((r) => cellText(r, COL.name))).toEqual(['Zoo']);
+    expect(root.querySelector('.ribbon__state')?.textContent).toContain('"zoo"');
+    expect(root.querySelector('#filter-search')).toBeNull();
+  });
+
+  it('puts the expand/collapse buttons into the View band', async () => {
+    await load([
+      categoryRow({ id: 1, name: 'Food' }),
+      categoryRow({ id: 2, name: 'Bakery', parent_id: 1 }),
+    ]);
+
+    const band: HTMLElement | null = root.querySelector('#categories-panel-view');
+    expect(band?.querySelectorAll('button').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('applies the density from the service to the table', async () => {
+    const densities: TableDensityService = TestBed.inject(TableDensityService);
+    vi.spyOn(densities, 'densityFor').mockReturnValue(signal<TableDensity>('compact'));
+
+    await load([categoryRow({ id: 1, name: 'Food' })]);
+
+    expect(root.querySelector('app-data-table')?.className).toContain('table-density-compact');
+  });
+
   it('shows an error when the categories cannot be loaded', async () => {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush([]);
     httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
+    httpMock.expectOne('/api/settings/table-densities').flush({});
     httpMock
       .expectOne('/api/categories')
       .flush('boom', { status: 500, statusText: 'Server Error' });

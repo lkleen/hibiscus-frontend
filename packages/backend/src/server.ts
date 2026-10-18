@@ -27,10 +27,10 @@ async function main(): Promise<void> {
   // is several MB of JSON uncompressed. Registered first so it wraps every route below.
   app.use(compression());
   app.use(cors());
-  // `strict: false`: `PUT /api/settings/table-density` sends a bare JSON string. `limit`: the
-  // default 100kb would reject `POST /api/transactions/assign-category` well below its 10,000-row
-  // cap (each row carries its expected comment); 10mb covers that with ordinary comments.
-  app.use(express.json({ strict: false, limit: '10mb' }));
+  // `limit`: the default 100kb would reject `POST /api/transactions/assign-category` well below
+  // its 10,000-row cap (each row carries its expected comment); 10mb covers that with ordinary
+  // comments.
+  app.use(express.json({ limit: '10mb' }));
 
   const requireAuth = createAuthMiddleware(config);
 

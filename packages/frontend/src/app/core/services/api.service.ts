@@ -1,10 +1,10 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { Me } from '../models/me.model';
 import type {
   DatePresetList,
-  TableDensity,
+  TableDensities,
 } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
@@ -100,15 +100,12 @@ export class ApiService {
     return this.http.delete<void>('/api/settings/date-presets');
   }
 
-  getTableDensity(): Observable<TableDensity> {
-    return this.http.get<TableDensity>('/api/settings/table-density');
+  getTableDensities(): Observable<TableDensities> {
+    return this.http.get<TableDensities>('/api/settings/table-densities');
   }
 
-  /** The body is the bare JSON string; the backend answers `204 No Content`. */
-  saveTableDensity(density: TableDensity): Observable<void> {
-    // HttpClient sends a raw string as text/plain, so serialise and label it as JSON ourselves.
-    return this.http.put<void>('/api/settings/table-density', JSON.stringify(density), {
-      headers: new HttpHeaders({ 'Content-Type': 'application/json' }),
-    });
+  /** The body is the whole map; the backend answers `204 No Content`. */
+  saveTableDensities(densities: TableDensities): Observable<void> {
+    return this.http.put<void>('/api/settings/table-densities', densities);
   }
 }

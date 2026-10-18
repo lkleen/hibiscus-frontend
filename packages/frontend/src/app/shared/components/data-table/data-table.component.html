@@ -5,7 +5,7 @@
 -->
 <form class="filters" (submit)="$event.preventDefault()">
   <ng-content select="[appDataTableToolbarStart]" />
-  @if (quickFilterEnabled()) {
+  @if (quickFilterEnabled() && quickFilterText() === null) {
     <div class="filters__field filters__field--grow">
       <label for="filter-search">{{ i18n.t('table.filterSearch') }}</label>
       <input

@@ -64,6 +64,12 @@ describe('AccountFilterComponent', () => {
     fixture.detectChanges();
   }
 
+  it('keeps its label for assistive technology only', () => {
+    const label: HTMLLabelElement | null = root.querySelector('label');
+    expect(label?.classList.contains('visually-hidden')).toBe(true);
+    expect(label?.htmlFor).toBe(trigger().id);
+  });
+
   it('starts with every account checked', () => {
     expect(triggerText()).toBe('All accounts');
     open();

@@ -1,0 +1,204 @@
+:host {
+  display: block;
+  min-width: 0;
+  // The ribbon sits between the page tabs and a table; same spacing the old filter row had.
+  margin-block: 1rem 1.5rem;
+}
+
+.ribbon {
+  --ribbon-bg: var(--surface-card);
+  --ribbon-border-color: var(--surface-border);
+  --ribbon-radius: var(--radius-base);
+  --ribbon-color: var(--text-color);
+  --ribbon-muted-color: var(--text-muted);
+  --ribbon-accent: var(--color-accent);
+  --ribbon-accent-subtle: var(--color-accent-subtle);
+  --ribbon-hover-bg: var(--surface-hover);
+  --ribbon-tab-padding: 0.45rem 0.75rem;
+  --ribbon-band-padding: 0.6rem 0.5rem 0.35rem;
+
+  min-width: 0;
+  background: var(--ribbon-bg);
+  border: 1px solid var(--ribbon-border-color);
+  border-radius: var(--ribbon-radius);
+  color: var(--ribbon-color);
+}
+
+.ribbon__strip {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem 0;
+  border-block-end: 1px solid var(--ribbon-border-color);
+}
+
+.ribbon--tabs .ribbon__strip {
+  border-block-end: 0;
+}
+
+// Scrolls sideways when the tabs do not fit; `overflow: auto hidden` keeps the y axis clipped
+// so the selected tab's underline overhang does not add a vertical scrollbar.
+.ribbon__tablist {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow: auto hidden;
+}
+
+.ribbon__tab {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  margin-block-end: -1px;
+  padding: var(--ribbon-tab-padding);
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: transparent;
+  color: var(--ribbon-muted-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--ribbon-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ribbon-accent);
+    outline-offset: -2px;
+  }
+
+  &[aria-selected='true'] {
+    border-block-end-color: var(--ribbon-accent);
+    color: var(--ribbon-color);
+    font-weight: 600;
+  }
+
+  // Contextual tab: accent text with a bar on top, like Office's contextual tab groups.
+  &--contextual {
+    color: var(--ribbon-accent);
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0.15rem 0 auto;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--ribbon-accent);
+    }
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: color var(--transition-duration) ease;
+  }
+}
+
+.ribbon__state {
+  color: var(--ribbon-muted-color);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.ribbon__dot {
+  inline-size: 0.4rem;
+  block-size: 0.4rem;
+  border-radius: 50%;
+  background: var(--ribbon-accent);
+}
+
+.ribbon__toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ribbon-radius);
+  background: transparent;
+  color: var(--ribbon-muted-color);
+  cursor: pointer;
+
+  svg {
+    inline-size: 1rem;
+    block-size: 1rem;
+    fill: none;
+    stroke: currentcolor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+  }
+
+  &:hover {
+    background: var(--ribbon-hover-bg);
+    color: var(--ribbon-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ribbon-accent);
+    outline-offset: 2px;
+  }
+
+  @media (pointer: coarse) {
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+  }
+}
+
+.ribbon__band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  min-width: 0;
+  padding: var(--ribbon-band-padding);
+}
+
+// Hidden mode: one slim line with the state chips and the way back.
+.ribbon--hidden {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+}
+
+.ribbon__summary {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+
+.ribbon__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--ribbon-border-color);
+  border-radius: 999px;
+  background: var(--ribbon-bg);
+  color: var(--ribbon-color);
+  gap: 0.3rem;
+}
+
+.ribbon__chip-label {
+  color: var(--ribbon-muted-color);
+}
+
+// `display` on the classes above would override the UA `[hidden]` rule.
+.ribbon[hidden],
+.ribbon__band[hidden] {
+  display: none;
+}

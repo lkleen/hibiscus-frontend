@@ -7,6 +7,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { DataTableCellDirective } from '../../../shared/components/data-table/data-table-cell.directive';
 import { DataTableComponent } from '../../../shared/components/data-table/data-table.component';
@@ -14,7 +15,11 @@ import type {
   DataTableMenuItem,
   DataTableOptions,
 } from '../../../shared/components/data-table/data-table.model';
+import { TableDensityService } from '../../../core/services/table-density.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { RibbonBandDirective } from '../../../shared/components/ribbon/ribbon-band.directive';
+import { RibbonGroupComponent } from '../../../shared/components/ribbon/ribbon-group.component';
+import { tabDensityView } from '../transactions-tabs';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
 import { TransactionsSelectionBarComponent } from '../selection-bar/transactions-selection-bar.component';
 import { TransactionDialogs } from '../transaction-dialogs';
@@ -35,11 +40,15 @@ import { TransactionsStore } from '../transactions.store';
     DataTableCellDirective,
     AmountCellComponent,
     TransactionsSelectionBarComponent,
+    RibbonBandDirective,
+    RibbonGroupComponent,
   ],
 })
 export class TransactionsListComponent {
   protected readonly store = inject(TransactionsStore);
   protected readonly i18n = inject(TranslationService);
+  protected readonly densities: TableDensityService = inject(TableDensityService);
+  protected readonly densityView: TableViewId = tabDensityView('list');
   private readonly dialogs = inject(TransactionDialogs);
   private readonly table = viewChild.required(DataTableComponent<TransactionRow>);
 

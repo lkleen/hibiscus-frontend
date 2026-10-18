@@ -5,9 +5,10 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { TABLE_DENSITIES, TableDensityService } from './table-density.service';
+import type { TableDensities } from '@hibiscus-frontend/shared/contracts/user-settings';
+import { TableDensityService } from './table-density.service';
 
-const URL = '/api/settings/table-density';
+const URL = '/api/settings/table-densities';
 
 describe('TableDensityService', () => {
   let service: TableDensityService;
@@ -15,12 +16,6 @@ describe('TableDensityService', () => {
 
   function noContent(req: TestRequest): void {
     req.flush(null, { status: 204, statusText: 'No Content' });
-  }
-
-  function densityClasses(): string[] {
-    return Array.from(document.documentElement.classList).filter((c: string) =>
-      c.startsWith('table-density-'),
-    );
   }
 
   beforeEach(() => {
@@ -34,69 +29,79 @@ describe('TableDensityService', () => {
 
   afterEach(() => {
     httpMock.verify();
-    document.documentElement.classList.remove(...TABLE_DENSITIES.map((d) => `table-density-${d}`));
   });
 
-  it('is normal and sets no class until the load answers', () => {
+  it('is normal for every view until the load answers', () => {
     TestBed.tick();
     expect(service.loaded()).toBe(false);
-    expect(service.density()).toBe('normal');
-    expect(densityClasses()).toEqual([]);
-    httpMock.expectOne(URL).flush(JSON.stringify('compact'));
+    expect(service.densityFor('categories')()).toBe('normal');
+    httpMock.expectOne(URL).flush({ categories: 'compact' });
   });
 
-  it('loads once and applies exactly one class', () => {
-    httpMock.expectOne(URL).flush('compact');
+  it('loads once and reads each view from the stored map', () => {
+    const categories = service.densityFor('categories');
+    httpMock.expectOne(URL).flush({ categories: 'compact' } satisfies TableDensities);
     TestBed.tick();
     expect(service.loaded()).toBe(true);
-    expect(service.density()).toBe('compact');
-    expect(densityClasses()).toEqual(['table-density-compact']);
+    expect(categories()).toBe('compact');
+    expect(service.densityFor('transactions-list')()).toBe('normal');
   });
 
-  it('adopts a saved density only after confirmation and swaps the class', () => {
-    httpMock.expectOne(URL).flush('normal');
+  it('adopts a saved density only after confirmation and PUTs the whole merged map', () => {
+    const categories = service.densityFor('categories');
+    httpMock.expectOne(URL).flush({ 'transactions-list': 'spacious' } satisfies TableDensities);
     TestBed.tick();
-    service.save('spacious');
+    service.save('categories', 'compact');
 
     const req: TestRequest = httpMock.expectOne(URL);
     expect(req.request.method).toBe('PUT');
-    expect(req.request.headers.get('Content-Type')).toBe('application/json');
-    expect(req.request.body).toBe('"spacious"');
+    expect(req.request.body).toEqual({ 'transactions-list': 'spacious', categories: 'compact' });
     expect(service.saving()).toBe(true);
-    expect(service.density()).toBe('normal');
+    expect(categories()).toBe('normal');
 
     noContent(req);
     TestBed.tick();
-    expect(service.density()).toBe('spacious');
+    expect(categories()).toBe('compact');
     expect(service.saving()).toBe(false);
-    expect(densityClasses()).toEqual(['table-density-spacious']);
   });
 
-  it('sends writes in call order', () => {
-    httpMock.expectOne(URL).flush('normal');
-    service.save('compact');
-    service.save('comfortable');
+  it('merges each write into the map as it stands when its turn comes', () => {
+    httpMock.expectOne(URL).flush({});
+    service.save('categories', 'compact');
+    service.save('transactions-list', 'comfortable');
 
     const first: TestRequest = httpMock.expectOne(URL);
-    expect(first.request.body).toBe('"compact"');
+    expect(first.request.body).toEqual({ categories: 'compact' });
     noContent(first);
     const second: TestRequest = httpMock.expectOne(URL);
-    expect(second.request.body).toBe('"comfortable"');
+    expect(second.request.body).toEqual({
+      categories: 'compact',
+      'transactions-list': 'comfortable',
+    });
     noContent(second);
-    expect(service.density()).toBe('comfortable');
+    expect(service.densityFor('transactions-list')()).toBe('comfortable');
+  });
+
+  it('refuses to save before the load answered, so no other view is erased', () => {
+    service.save('categories', 'compact');
+    TestBed.tick();
+    expect(service.saveError()).toBe(true);
+    httpMock.expectOne(URL).flush({ categories: 'normal' });
+    httpMock.verify();
   });
 
   it('flags a failed save, keeps the density and keeps accepting writes', () => {
-    httpMock.expectOne(URL).flush('normal');
-    service.save('compact');
+    const categories = service.densityFor('categories');
+    httpMock.expectOne(URL).flush({});
+    service.save('categories', 'compact');
     httpMock.expectOne(URL).flush('boom', { status: 500, statusText: 'Server Error' });
     expect(service.saveError()).toBe(true);
     expect(service.saving()).toBe(false);
-    expect(service.density()).toBe('normal');
+    expect(categories()).toBe('normal');
 
-    service.save('compact');
+    service.save('categories', 'compact');
     noContent(httpMock.expectOne(URL));
-    expect(service.density()).toBe('compact');
+    expect(categories()).toBe('compact');
     expect(service.saveError()).toBe(false);
   });
 });

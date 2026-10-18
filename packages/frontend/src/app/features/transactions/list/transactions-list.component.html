@@ -4,15 +4,23 @@
   [options]="options"
   [loading]="store.loading()"
   [externalFilter]="store.rowFilter()"
+  [density]="densities.densityFor(densityView)()"
   [(selectedRowIds)]="selectedRowIds"
 >
-  <app-transactions-selection-bar
-    appDataTableToolbar
-    [count]="selectedRowIds().size"
-    (cleared)="clearSelection()"
-  />
-
   <ng-template appDataTableCell="amount" let-value="value">
     <app-transaction-amount-cell [amount]="asAmount(value)" />
   </ng-template>
 </app-data-table>
+
+<ng-template
+  appRibbonBand="selection-list"
+  ribbonLabelKey="ribbon.tab.selection"
+  [ribbonOrder]="100"
+  [ribbonContextual]="true"
+  [ribbonShown]="selectedRowIds().size > 0"
+  [ribbonState]="selectedRowIds().size.toString()"
+>
+  <app-ribbon-group captionKey="ribbon.group.selection">
+    <app-transactions-selection-bar [count]="selectedRowIds().size" (cleared)="clearSelection()" />
+  </app-ribbon-group>
+</ng-template>

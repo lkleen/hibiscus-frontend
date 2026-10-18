@@ -61,8 +61,11 @@
   --app-table-drop-point-color: var(--color-accent);
 }
 
-// Table density: the `table-density-<id>` class on <html> is set by TableDensityService (user
-// setting, `GET/PUT /api/settings/table-density`); ids must match the shared `TableDensity` type.
+// Table density: every `<app-data-table>` carries exactly one `table-density-<id>` host class (its
+// `density` input; a page passes the user setting from TableDensityService, `GET/PUT
+// /api/settings/table-density`). The tokens apply to the table host and its descendants only;
+// without the class (and outside any table) the `:root` defaults above are the Normal density.
+// Ids must match the shared `TableDensity` type.
 $table-densities: (
   'extra-compact': (
     font-size: var(--text-xs),
@@ -92,7 +95,7 @@ $table-densities: (
 );
 
 @each $id, $values in $table-densities {
-  :root.table-density-#{$id} {
+  .table-density-#{$id} {
     --app-table-font-size: #{map.get($values, font-size)};
     --app-table-cell-padding-y: #{map.get($values, padding-y)};
     --app-table-cell-padding-x: #{map.get($values, padding-x)};

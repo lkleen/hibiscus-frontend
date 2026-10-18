@@ -1,8 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
+import { TableDensityService } from '../../../core/services/table-density.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { RibbonBandDirective } from '../../../shared/components/ribbon/ribbon-band.directive';
+import { RibbonGroupComponent } from '../../../shared/components/ribbon/ribbon-group.component';
+import { tabDensityView } from '../transactions-tabs';
 import { accountLabel } from '../../../core/utils/account-label';
 import { toCssColor } from '../../../core/utils/category-color';
 import { DataTableCellDirective } from '../../../shared/components/data-table/data-table-cell.directive';
@@ -61,11 +66,15 @@ function compareReportRows(a: CategoryReportRow, b: CategoryReportRow): number {
     DataTableCellDirective,
     AmountCellComponent,
     TransactionsSelectionBarComponent,
+    RibbonBandDirective,
+    RibbonGroupComponent,
   ],
 })
 export class TransactionsByCategoryComponent {
   protected readonly store = inject(TransactionsStore);
   protected readonly i18n = inject(TranslationService);
+  protected readonly densities: TableDensityService = inject(TableDensityService);
+  protected readonly densityView: TableViewId = tabDensityView('categories');
   private readonly dialogs = inject(TransactionDialogs);
   private readonly categoryDialogs = inject(CategoryDialogs);
 

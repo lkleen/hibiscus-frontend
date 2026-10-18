@@ -33,8 +33,8 @@ export const appConfig: ApplicationConfig = {
       const i18n = inject(TranslationService);
       effect(() => primeng.setTranslation(primengTranslation(i18n)));
     }),
-    // Instantiates TableDensityService at startup so its `table-density-*` class is on <html> on
-    // every page, not only once a component happens to inject the service.
+    // Instantiates TableDensityService at startup, so the per-view densities are loaded before
+    // the first table renders instead of switching from Normal once a page injects the service.
     provideAppInitializer(() => {
       inject(TableDensityService);
     }),

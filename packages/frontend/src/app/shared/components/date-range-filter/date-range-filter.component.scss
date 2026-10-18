@@ -2,34 +2,14 @@
 // global token, so the five themes restyle the picker without touching this file. The panel is
 // rendered in a CDK overlay, outside `.date-range-filter`, so it declares its own tokens.
 :host {
-  display: contents;
-}
-
-.date-range-filter {
   --date-range-filter-field-bg: var(--surface-card);
   --date-range-filter-field-color: var(--text-color);
   --date-range-filter-field-border-color: var(--surface-border);
   --date-range-filter-label-color: var(--text-muted);
   --date-range-filter-radius: var(--radius-base);
 
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 1rem;
-  min-width: 0;
-}
-
-// Same anatomy as the data table's search field: small muted label above the control.
-.date-range-filter__field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-
-  label {
-    font-size: var(--text-xs);
-    color: var(--date-range-filter-label-color);
-  }
+  // The three `app-ribbon-group`s become children of the page's ribbon band.
+  display: contents;
 }
 
 // Every control in the bar (trigger, date inputs, step buttons, unit select) shares one look.

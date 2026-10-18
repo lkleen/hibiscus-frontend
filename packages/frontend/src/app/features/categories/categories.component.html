@@ -1,10 +1,46 @@
 <h1 class="visually-hidden">{{ i18n.t('categories.title') }}</h1>
 
+<app-ribbon ribbonId="categories" />
+
+<ng-template
+  appRibbonBand="filter"
+  ribbonLabelKey="ribbon.tab.filter"
+  [ribbonOrder]="0"
+  [ribbonState]="searchState()"
+  [ribbonActive]="searchActive()"
+>
+  <app-ribbon-group captionKey="ribbon.group.search" [grow]="true">
+    <div class="filters__field filters__field--grow">
+      <label class="visually-hidden" for="categories-search">{{
+        i18n.t('table.filterSearch')
+      }}</label>
+      <input
+        id="categories-search"
+        type="search"
+        [placeholder]="i18n.t('table.searchPlaceholder')"
+        [value]="search()"
+        (input)="onSearchInput($event)"
+      />
+    </div>
+  </app-ribbon-group>
+</ng-template>
+
+<ng-template appRibbonBand="view" ribbonLabelKey="ribbon.tab.view" [ribbonOrder]="1">
+  <app-ribbon-group captionKey="ribbon.group.tree">
+    <ng-template cdkPortalOutlet />
+  </app-ribbon-group>
+  <app-ribbon-group captionKey="ribbon.group.density">
+    <app-density-picker [view]="'categories'" />
+  </app-ribbon-group>
+</ng-template>
+
 <app-data-table
   [value]="store.categories()"
   [columns]="columns"
   [options]="options"
   [loading]="store.loading()"
+  [quickFilterText]="search()"
+  [density]="densities.densityFor('categories')()"
 >
   <ng-template appDataTableCell="color" let-row let-value="value">
     <app-category-color-cell [cssColor]="asCssColor(value)" [stored]="row.color" />

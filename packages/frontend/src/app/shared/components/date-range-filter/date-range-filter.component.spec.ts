@@ -68,6 +68,29 @@ describe('DateRangeFilterComponent', () => {
     fixture.detectChanges();
   }
 
+  it('renders preset, range and step as ribbon groups with visually hidden field labels', async () => {
+    await loadPresets();
+    const groups: Element[] = Array.from(root.querySelectorAll('app-ribbon-group'));
+    expect(
+      groups.map(
+        (group: Element): string =>
+          group.querySelector('.ribbon-group__caption')?.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['Preset', 'Range', 'Step']);
+    expect(groups.every((group: Element): boolean => group.parentElement === root)).toBe(true);
+    expect(groups[1].querySelectorAll('input[type="date"]').length).toBe(2);
+    const labels: Element[] = Array.from(root.querySelectorAll('label'));
+    expect(labels.map((label: Element): string => label.textContent?.trim() ?? '')).toEqual([
+      'Period',
+      'From',
+      'To',
+      'Step',
+    ]);
+    expect(
+      labels.every((label: Element): boolean => label.classList.contains('visually-hidden')),
+    ).toBe(true);
+  });
+
   it('applies the first preset once the presets have loaded', async () => {
     await loadPresets();
     expect(fixture.componentInstance.range()).toEqual({ from: '2026-01-01', to: '2026-12-31' });

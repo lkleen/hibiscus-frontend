@@ -1,9 +1,27 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { CdkPortalOutlet } from '@angular/cdk/portal';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  Signal,
+  WritableSignal,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import { accountLabel } from '../../core/utils/account-label';
 import { TranslationService } from '../../core/services/translation.service';
 import { toCssColor } from '../../core/utils/category-color';
+import { TableDensityService } from '../../core/services/table-density.service';
+import { DensityPickerComponent } from '../../shared/components/density-picker/density-picker.component';
+import { RibbonBandDirective } from '../../shared/components/ribbon/ribbon-band.directive';
+import { RibbonGroupComponent } from '../../shared/components/ribbon/ribbon-group.component';
+import { RibbonHost } from '../../shared/components/ribbon/ribbon-host';
+import { RibbonComponent } from '../../shared/components/ribbon/ribbon.component';
+import { DataTableToolbarOutlet } from '../../shared/components/data-table/data-table-toolbar-outlet';
 import { DataTableCellDirective } from '../../shared/components/data-table/data-table-cell.directive';
 import { DataTableComponent } from '../../shared/components/data-table/data-table.component';
 import {
@@ -30,13 +48,39 @@ const DASH = '—';
   templateUrl: './categories.component.html',
   styleUrl: './categories.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DataTableComponent, DataTableCellDirective, ColorCellComponent],
-  providers: [CategoriesStore, CategoryDialogs],
+  imports: [
+    CdkPortalOutlet,
+    DataTableComponent,
+    DataTableCellDirective,
+    ColorCellComponent,
+    DensityPickerComponent,
+    RibbonBandDirective,
+    RibbonComponent,
+    RibbonGroupComponent,
+  ],
+  providers: [CategoriesStore, CategoryDialogs, RibbonHost, DataTableToolbarOutlet],
 })
 export class CategoriesComponent {
   protected readonly i18n = inject(TranslationService);
   protected readonly store = inject(CategoriesStore);
+  protected readonly densities = inject(TableDensityService);
   private readonly categoryDialogs = inject(CategoryDialogs);
+
+  protected readonly search: WritableSignal<string> = signal<string>('');
+  protected readonly searchActive: Signal<boolean> = computed((): boolean => this.search() !== '');
+  protected readonly searchState: Signal<string | null> = computed((): string | null =>
+    this.searchActive() ? `"${this.search()}"` : null,
+  );
+  private readonly toolbarOutlet = viewChild(CdkPortalOutlet);
+
+  constructor() {
+    const tableToolbar: DataTableToolbarOutlet = inject(DataTableToolbarOutlet);
+    effect((): void => tableToolbar.outlet.set(this.toolbarOutlet()));
+  }
+
+  protected onSearchInput(event: Event): void {
+    this.search.set((event.target as HTMLInputElement).value);
+  }
 
   // Lookups and translations are lambdas evaluated live (they read signals when the table calls
   // them), so the array itself is built once.

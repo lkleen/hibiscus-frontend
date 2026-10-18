@@ -1,20 +1,38 @@
 import { CdkPortalOutlet } from '@angular/cdk/portal';
-import { ChangeDetectionStrategy, Component, effect, inject, viewChild } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  Signal,
+  computed,
+  effect,
+  inject,
+  viewChild,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { filter, map } from 'rxjs';
 import { LocaleService } from '../../core/services/locale.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { DataTableToolbarOutlet } from '../../shared/components/data-table/data-table-toolbar-outlet';
+import { DensityPickerComponent } from '../../shared/components/density-picker/density-picker.component';
+import { RibbonBandDirective } from '../../shared/components/ribbon/ribbon-band.directive';
+import { RibbonGroupComponent } from '../../shared/components/ribbon/ribbon-group.component';
+import { RibbonHost } from '../../shared/components/ribbon/ribbon-host';
+import { RibbonComponent } from '../../shared/components/ribbon/ribbon.component';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
+import { DateRange } from '../../core/utils/date-range';
 import { TabNavComponent } from '../../shared/components/tab-nav/tab-nav.component';
 import { AccountFilterComponent } from './account-filter/account-filter.component';
+import { accountsSummary } from './account-filter/accounts-summary';
 import { CategoryDialogs } from '../categories/category-dialogs';
 import { TransactionDialogs } from './transaction-dialogs';
 import { TRANSACTIONS_TABS, TransactionsTab } from './transactions-tabs';
 import { TransactionsStore } from './transactions.store';
 
 /**
- * The transactions page shell: tabs (child routes) over one shared toolbar, which also hosts the
- * routed tab's table controls (via {@link DataTableToolbarOutlet}). Data and filters live
+ * The transactions page shell: tabs (child routes) over one shared ribbon (Filter, Period, View;
+ * the routed tab adds a contextual Selection band), whose View band also hosts the routed tab's
+ * tree controls (via {@link DataTableToolbarOutlet}). Data and filters live
  * in the {@link TransactionsStore} provided here, so every tab sees the same loaded rows and
  * switching tabs never refetches.
  */
@@ -23,13 +41,23 @@ import { TransactionsStore } from './transactions.store';
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [TransactionsStore, TransactionDialogs, CategoryDialogs, DataTableToolbarOutlet],
+  providers: [
+    TransactionsStore,
+    TransactionDialogs,
+    CategoryDialogs,
+    DataTableToolbarOutlet,
+    RibbonHost,
+  ],
   imports: [
     CdkPortalOutlet,
     RouterOutlet,
     TabNavComponent,
     AccountFilterComponent,
     DateRangeFilterComponent,
+    DensityPickerComponent,
+    RibbonBandDirective,
+    RibbonComponent,
+    RibbonGroupComponent,
   ],
 })
 export class TransactionsComponent {
@@ -37,7 +65,48 @@ export class TransactionsComponent {
   protected readonly locale = inject(LocaleService).locale;
   protected readonly store = inject(TransactionsStore);
   protected readonly tabs: readonly TransactionsTab[] = TRANSACTIONS_TABS;
-  private readonly toolbarOutlet = viewChild.required(CdkPortalOutlet);
+  private readonly router: Router = inject(Router);
+  // Optional: the outlet only exists while the active tab has a tree.
+  private readonly toolbarOutlet = viewChild(CdkPortalOutlet);
+
+  private readonly url: Signal<string> = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event: NavigationEnd): string => event.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+
+  /** The routed tab; the first (default) tab until the first navigation has finished. */
+  protected readonly activeTab: Signal<TransactionsTab> = computed((): TransactionsTab => {
+    const segments: string[] = this.url().split(/[?#]/)[0].split('/');
+    const active: TransactionsTab | undefined = this.tabs.find((tab: TransactionsTab): boolean =>
+      segments.includes(tab.path),
+    );
+    const fallback: TransactionsTab | undefined = this.tabs[0];
+    if (!fallback) throw new Error('TRANSACTIONS_TABS must contain at least one tab');
+    return active ?? fallback;
+  });
+
+  protected readonly accountsText: Signal<string> = computed((): string =>
+    accountsSummary({
+      accounts: this.store.accounts(),
+      excludedIds: this.store.excludedAccountIds(),
+      i18n: this.i18n,
+    }),
+  );
+
+  protected readonly filterActive: Signal<boolean> = computed(
+    (): boolean =>
+      this.store.excludedAccountIds().size > 0 || this.store.searchInput().trim() !== '',
+  );
+
+  /** `from – to`, or the "All dates" label while no range is set. */
+  protected readonly periodText: Signal<string> = computed((): string => {
+    const range: DateRange | null = this.store.range();
+    if (range === null) return this.i18n.t('dateRangeFilter.allDates');
+    return `${range.from ?? '…'} – ${range.to ?? '…'}`;
+  });
 
   constructor() {
     const tableToolbar: DataTableToolbarOutlet = inject(DataTableToolbarOutlet);

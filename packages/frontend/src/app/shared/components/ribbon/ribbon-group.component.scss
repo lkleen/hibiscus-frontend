@@ -1,0 +1,35 @@
+:host {
+  --ribbon-group-border-color: var(--surface-border);
+  --ribbon-group-caption-color: var(--text-muted);
+  --ribbon-group-padding-x: 0.85rem;
+  --ribbon-group-grow-basis: 22rem;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-width: 0;
+  padding-inline: var(--ribbon-group-padding-x);
+}
+
+:host(:not(:first-child)) {
+  border-inline-start: 1px solid var(--ribbon-group-border-color);
+}
+
+:host(.ribbon-group--grow) {
+  flex: 1 1 var(--ribbon-group-grow-basis);
+}
+
+.ribbon-group__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.ribbon-group__caption {
+  color: var(--ribbon-group-caption-color);
+  font-size: var(--text-xs);
+  text-align: center;
+}

@@ -6,22 +6,54 @@
   ariaLabelKey="transactions.tabs.label"
 />
 
-<form class="filters" (submit)="$event.preventDefault()">
-  <app-account-filter [accounts]="store.accounts()" [(excludedIds)]="store.excludedAccountIds" />
-  <div class="filters__field filters__field--grow">
-    <label for="transactions-search">{{ i18n.t('table.filterSearch') }}</label>
-    <input
-      id="transactions-search"
-      type="search"
-      [placeholder]="i18n.t('table.searchPlaceholder')"
-      [value]="store.searchInput()"
-      (input)="onSearchInput($event)"
-    />
-  </div>
+<app-ribbon ribbonId="transactions" />
+
+<ng-template
+  appRibbonBand="filter"
+  ribbonLabelKey="ribbon.tab.filter"
+  [ribbonOrder]="0"
+  [ribbonState]="accountsText()"
+  [ribbonActive]="filterActive()"
+>
+  <app-ribbon-group captionKey="ribbon.group.search" [grow]="true">
+    <div class="filters__field filters__field--grow">
+      <label class="visually-hidden" for="transactions-search">{{
+        i18n.t('table.filterSearch')
+      }}</label>
+      <input
+        id="transactions-search"
+        type="search"
+        [placeholder]="i18n.t('table.searchPlaceholder')"
+        [value]="store.searchInput()"
+        (input)="onSearchInput($event)"
+      />
+    </div>
+  </app-ribbon-group>
+  <app-ribbon-group captionKey="ribbon.group.accounts">
+    <app-account-filter [accounts]="store.accounts()" [(excludedIds)]="store.excludedAccountIds" />
+  </app-ribbon-group>
+</ng-template>
+
+<ng-template
+  appRibbonBand="period"
+  ribbonLabelKey="ribbon.tab.period"
+  [ribbonOrder]="1"
+  [ribbonState]="periodText()"
+>
   <app-date-range-filter [(range)]="store.range" />
-  <!-- The routed tab's table controls (selection bar; by-category: expand/collapse all) join this row. -->
-  <ng-template cdkPortalOutlet />
-</form>
+</ng-template>
+
+<ng-template appRibbonBand="view" ribbonLabelKey="ribbon.tab.view" [ribbonOrder]="2">
+  @if (activeTab().hasTree) {
+    <app-ribbon-group captionKey="ribbon.group.tree">
+      <!-- The routed tab's tree controls (expand/collapse all) are attached here. -->
+      <ng-template cdkPortalOutlet />
+    </app-ribbon-group>
+  }
+  <app-ribbon-group captionKey="ribbon.group.density">
+    <app-density-picker [view]="activeTab().densityView" />
+  </app-ribbon-group>
+</ng-template>
 
 <router-outlet />
 

@@ -19,6 +19,7 @@ import type { DatePreset, DatePresetUnit } from '@hibiscus-frontend/shared/contr
 import { DatePresetService } from '../../../core/services/date-preset.service';
 import { TranslationKey } from '../../../core/models/translation.model';
 import { TranslationService } from '../../../core/services/translation.service';
+import { RibbonGroupComponent } from '../ribbon/ribbon-group.component';
 import {
   DATE_PRESET_UNITS,
   DateRange,
@@ -37,7 +38,7 @@ export interface DateRangePresetItem {
 let nextId = 0;
 
 /**
- * Period picker: a preset dropdown (CDK menu, same vocabulary as the user menu) plus From/To date
+ * Period picker for a ribbon band (renders the groups preset, range and step): a preset dropdown (CDK menu, same vocabulary as the user menu) plus From/To date
  * inputs. Every preset row shows the dates it resolves to today, so a relative preset is never a
  * guess. Selection is session-only state of the parent via `range`; the presets themselves are the
  * user's, from `DatePresetService`.
@@ -50,7 +51,7 @@ let nextId = 0;
   templateUrl: './date-range-filter.component.html',
   styleUrl: './date-range-filter.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CdkMenu, CdkMenuItemRadio, CdkMenuTrigger],
+  imports: [CdkMenu, CdkMenuItemRadio, CdkMenuTrigger, RibbonGroupComponent],
 })
 export class DateRangeFilterComponent {
   private readonly presetService = inject(DatePresetService);

@@ -14,10 +14,4 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
     loadComponent: () =>
       import('./date-presets/date-presets.component').then((m) => m.DatePresetsComponent),
   },
-  {
-    path: 'table-density',
-    labelKey: 'settings.tab.tableDensity',
-    loadComponent: () =>
-      import('./table-density/table-density.component').then((m) => m.TableDensityComponent),
-  },
 ];

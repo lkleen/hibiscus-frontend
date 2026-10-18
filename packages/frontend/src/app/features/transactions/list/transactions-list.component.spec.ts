@@ -5,10 +5,13 @@ import localeDe from '@angular/common/locales/de';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { LocaleService } from '../../../core/services/locale.service';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
+import { RibbonHost } from '../../../shared/components/ribbon/ribbon-host';
+import { RibbonComponent } from '../../../shared/components/ribbon/ribbon.component';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
@@ -20,6 +23,8 @@ registerLocaleData(localeDe);
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const DENSITY_VIEW: TableViewId = 'transactions-list';
 
 interface Loaded {
   accounts?: AccountRow[];
@@ -40,6 +45,7 @@ const COL = {
 describe('TransactionsListComponent', () => {
   let fixture: ComponentFixture<TransactionsListComponent>;
   let httpMock: HttpTestingController;
+  let ribbon: ComponentFixture<RibbonComponent>;
   let root: HTMLElement;
 
   beforeEach(() => {
@@ -49,6 +55,7 @@ describe('TransactionsListComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        RibbonHost,
         TransactionsStore,
         TransactionDialogs,
         CategoryDialogs,
@@ -57,26 +64,37 @@ describe('TransactionsListComponent', () => {
     fixture = TestBed.createComponent(TransactionsListComponent);
     httpMock = TestBed.inject(HttpTestingController);
     root = fixture.nativeElement as HTMLElement;
+    // The selection band is registered by the table's tab; the ribbon renders it.
+    ribbon = TestBed.createComponent(RibbonComponent);
+    ribbon.componentRef.setInput('ribbonId', 'test');
   });
 
   afterEach(() => {
+    ribbon.destroy();
     fixture.destroy();
     httpMock.verify();
     vi.unstubAllGlobals();
   });
 
   /** Lets PrimeNG render what it was given. */
+  function ribbonEl(): HTMLElement {
+    return ribbon.nativeElement as HTMLElement;
+  }
+
   async function settle(): Promise<void> {
     fixture.detectChanges();
+    ribbon.detectChanges();
     await fixture.whenStable();
     await wait(50);
     fixture.detectChanges();
+    ribbon.detectChanges();
   }
 
   /** Starts the component, answers its requests and lets the table render. */
   async function load({ accounts = [], items = [], categories = [] }: Loaded = {}): Promise<void> {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush(accounts);
+    httpMock.expectOne('/api/settings/table-densities').flush({ [DENSITY_VIEW]: 'compact' });
     httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));
     httpMock.expectOne('/api/categories').flush(categories);
     await settle();
@@ -110,6 +128,13 @@ describe('TransactionsListComponent', () => {
   function displayedIds(): number[] {
     return bodyRows().map((row) => Number(cellText(row, COL.zweck)));
   }
+
+  it("binds the table to the user's density for this view", async () => {
+    await load();
+    expect(root.querySelector('app-data-table')?.classList.contains('table-density-compact')).toBe(
+      true,
+    );
+  });
 
   it('renders the transactions, with their account resolved', async () => {
     await load({
@@ -415,10 +440,12 @@ describe('TransactionsListComponent', () => {
     function boxes(): HTMLInputElement[] {
       return Array.from(root.querySelectorAll<HTMLInputElement>('tbody .data-table__checkbox'));
     }
+    /** The contextual Selection band's tab and its group, as rendered by the ribbon. */
+    function selectionTab(): HTMLElement | null {
+      return ribbonEl().querySelector<HTMLElement>('.ribbon__tab--contextual');
+    }
     function isIdle(): boolean {
-      const bar: Element | null = root.querySelector('app-transactions-selection-bar');
-      if (!bar) throw new Error('selection bar not rendered');
-      return bar.classList.contains('selection-bar--idle');
+      return selectionTab() === null;
     }
     function menu(row: number): HTMLElement[] {
       bodyRows()[row].children[COL.zweck].dispatchEvent(
@@ -437,9 +464,13 @@ describe('TransactionsListComponent', () => {
       boxes()[0].click();
       boxes()[1].click();
       await settle();
-      expect(root.querySelector('.selection-bar__count')?.textContent).toContain('2 selected');
+      expect(ribbonEl().querySelector('.selection-bar__count')?.textContent).toContain(
+        '2 selected',
+      );
+      expect(selectionTab()?.textContent).toContain('Selection');
+      expect(selectionTab()?.querySelector('.ribbon__state')?.textContent?.trim()).toBe('2');
       const clear: HTMLButtonElement | undefined = Array.from(
-        root.querySelectorAll<HTMLButtonElement>('.filters__action'),
+        ribbonEl().querySelectorAll<HTMLButtonElement>('.filters__action'),
       ).find((el: HTMLButtonElement) => el.textContent?.trim() === 'Clear selection');
       if (!clear) throw new Error('Clear button not rendered');
       clear.click();

@@ -15,14 +15,18 @@
   `columnReorder` option), order kept for the session only. The component offers an ag-Grid-style
   `externalFilter` input (a caller-supplied predicate applied before table filters, resetting to
   page 1 on change) and two projection slots for additional filters: `[appDataTableToolbarStart]`
-  before the search field and `[appDataTableToolbar]` after it. Features are added to the component, never implemented per table. Theming goes
+  before the search field and `[appDataTableToolbar]` after it. The `quickFilterText` input (ag-Grid's
+  name) replaces the table's own search field: when non-null the field is hidden and the table filters
+  with that text through the same path (tree-lenient in tree mode). The `density` input (default
+  `normal`) renders as a `table-density-<id>` host class that `_primeng-table.scss` maps to the table
+  tokens; tables without a chosen density (pickers, dialog previews) are Normal. Features are added to the component, never implemented per table. Theming goes
   through the CSS bridge in `styles/_primeng-table.scss`. The component optionally renders a tree
   via the `treeData` option (self-referencing parent-id style, built by `buildTree`); it renders
   PrimeNG's `p-treetable` instead of `p-table` and shares all column models and lambdas. Trees are
   fully expanded by default with expand-all/collapse-all controls (icon buttons with a tooltip at the end of the
   toolbar row; a page that owns the toolbar row, like the transactions shell, provides
   `DataTableToolbarOutlet` and the table attaches them, together with its projected
-  `[appDataTableToolbar]` content, to that page's `cdkPortalOutlet` instead;
+  `[appDataTableToolbar]` content, to that page's `cdkPortalOutlet` instead (the ribbon's View band);
   nodes are updated in place by row id when `value` changes, so expansion survives data changes); the quick filter is lenient
   (keeping ancestors of matches), sorting and resizing work, and pagination is not available.
   In tree mode a column may set `aggFunc: 'sum'`: group nodes then show and sort by the sum of their
@@ -52,7 +56,7 @@ Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope is per-user settings (date range presets, table density) in `hf_user_setting`, and two
+Write scope is per-user settings (date range presets, table densities per view) in `hf_user_setting`, and two
 user-maintained fields of `umsatz`: `kommentar` and `umsatztyp_id` (the category), via
 `PATCH /api/transactions/:id`. Both are written in one atomic `UPDATE ... WHERE` that only succeeds
 while the row still holds the values the edit started from (`expected`); otherwise the API answers
@@ -85,8 +89,8 @@ itself requires authentication too — there is no unauthenticated route in this
 | `GET /api/settings/date-presets`         | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                   |
 | `PUT /api/settings/date-presets`         | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                         |
 | `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                               |
-| `GET /api/settings/table-density`        | User's table density; `normal` if not stored                                                                                                                                                                                                                                                                                                  |
-| `PUT /api/settings/table-density`        | Save the density (zod-validated); answers `204`                                                                                                                                                                                                                                                                                               |
+| `GET /api/settings/table-densities`      | User's stored density map (`TableDensities`, view → density); `{}` if not stored                                                                                                                                                                                                                                                              |
+| `PUT /api/settings/table-densities`      | Save the whole map (zod-validated); answers `204`                                                                                                                                                                                                                                                                                             |
 
 ### Shared contracts
 
@@ -134,15 +138,18 @@ named or auto-generated, the first preset auto-selected on page load. Defaults l
 backend (`DEFAULT_DATE_PRESETS`); the user is never "no presets", they always have at least the
 defaults.
 
-**Table density** (second setting): one of five ids (`extra-compact | compact | normal | comfortable | spacious`),
-shared type `TableDensity`, default `normal` (backend `DEFAULT_TABLE_DENSITY`). Frontend
-`TableDensityService` loads it at app startup via app initializer and sets a `table-density-<id>`
-class on `<html>`; `_primeng-table.scss` maps each class onto layer-1 tokens (`--app-table-font-size`,
-`--app-table-cell-padding-y`, `--app-table-cell-padding-x`) so every table follows it automatically.
+**Table density** (second setting): density is per view, not global. The shared types are
+`TableViewId` (`'transactions-list' | 'transactions-by-category' | 'categories'`) and `TableDensities`
+(a partial map from view to `TableDensity`, one of `extra-compact | compact | normal | comfortable |
+spacious`; a missing view is `normal`). The backend stores the whole map under one `hf_user_setting` key.
+The old single `table-density` setting is removed and never read. Frontend `TableDensityService` loads
+the map once at app startup, exposes `densityFor(view)` and `save(view, density)`, and does not touch
+`<html>`. The density is picked in the ribbon's View tab via `<app-density-picker [view]>`; each
+`<app-data-table>` takes it as its `density` input (see the data table paragraph above).
 
-Both services share the load-once / serial-write-queue / confirmed-state-only logic via
-`UserSettingChannel<T>` (`core/services/user-setting-channel.ts`): Reads and writes go through
-these services, which load settings once at app startup, queue all writes through a single serial
+Both settings services (date presets and table densities) share the load-once / serial-write-queue /
+confirmed-state-only logic via `UserSettingChannel<T>` (`core/services/user-setting-channel.ts`): reads
+and writes go through these services, which load settings once at app startup, queue all writes through a single serial
 channel (so the server receives them in order), and only surface confirmed state to the UI
 (unsaved changes are not displayed).
 
@@ -155,17 +162,20 @@ state. Switching tabs never refetches.
 **Shell and tabs.** The route is `/:locale/transactions` with two child-route tabs: `list` (the
 transaction table) and `categories` (a by-category report tree). Both paths are defined in
 `TRANSACTIONS_TABS` (`transactions-tabs.ts`), a single source like `SETTINGS_TABS` that pairs each
-tab's route segment with its `labelKey` for the i18n tab label and its `loadComponent` for lazy
-loading. The shell redirects the empty path to the first tab.
+tab's route segment with its `labelKey` for the i18n tab label, its `densityView` (the `TableViewId`
+whose density the table uses) and its `loadComponent` for lazy loading. The shell redirects the empty path to the first tab.
 
-**Shared toolbar and filter.** Above the `<router-outlet>`, a shared toolbar holds three controls:
-`<app-account-filter>` (dropdown with one checkbox per account, unchecked = excluded; session-only
-state is the set of unchecked account ids), a search input (debounced 300 ms via `searchInput`
-→ `debouncedSearch` to avoid recomputing filters on every keystroke), and
-`<app-date-range-filter>` (filters on `datum`, starting on the user's first preset, session-only). The
-row ends in a `cdkPortalOutlet` (`DataTableToolbarOutlet`) where the active tab's table controls
-appear — its selection bar and the by-category tree's expand/collapse-all buttons — so the tables
-need no toolbar row of their own.
+**Ribbon.** Above the `<router-outlet>`, the shell renders a ribbon (see [Ribbon toolbar](#ribbon-toolbar))
+with three bands. **Filter**: search (debounced 300 ms via `searchInput` → `debouncedSearch` to avoid
+recomputing filters on every keystroke) and `<app-account-filter>` (dropdown with one checkbox per
+account, unchecked = excluded; session-only state is the set of unchecked account ids); its state is
+the accounts summary. **Period**: `<app-date-range-filter>` (filters on `datum`, starting on the user's
+first preset, session-only), split into Preset, Range and Step groups; its state is the range. **View**:
+the active tab's view controls. The by-category tab's tree expand/collapse-all buttons reach it through
+`DataTableToolbarOutlet`, whose `cdkPortalOutlet` sits in this band on that tab only; the density
+picker shows the density of the active tab's view (`densityView`). The list and by-category tabs each
+register a contextual **Selection** tab ("N selected", Clear selection) while rows are ticked, so the
+tables need no toolbar row of their own.
 
 **`TransactionsStore`.** Loaded once at shell creation via `forkJoin` (accounts, transactions,
 categories), it exposes: `accounts`, `transactions` (the raw 10,000 rows, about 530 KB on the wire;
@@ -176,8 +186,8 @@ search needs them), `rowFilter` (computed predicate: account + date + search com
 Leaving `/transactions` destroys the store and coming back refetches; tab switches do not.
 
 **List tab** (`TransactionsListComponent`). Today's table, now mounted on the shell's outlet. Loads
-`[value]="store.transactions()"`, sets `[externalFilter]="store.rowFilter()"` (the shared
-toolbar's combined filter), uses `quickFilter: false` (search is the shell's, not per-row), and
+`[value]="store.transactions()"`, sets `[externalFilter]="store.rowFilter()"` (the ribbon's
+combined filter), uses `quickFilter: false` (search is the shell's, not per-row), and
 `autoSizeStrategy: fitCellContents` with an 82rem floor (cells single-line, table scrolls). Column
 definitions live in `transactionColumns` (store) and include `valueGetter` lambdas resolving
 `konto_id` to account details (holder, BIC, number, label); values are computed live, not on rows.
@@ -211,8 +221,8 @@ grouping logic only.
 (in the by-category tree only transaction rows are selectable). The header checkbox selects every row
 passing the shared filters, across all pages; Ctrl/Cmd-click toggles a row, and in the list Shift-click
 selects a range. The selection is pruned to the rows passing the filters whenever they change, and the
-shell's filter row shows "N selected" with a Clear action (taking no space while nothing is
-selected). Right-clicking a row inside a multi-row selection
+active tab's contextual Selection tab shows "N selected" with a Clear action (the tab is absent
+while nothing is selected). Right-clicking a row inside a multi-row selection
 disables View and Edit and makes Assign assign all selected rows in one request
 (`TransactionsStore.assignCategory`, see the write scope above); right-clicking outside the selection
 opens the single-row menu. After a successful bulk assign the selection is cleared.
@@ -224,7 +234,8 @@ appear in the assignment patterns as-is, used as searchable fields in `core/util
 ### Categories page
 
 A `/:locale/categories` page in the navigation shows the entire `umsatztyp` tree as a
-table with expand-all/collapse-all controls. Every column is rendered as stored: `type` is
+table. Its ribbon has a Filter band (search, driving the tree through `quickFilterText`) and a View
+band (expand/collapse-all and the density for view `categories`). Every column is rendered as stored: `type` is
 translated (`0` = expense, `1` = income, `2` or `NULL` = any), `konto_id` is resolved to the
 account label via `/api/accounts`, and the `flags` column's bit 1 (`FLAG_SKIP_REPORTS = 1`)
 indicates "skip in reports". The `color` column is rendered via `toCssColor`. Right-clicking a category and choosing Edit opens the
@@ -254,6 +265,20 @@ row menu (single-row menu only; disabled in the bulk menu). It opens the dialog 
 transaction (`categoryDraftFrom`, `features/categories/category-draft.ts`): name and pattern are the
 counterparty name with commas escaped, and the type follows the amount's sign. On the by-category tab,
 category nodes (not "Unassigned") offer Edit.
+
+## Ribbon toolbar
+
+`shared/components/ribbon/` is a generic MS-Office-style ribbon. A page provides `RibbonHost` and
+renders `<app-ribbon ribbonId="…">`. Bands are `<ng-template appRibbonBand="id" ribbonLabelKey …>`
+declared anywhere under the page, including routed child components, which is how a tab adds its
+contextual band. Each band is laid out as `<app-ribbon-group captionKey>` (caption below, separators).
+Each tab shows its band's state text and a dot when that band's settings restrict the rows. Contextual
+tabs are accent-marked and shown only while `ribbonShown`. All bands stay rendered and inactive ones are
+hidden, so band content keeps its state.
+
+Three modes: full, tabs only (clicking the active tab collapses to tabs), and hidden (one slim line with
+the bands' state chips and a "Show toolbar" button). The active tab and mode are kept per ribbon in
+memory for the session (`RibbonStateStore`) and reset on reload.
 
 ## Authentication
 
@@ -346,10 +371,9 @@ locale data in `app.config.ts`, and add a `locale.<code>` label to every diction
 Per-user settings are accessed via a route-based tab interface at `/:locale/settings/<tab>`,
 with all tabs defined in a single source (`SETTINGS_TABS` in `settings-tabs.ts`). The route
 structure is: root shell component loads the active tab child route lazily. The first tab is
-the default. Settings are reachable from the user menu. Currently implemented: two tabs. **Date
-range presets** (first tab) shows a preset picker on the left; picking one saves it immediately.
-**Table density** (second tab) shows a density option picker on the left and a demo `<app-data-table>`
-on the right that shows the selected density live; picking an option saves it immediately.
+the default. Settings are reachable from the user menu. Currently implemented: one tab. **Date
+range presets** shows a preset picker on the left; picking one saves it immediately. (The former
+Table density tab and its demo table were removed; density is chosen in each page's ribbon.)
 
 ## Local development
 

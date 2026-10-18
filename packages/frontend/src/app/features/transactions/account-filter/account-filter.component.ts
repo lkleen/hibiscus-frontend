@@ -13,6 +13,7 @@ import {
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import { TranslationService } from '../../../core/services/translation.service';
 import { accountLabel } from '../../../core/utils/account-label';
+import { accountsSummary } from './accounts-summary';
 
 /** A panel row: the account, the name it is shown under, and its IBAN (else account number). */
 export interface AccountFilterItem {
@@ -79,16 +80,13 @@ export class AccountFilterComponent {
     (): boolean => this.checkedCount() > 0 && !this.allChecked(),
   );
 
-  protected readonly triggerLabel: Signal<string> = computed((): string => {
-    const items: readonly AccountFilterItem[] = this.items();
-    const checked: readonly AccountFilterItem[] = items.filter(
-      (item: AccountFilterItem): boolean => item.checked,
-    );
-    if (checked.length === items.length) return this.i18n.t('accountFilter.all');
-    if (checked.length === 0) return this.i18n.t('accountFilter.none');
-    if (checked.length === 1) return checked[0].label;
-    return this.i18n.t('accountFilter.some', { count: checked.length, total: items.length });
-  });
+  protected readonly triggerLabel: Signal<string> = computed((): string =>
+    accountsSummary({
+      accounts: this.accounts(),
+      excludedIds: this.excludedIds(),
+      i18n: this.i18n,
+    }),
+  );
 
   protected toggleOpen(): void {
     this.isOpen.set(!this.isOpen());

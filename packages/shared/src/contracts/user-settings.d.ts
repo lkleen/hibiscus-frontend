@@ -60,11 +60,19 @@ export interface DatePresetLimits {
 }
 
 /**
- * How dense every table in the app is rendered (font size and cell padding; the values live in the
- * frontend's `_primeng-table.scss`). Body of `PUT /api/settings/table-density` and response of
- * `GET /api/settings/table-density`; `normal` when the user has not chosen one.
+ * How dense a table is rendered (font size and cell padding; the values live in the frontend's
+ * `_primeng-table.scss`). Chosen per table view, see `TableDensities`.
  *
  * Types-only, so each side declares its own runtime list of the ids, checked against this union
  * so a missing or extra id fails typecheck on that side.
  */
 export type TableDensity = 'extra-compact' | 'compact' | 'normal' | 'comfortable' | 'spacious';
+
+/** The table views whose density the user picks (in their ribbon's View tab). */
+export type TableViewId = 'transactions-list' | 'transactions-by-category' | 'categories';
+
+/**
+ * The user's density per table view. Body of `PUT /api/settings/table-densities` and response of
+ * `GET /api/settings/table-densities`; a view that is missing is rendered `normal`.
+ */
+export type TableDensities = Partial<Record<TableViewId, TableDensity>>;

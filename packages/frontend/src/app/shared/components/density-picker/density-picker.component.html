@@ -1,0 +1,24 @@
+<div
+  class="density-picker"
+  role="radiogroup"
+  [attr.aria-label]="i18n.t('density.label')"
+  [attr.aria-busy]="densities.saving()"
+>
+  @for (id of options; track id) {
+    <label
+      class="density-picker__option"
+      [class.density-picker__option--selected]="id === current()"
+    >
+      <input
+        class="density-picker__input"
+        type="radio"
+        [name]="groupName"
+        [value]="id"
+        [checked]="id === current()"
+        [disabled]="!densities.loaded()"
+        (change)="choose(id)"
+      />
+      <span class="density-picker__label">{{ i18n.t(labelKey(id)) }}</span>
+    </label>
+  }
+</div>

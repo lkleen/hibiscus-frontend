@@ -18,6 +18,7 @@ import {
   linkedSignal,
   model,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { FilterMatchMode, FilterService } from 'primeng/api';
@@ -25,6 +26,7 @@ import type { TreeNode, TreeTableNode } from 'primeng/api';
 import { Table, TableModule } from 'primeng/table';
 import { TreeTable, TreeTableModule } from 'primeng/treetable';
 import type { TreeTableSortEvent } from 'primeng/treetable';
+import type { TableDensity } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TranslationKey } from '../../../core/models/translation.model';
 import { APP_DIALOG_BACKDROP_CLASS, APP_DIALOG_PANEL_CLASS } from '../../dialog/dialog-classes';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -162,7 +164,10 @@ interface DataTableColReorderEvent {
     CdkMenuItem,
   ],
   providers: [FilterService],
-  host: { '[class.data-table-host--fill]': "scrollHeight() === 'flex'" },
+  host: {
+    '[class.data-table-host--fill]': "scrollHeight() === 'flex'",
+    '[class]': '"table-density-" + density()',
+  },
 })
 export class DataTableComponent<Row extends object> {
   protected readonly i18n = inject(TranslationService);
@@ -197,6 +202,13 @@ export class DataTableComponent<Row extends object> {
    * Called with the *raw* row, like every other caller-supplied lambda.
    */
   readonly externalFilter = input<((row: Row) => boolean) | null>(null);
+
+  /** Row density of this table (`table-density-<id>` host class, see `_primeng-table.scss`). */
+  readonly density = input<TableDensity>('normal');
+
+  /** ag-Grid's `quickFilterText`: when non-null the table's own search field is not rendered and
+   *  the table filters globally with this text, exactly like typing it into that field. */
+  readonly quickFilterText = input<string | null>(null);
 
   /**
    * Two-way: the id (`options.getRowId`) of the selected row while `options.rowSelection` is set,
@@ -821,6 +833,22 @@ export class DataTableComponent<Row extends object> {
       if (kept.size !== selected.size) this.selectedRowIds.set(kept);
     });
 
+    // `quickFilterText`: drives the same path as the own field. Waits for the table to render;
+    // when it returns to null the previously applied external text is cleared (field is empty).
+    let externalApplied = false;
+    effect((): void => {
+      const text: string | null = this.quickFilterText();
+      this.quickFilterMatchMode();
+      if (!this.table() && !this.treeTable()) return;
+      if (text !== null) {
+        untracked((): void => this.applyQuickFilter(text));
+        externalApplied = true;
+      } else if (externalApplied) {
+        externalApplied = false;
+        untracked((): void => this.applyQuickFilter(''));
+      }
+    });
+
     // Trailing toolbar controls (projected toolbar content, tree controls) into the page's toolbar
     // row, when it offers one. On a tab switch the next
     // table may attach before this one is destroyed: it detaches whatever is there, and this
@@ -895,7 +923,10 @@ export class DataTableComponent<Row extends object> {
   }
 
   protected onSearchInput(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
+    this.applyQuickFilter((event.target as HTMLInputElement).value);
+  }
+
+  private applyQuickFilter(value: string): void {
     this.q.set(value);
     const table: Table<Row> | TreeTable | undefined = this.treeMode()
       ? this.treeTable()

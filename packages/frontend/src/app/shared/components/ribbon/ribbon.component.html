@@ -1,0 +1,70 @@
+<div class="ribbon ribbon--hidden" [hidden]="mode() !== 'hidden'">
+  <span class="ribbon__summary">
+    @for (chip of stateChips(); track chip.id) {
+      <span class="ribbon__chip"
+        ><span class="ribbon__chip-label">{{ i18n.t(chip.labelKey) }}</span> {{ chip.state }}</span
+      >
+    }
+  </span>
+  <button
+    type="button"
+    class="ribbon__toggle"
+    [attr.aria-label]="i18n.t('ribbon.show')"
+    [attr.title]="i18n.t('ribbon.show')"
+    (click)="setMode('full')"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+  </button>
+</div>
+<div class="ribbon" [class.ribbon--tabs]="mode() === 'tabs'" [hidden]="mode() === 'hidden'">
+  <div class="ribbon__strip">
+    <div class="ribbon__tablist" role="tablist" [attr.aria-label]="i18n.t('ribbon.label')">
+      @for (band of bands(); track band.id; let index = $index) {
+        @let selected = band.id === activeBand()?.id;
+        <button
+          type="button"
+          appRibbonTab
+          role="tab"
+          class="ribbon__tab"
+          [class.ribbon__tab--contextual]="band.contextual()"
+          [id]="tabId(band)"
+          [attr.aria-selected]="selected"
+          [attr.aria-controls]="panelId(band)"
+          [attr.tabindex]="band.id === tabbableId() ? 0 : -1"
+          (focus)="onTabFocus(index)"
+          (click)="selectTab(band)"
+          (keydown)="onKeydown($event)"
+        >
+          {{ i18n.t(band.labelKey) }}
+          @if (band.state(); as state) {
+            <span class="ribbon__state">{{ state }}</span>
+          }
+          @if (band.active()) {
+            <span class="ribbon__dot" aria-hidden="true"></span>
+            <span class="visually-hidden">{{ i18n.t('ribbon.activeFilter') }}</span>
+          }
+        </button>
+      }
+    </div>
+    <button
+      type="button"
+      class="ribbon__toggle"
+      [attr.aria-label]="i18n.t('ribbon.hide')"
+      [attr.title]="i18n.t('ribbon.hide')"
+      (click)="setMode('hidden')"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+    </button>
+  </div>
+  @for (band of bands(); track band.id) {
+    <div
+      class="ribbon__band"
+      role="tabpanel"
+      [id]="panelId(band)"
+      [attr.aria-labelledby]="tabId(band)"
+      [hidden]="mode() !== 'full' || band.id !== activeBand()?.id"
+    >
+      <ng-container [ngTemplateOutlet]="band.template" />
+    </div>
+  }
+</div>

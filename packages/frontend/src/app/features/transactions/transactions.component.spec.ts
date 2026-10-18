@@ -46,6 +46,9 @@ describe('TransactionsComponent (shell)', () => {
     harness.detectChanges();
     httpMock.expectOne('/api/settings/date-presets').flush([]);
     httpMock.expectOne('/api/accounts').flush([account()]);
+    httpMock
+      .expectOne('/api/settings/table-densities')
+      .flush({ 'transactions-by-category': 'comfortable' });
     httpMock.expectOne('/api/transactions').flush(transactionsResponse([transaction()]));
     httpMock.expectOne('/api/categories').flush([]);
     await settle();
@@ -56,26 +59,41 @@ describe('TransactionsComponent (shell)', () => {
       (a) => a.textContent?.trim() ?? '',
     );
     expect(tabs).toEqual(['List', 'By category']);
+    expect(root.querySelector('app-ribbon')).not.toBeNull();
+    const ribbonTabs = (): string[] =>
+      Array.from(root.querySelectorAll('.ribbon__tab')).map(
+        (tab: Element): string => tab.firstChild?.textContent?.trim() ?? '',
+      );
+    expect(ribbonTabs()).toEqual(['Filter', 'Period', 'View']);
     expect(root.querySelector('app-account-filter')).not.toBeNull();
     expect(root.querySelector('#transactions-search')).not.toBeNull();
     expect(root.querySelector('app-date-range-filter')).not.toBeNull();
+    expect(root.querySelector('app-density-picker')).not.toBeNull();
     expect(root.querySelector('app-transactions-list')).not.toBeNull();
+    const treeActions = (): string[] =>
+      Array.from(root.querySelectorAll('.ribbon__band .filters__action')).map(
+        (button: Element): string => button.getAttribute('aria-label') ?? '',
+      );
+    // The list has no tree: nothing in the View band's tree group.
+    expect(treeActions()).toEqual([]);
+    expect(root.querySelector('app-transactions-list app-data-table')?.className).toContain(
+      'table-density-normal',
+    );
 
     await TestBed.inject(Router).navigateByUrl('/en/transactions/categories');
     await settle();
     expect(root.querySelector('app-transactions-by-category')).not.toBeNull();
-    // The tab's selection bar and the tree's expand/collapse-all buttons join the shell's toolbar
-    // row (the Clear button has no aria-label, its text labels it).
-    const shellActions = (): string[] =>
-      Array.from(
-        root.querySelector('form.filters')?.querySelectorAll('.filters__action') ?? [],
-      ).map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '');
-    expect(shellActions()).toEqual(['Clear selection', 'Expand all', 'Collapse all']);
+    // By category: the tree's expand/collapse-all buttons join the View band, and the table
+    // follows that view's density.
+    expect(treeActions()).toEqual(['Expand all', 'Collapse all']);
+    expect(root.querySelector('app-transactions-by-category app-data-table')?.className).toContain(
+      'table-density-comfortable',
+    );
 
     await TestBed.inject(Router).navigateByUrl('/en/transactions/list');
     await settle();
-    // Back on the list: only its selection bar, no tree controls.
-    expect(shellActions()).toEqual(['Clear selection']);
+    expect(treeActions()).toEqual([]);
+    expect(ribbonTabs()).toEqual(['Filter', 'Period', 'View']);
     // httpMock.verify() in afterEach fails on any further request.
     expect(root.querySelector('app-transactions-list')).not.toBeNull();
   });

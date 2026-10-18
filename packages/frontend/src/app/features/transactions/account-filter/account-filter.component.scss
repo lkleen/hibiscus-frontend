@@ -1,4 +1,5 @@
-// Same anatomy and tokens as `<app-date-range-filter>` next to it, so the toolbar reads as one row.
+// Same tokens as `<app-date-range-filter>` next to it, so the ribbon reads as one row. Sits in a
+// ribbon group, whose caption names it; the `<label>` stays for assistive technology only.
 // Structural rules only; every visual value is an `--account-filter-*` token defaulting to a global
 // token. The panel is rendered in a CDK overlay, outside `.account-filter`, so it declares its own.
 :host {
@@ -13,14 +14,7 @@
   --account-filter-radius: var(--radius-base);
 
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
   min-width: 0;
-
-  label {
-    font-size: var(--text-xs);
-    color: var(--account-filter-label-color);
-  }
 }
 
 .account-filter__trigger {

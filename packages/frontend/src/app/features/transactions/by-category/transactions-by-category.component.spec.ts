@@ -4,9 +4,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { MockInstance } from 'vitest';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
+import { RibbonHost } from '../../../shared/components/ribbon/ribbon-host';
+import { RibbonComponent } from '../../../shared/components/ribbon/ribbon.component';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
@@ -17,6 +20,8 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const DENSITY_VIEW: TableViewId = 'transactions-by-category';
+
 interface Loaded {
   accounts?: AccountRow[];
   items?: TransactionRow[];
@@ -26,6 +31,7 @@ interface Loaded {
 describe('TransactionsByCategoryComponent', () => {
   let fixture: ComponentFixture<TransactionsByCategoryComponent>;
   let httpMock: HttpTestingController;
+  let ribbon: ComponentFixture<RibbonComponent>;
   let root: HTMLElement;
 
   beforeEach(() => {
@@ -35,6 +41,7 @@ describe('TransactionsByCategoryComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        RibbonHost,
         TransactionsStore,
         TransactionDialogs,
         CategoryDialogs,
@@ -43,9 +50,13 @@ describe('TransactionsByCategoryComponent', () => {
     fixture = TestBed.createComponent(TransactionsByCategoryComponent);
     httpMock = TestBed.inject(HttpTestingController);
     root = fixture.nativeElement as HTMLElement;
+    // The selection band is registered by the table's tab; the ribbon renders it.
+    ribbon = TestBed.createComponent(RibbonComponent);
+    ribbon.componentRef.setInput('ribbonId', 'test');
   });
 
   afterEach(() => {
+    ribbon.destroy();
     fixture.destroy();
     httpMock.verify();
   });
@@ -57,6 +68,7 @@ describe('TransactionsByCategoryComponent', () => {
   }: Loaded = {}): Promise<void> {
     fixture.detectChanges();
     httpMock.expectOne('/api/accounts').flush(accounts);
+    httpMock.expectOne('/api/settings/table-densities').flush({ [DENSITY_VIEW]: 'compact' });
     httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));
     httpMock.expectOne('/api/categories').flush(categories);
     fixture.detectChanges();
@@ -70,6 +82,13 @@ describe('TransactionsByCategoryComponent', () => {
       (row.textContent ?? '').replace(/\s+/g, ' ').trim(),
     );
   }
+
+  it("binds the table to the user's density for this view", async () => {
+    await load();
+    expect(root.querySelector('app-data-table')?.classList.contains('table-density-compact')).toBe(
+      true,
+    );
+  });
 
   it('shows categories with their summed amounts and the unassigned node', async () => {
     await load({
@@ -228,10 +247,16 @@ describe('TransactionsByCategoryComponent', () => {
     const tx = (id: number): TransactionRow =>
       transaction({ id, zweck: `Tx ${id}`, umsatztyp_id: null, kommentar: `N${id}` });
 
+    function ribbonEl(): HTMLElement {
+      return ribbon.nativeElement as HTMLElement;
+    }
+
     async function settle(): Promise<void> {
       fixture.detectChanges();
+      ribbon.detectChanges();
       await wait(50);
       fixture.detectChanges();
+      ribbon.detectChanges();
     }
     function leafBoxes(): HTMLInputElement[] {
       return Array.from(root.querySelectorAll<HTMLInputElement>('tbody tr .data-table__checkbox'));
@@ -246,10 +271,12 @@ describe('TransactionsByCategoryComponent', () => {
       for (const box of boxes.slice(0, count)) box.click();
       await settle();
     }
+    /** The contextual Selection band's tab and its group, as rendered by the ribbon. */
+    function selectionTab(): HTMLElement | null {
+      return ribbonEl().querySelector<HTMLElement>('.ribbon__tab--contextual');
+    }
     function isIdle(): boolean {
-      const bar: Element | null = root.querySelector('app-transactions-selection-bar');
-      if (!bar) throw new Error('selection bar not rendered');
-      return bar.classList.contains('selection-bar--idle');
+      return selectionTab() === null;
     }
     function menu(row: number): HTMLElement[] {
       const cell: Element | undefined = root.querySelectorAll('tbody tr')[row]?.children[1];
@@ -263,9 +290,13 @@ describe('TransactionsByCategoryComponent', () => {
       await load({ items: [tx(1), tx(2)] });
       expect(leafBoxes().length).toBe(0);
       await expandAndTick(2);
-      expect(root.querySelector('.selection-bar__count')?.textContent).toContain('2 selected');
+      expect(ribbonEl().querySelector('.selection-bar__count')?.textContent).toContain(
+        '2 selected',
+      );
+      expect(selectionTab()?.textContent).toContain('Selection');
+      expect(selectionTab()?.querySelector('.ribbon__state')?.textContent?.trim()).toBe('2');
       const clear: HTMLButtonElement | undefined = Array.from(
-        root.querySelectorAll<HTMLButtonElement>('.filters__action'),
+        ribbonEl().querySelectorAll<HTMLButtonElement>('.filters__action'),
       ).find((el: HTMLButtonElement) => el.textContent?.trim() === 'Clear selection');
       if (!clear) throw new Error('Clear button not rendered');
       clear.click();
