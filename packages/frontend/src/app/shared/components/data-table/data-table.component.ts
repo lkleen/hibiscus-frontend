@@ -64,6 +64,8 @@ import type {
   DataTableMenuItemDef,
   DataTableShowDetailsItem,
   DataTableColDef,
+  DataTableExportCell,
+  DataTableExportSnapshot,
   DataTableFilterType,
   DataTableOptions,
   DataTableTreeOptions,
@@ -978,6 +980,21 @@ export class DataTableComponent<Row extends object> {
    *  there is nothing to recompute ahead of time. */
   refresh(): void {
     this.cdr.markForCheck();
+  }
+
+  /** What the table shows right now, for an export: the visible columns in the user's current
+   *  order, and the rows after every filter in display order (all pages). `cell` gives a cell's
+   *  value (the aggregate for a tree group node) and its rendered text. */
+  exportSnapshot(): DataTableExportSnapshot<Row> {
+    const snapshot: DataTableExportSnapshot<Row> = {
+      columns: this.visibleColumns(),
+      rows: this.displayRows(),
+      cell: (column: DataTableColDef<Row, unknown>, row: Row): DataTableExportCell => {
+        const { value, formatted } = this.cellView(column, row);
+        return { value, formatted };
+      },
+    };
+    return snapshot;
   }
 
   protected cellView(

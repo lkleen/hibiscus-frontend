@@ -147,6 +147,19 @@ regex patterns are reported as a visible warning, never silently ignored.
   table scrolls). Sizing is done in pure CSS, not by measuring in JS. The transactions table uses
   `fitCellContents` with an 82rem floor.
 
+## 3.5. Export (`features/transactions/export/`)
+
+- The export writes **what the view shows**: the list exports `DataTableComponent.exportSnapshot()`
+  (visible columns in the user's order, rows after every filter, in display order); the
+  by-category view exports its own `rows()` + `columns` through `buildCategoryExport`, which builds
+  the tree, order and sums with the table's own helpers (`toTreeNodes`, `sortTreeNodes` with
+  `compareReportRows`, `computeTreeAggregates`). Never re-derive a column value, a sum or an order
+  for the export — reuse the view's column definitions so screen and file cannot drift.
+- Views produce a format-neutral `ExportDocument`; the writers (`toCsv`, `toJson`, `toPdf`) only
+  format it. `jspdf`/`jspdf-autotable` are loaded only through `import()` inside `toPdf`.
+- A new transaction column shows up in the list export automatically. An amount column must be
+  added to `AMOUNT_COLUMNS` in `list-export.ts` so it is exported as a number.
+
 ## 4. Adding or removing a column
 
 1. `TransactionRow` in `packages/shared/src/contracts/transactions.d.ts` (DB name and nullability
@@ -157,7 +170,8 @@ regex patterns are reported as a visible warning, never silently ignored.
    field), at its display position. If it is a lookup (account), use a `valueGetter` lambda; if it
    needs special formatting or rendering, add a `valueFormatter` and/or a `cellRenderer` name with
    a matching `appDataTableCell` template — only if the default dash text isn't enough. The header
-   translation key in **both** `en.json` and `de.json`.
+   translation key in **both** `en.json` and `de.json`. An amount column also goes into
+   `AMOUNT_COLUMNS` in `export/list-export.ts`.
 4. `testing/transaction-fixture.ts` (`transaction()`; `transactionsResponse()` derives its columns
    from it) and the specs that count columns/headers.
 5. `docs/architecture.md` if the contract or behaviour described there changes.

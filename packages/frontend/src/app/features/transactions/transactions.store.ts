@@ -11,6 +11,8 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import { Observable, forkJoin, tap } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { TranslationService } from '../../core/services/translation.service';
+import { accountsSummary } from './account-filter/accounts-summary';
 import type {
   CategorySave,
   CategoryEditSource,
@@ -37,6 +39,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 @Injectable()
 export class TransactionsStore implements CategoryEditSource {
   private readonly api = inject(ApiService);
+  private readonly i18n = inject(TranslationService);
 
   readonly accounts = signal<readonly AccountRow[]>([]);
   readonly transactions = signal<readonly TransactionRow[]>([]);
@@ -172,6 +175,26 @@ export class TransactionsStore implements CategoryEditSource {
       !excluded.has(row.konto_id) &&
       (range === null || isInRange(row.datum, range)) &&
       quickFilterMatches(row, this.transactionColumns, search);
+  });
+
+  /**
+   * The account selection as one line ("All accounts", "2 of 3 accounts", …): the Filter band's
+   * state text and the export's scope.
+   */
+  readonly accountsText = computed<string>((): string =>
+    accountsSummary({
+      accounts: this.accounts(),
+      excludedIds: this.excludedAccountIds(),
+      i18n: this.i18n,
+    }),
+  );
+
+  /** `from – to`, or the "All dates" label while no range is set: the Period band's state text
+   *  and the export's scope. */
+  readonly periodText = computed<string>((): string => {
+    const range: DateRange | null = this.range();
+    if (range === null) return this.i18n.t('dateRangeFilter.allDates');
+    return `${range.from ?? '…'} – ${range.to ?? '…'}`;
   });
 
   readonly filteredTransactions = computed<readonly TransactionRow[]>(() => {

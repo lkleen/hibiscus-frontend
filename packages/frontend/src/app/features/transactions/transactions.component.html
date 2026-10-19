@@ -12,7 +12,7 @@
   appRibbonBand="filter"
   ribbonLabelKey="ribbon.tab.filter"
   [ribbonOrder]="0"
-  [ribbonState]="accountsText()"
+  [ribbonState]="store.accountsText()"
   [ribbonActive]="filterActive()"
 >
   <app-ribbon-group captionKey="ribbon.group.search" [grow]="true">
@@ -38,7 +38,7 @@
   appRibbonBand="period"
   ribbonLabelKey="ribbon.tab.period"
   [ribbonOrder]="1"
-  [ribbonState]="periodText()"
+  [ribbonState]="store.periodText()"
 >
   <app-date-range-filter [(range)]="store.range" />
 </ng-template>
@@ -52,6 +52,14 @@
   }
   <app-ribbon-group captionKey="ribbon.group.density">
     <app-density-picker [view]="activeTab().densityView" />
+  </app-ribbon-group>
+</ng-template>
+
+<ng-template appRibbonBand="export" ribbonLabelKey="ribbon.tab.export" [ribbonOrder]="3">
+  <app-ribbon-group captionKey="ribbon.group.export">
+    <button type="button" class="filters__action" (click)="exporter.open()">
+      {{ i18n.t('transactions.export.open') }}
+    </button>
   </app-ribbon-group>
 </ng-template>
 

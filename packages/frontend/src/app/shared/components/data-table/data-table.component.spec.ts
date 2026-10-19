@@ -5,7 +5,12 @@ import localeDe from '@angular/common/locales/de';
 import { By } from '@angular/platform-browser';
 import { ColumnFilter, ReorderableColumn, Table } from 'primeng/table';
 import { DataTableComponent } from './data-table.component';
-import type { DataTableColDef, DataTableOptions } from './data-table.model';
+import type {
+  DataTableColDef,
+  DataTableExportSnapshot,
+  DataTableOptions,
+  DataTableVisibleColDef,
+} from './data-table.model';
 import { colDef, showDetailsOf } from './data-table.model';
 import { DataTableCellDirective } from './data-table-cell.directive';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
@@ -1345,6 +1350,105 @@ describe('DataTableComponent', () => {
         expect(treeSelected()).toHaveLength(1);
         expect(treeSelected()[0]).toContain('Parent');
       });
+    });
+  });
+
+  describe('exportSnapshot', () => {
+    function exporter(): DataTableComponent<ToyRow> {
+      const tableDebug = fixture.debugElement.query(By.directive(DataTableComponent));
+      if (!tableDebug) throw new Error('data-table not found');
+      return tableDebug.componentInstance as DataTableComponent<ToyRow>;
+    }
+
+    it('flat: returns the filtered rows in display (sorted) order across the quick filter', async () => {
+      host.rows.set([
+        toyRow({ id: 1, name: 'apricot' }),
+        toyRow({ id: 2, name: 'zebra' }),
+        toyRow({ id: 3, name: 'apple' }),
+        toyRow({ id: 4, name: 'banana' }),
+      ]);
+      await settle();
+
+      const search = root.querySelector<HTMLInputElement>('#filter-search');
+      if (!search) throw new Error('search field not rendered');
+      search.value = 'ap';
+      search.dispatchEvent(new Event('input'));
+      await settle();
+
+      const headers = root.querySelectorAll<HTMLElement>('thead tr:first-child th');
+      const nameHeader = headers[0];
+      if (!nameHeader) throw new Error('name header not rendered');
+      nameHeader.click();
+      await settle();
+
+      const snapshot: DataTableExportSnapshot<ToyRow> = exporter().exportSnapshot();
+      expect(snapshot.rows.map((row: ToyRow): string | null => row.name)).toEqual([
+        'apple',
+        'apricot',
+      ]);
+      expect(bodyRows().map((row) => cellText(row, 0))).toEqual(['apple', 'apricot']);
+    });
+
+    it('columns follow the user order and exclude hide: true columns', async () => {
+      host.rows.set([toyRow()]);
+      await settle();
+
+      const tableDebug = fixture.debugElement.query(By.directive(Table));
+      if (!tableDebug) throw new Error('table not found');
+      (tableDebug.componentInstance as Table<ToyRow>).onColReorder.emit({
+        dragIndex: 0,
+        dropIndex: 2,
+      });
+      await settle();
+
+      const snapshot: DataTableExportSnapshot<ToyRow> = exporter().exportSnapshot();
+      expect(snapshot.columns.map((column): string => column.colId)).toEqual([
+        'amount',
+        'day',
+        'name',
+        'tag',
+        'nofilter',
+        'custom',
+      ]);
+    });
+
+    it('tree: a group row aggregate column exports the aggregate as its cell value', async () => {
+      host.rows.set([
+        toyRow({ id: 1, name: 'Parent', amount: null }),
+        toyRow({ id: 2, name: 'Child A', amount: 10 }),
+        toyRow({ id: 3, name: 'Child B', amount: 25 }),
+      ]);
+      host.columns.set([
+        colDef<ToyRow, string | null>({
+          colId: 'name',
+          headerKey: 'transactions.colRecipient',
+          valueGetter: (row: ToyRow): string | null => row.name,
+        }),
+        colDef<ToyRow, number | null>({
+          colId: 'amount',
+          headerKey: 'transactions.colAmount',
+          aggFunc: 'sum',
+        }),
+      ]);
+      host.options.set({
+        getRowId: (row: ToyRow): number => row.id,
+        emptyKey: 'transactions.empty',
+        pagination: false,
+        treeData: {
+          getParentId: (row: ToyRow): number | null => (row.id === 1 ? null : 1),
+          groupColId: 'name',
+        },
+      });
+      await settle();
+
+      const snapshot: DataTableExportSnapshot<ToyRow> = exporter().exportSnapshot();
+      const group: ToyRow | undefined = snapshot.rows.find((row: ToyRow): boolean => row.id === 1);
+      if (!group) throw new Error('group row not exported');
+      const amountColumn: DataTableVisibleColDef<ToyRow, unknown> | undefined =
+        snapshot.columns.find((column): boolean => column.colId === 'amount');
+      if (!amountColumn) throw new Error('amount column not exported');
+
+      expect(snapshot.cell(amountColumn, group)).toEqual({ value: 35, formatted: '35' });
     });
   });
 });

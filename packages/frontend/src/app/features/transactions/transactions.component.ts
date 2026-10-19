@@ -20,18 +20,17 @@ import { RibbonGroupComponent } from '../../shared/components/ribbon/ribbon-grou
 import { RibbonHost } from '../../shared/components/ribbon/ribbon-host';
 import { RibbonComponent } from '../../shared/components/ribbon/ribbon.component';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
-import { DateRange } from '../../core/utils/date-range';
 import { TabNavComponent } from '../../shared/components/tab-nav/tab-nav.component';
 import { AccountFilterComponent } from './account-filter/account-filter.component';
-import { accountsSummary } from './account-filter/accounts-summary';
 import { CategoryDialogs } from '../categories/category-dialogs';
 import { TransactionDialogs } from './transaction-dialogs';
+import { TransactionsExport } from './export/transactions-export';
 import { TRANSACTIONS_TABS, TransactionsTab } from './transactions-tabs';
 import { TransactionsStore } from './transactions.store';
 
 /**
- * The transactions page shell: tabs (child routes) over one shared ribbon (Filter, Period, View;
- * the routed tab adds a contextual Selection band), whose View band also hosts the routed tab's
+ * The transactions page shell: tabs (child routes) over one shared ribbon (Filter, Period, View,
+ * Export; the routed tab adds a contextual Selection band), whose View band also hosts the routed tab's
  * tree controls (via {@link DataTableToolbarOutlet}). Data and filters live
  * in the {@link TransactionsStore} provided here, so every tab sees the same loaded rows and
  * switching tabs never refetches.
@@ -44,6 +43,7 @@ import { TransactionsStore } from './transactions.store';
   providers: [
     TransactionsStore,
     TransactionDialogs,
+    TransactionsExport,
     CategoryDialogs,
     DataTableToolbarOutlet,
     RibbonHost,
@@ -64,6 +64,7 @@ export class TransactionsComponent {
   protected readonly i18n = inject(TranslationService);
   protected readonly locale = inject(LocaleService).locale;
   protected readonly store = inject(TransactionsStore);
+  protected readonly exporter = inject(TransactionsExport);
   protected readonly tabs: readonly TransactionsTab[] = TRANSACTIONS_TABS;
   private readonly router: Router = inject(Router);
   // Optional: the outlet only exists while the active tab has a tree.
@@ -88,25 +89,10 @@ export class TransactionsComponent {
     return active ?? fallback;
   });
 
-  protected readonly accountsText: Signal<string> = computed((): string =>
-    accountsSummary({
-      accounts: this.store.accounts(),
-      excludedIds: this.store.excludedAccountIds(),
-      i18n: this.i18n,
-    }),
-  );
-
   protected readonly filterActive: Signal<boolean> = computed(
     (): boolean =>
       this.store.excludedAccountIds().size > 0 || this.store.searchInput().trim() !== '',
   );
-
-  /** `from – to`, or the "All dates" label while no range is set. */
-  protected readonly periodText: Signal<string> = computed((): string => {
-    const range: DateRange | null = this.store.range();
-    if (range === null) return this.i18n.t('dateRangeFilter.allDates');
-    return `${range.from ?? '…'} – ${range.to ?? '…'}`;
-  });
 
   constructor() {
     const tableToolbar: DataTableToolbarOutlet = inject(DataTableToolbarOutlet);

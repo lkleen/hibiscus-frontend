@@ -27,7 +27,8 @@
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "styles": ["src/styles.scss", "@angular/cdk/overlay-prebuilt.css"],
-            "scripts": []
+            "scripts": [],
+            "allowedCommonJsDependencies": ["core-js", "html2canvas", "raf", "rgbcolor"]
           },
           "configurations": {
             "production": {

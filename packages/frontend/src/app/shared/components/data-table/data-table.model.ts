@@ -362,3 +362,18 @@ export interface DataTableTreeOptions<Row> extends DataTableOptionsBase<Row> {
 }
 
 export type DataTableOptions<Row> = DataTableFlatOptions<Row> | DataTableTreeOptions<Row>;
+
+/** One cell of an export: the cell's value (the aggregate for a tree group node) and its text as
+ *  the table renders it (`valueFormatter`, `dashFormatter` by default). */
+export interface DataTableExportCell {
+  readonly value: unknown;
+  readonly formatted: string;
+}
+
+/** What the table shows right now, for an export: the visible columns in the user's order and the
+ *  rows after every filter, in display order (see `DataTableComponent.exportSnapshot`). */
+export interface DataTableExportSnapshot<Row> {
+  readonly columns: readonly DataTableVisibleColDef<Row, unknown>[];
+  readonly rows: readonly Row[];
+  cell(column: DataTableColDef<Row, unknown>, row: Row): DataTableExportCell;
+}

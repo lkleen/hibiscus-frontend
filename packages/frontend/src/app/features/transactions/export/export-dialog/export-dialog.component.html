@@ -1,0 +1,203 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">
+    {{
+      isList
+        ? i18n.t('transactions.export.titleList')
+        : i18n.t('transactions.export.titleByCategory')
+    }}
+  </h2>
+</header>
+
+<div class="app-dialog__body export-dialog">
+  <div class="export-dialog__settings">
+    <dl class="export-dialog__scope">
+      <dt>{{ i18n.t('transactions.export.scopePeriod') }}</dt>
+      <dd>{{ scope().period }}</dd>
+      <dt>{{ i18n.t('transactions.export.scopeAccounts') }}</dt>
+      <dd>{{ scope().accounts }}</dd>
+      <dt>{{ i18n.t('transactions.export.scopeSearch') }}</dt>
+      <dd>{{ scope().search ?? i18n.t('transactions.export.scopeSearchNone') }}</dd>
+    </dl>
+
+    <div class="export-dialog__field">
+      <span class="app-dialog__label" id="export-format-label">{{
+        i18n.t('transactions.export.format')
+      }}</span>
+      <div class="app-dialog__segmented" role="group" aria-labelledby="export-format-label">
+        @for (option of formats; track option) {
+          <button
+            type="button"
+            class="app-dialog__segment"
+            [attr.aria-pressed]="format() === option"
+            (click)="format.set(option)"
+          >
+            {{ option.toUpperCase() }}
+          </button>
+        }
+      </div>
+      <p class="app-dialog__hint">{{ formatHint() }}</p>
+    </div>
+
+    @if (isList) {
+      <div class="export-dialog__field">
+        <span class="app-dialog__label">{{ i18n.t('transactions.export.content') }}</span>
+        <p class="app-dialog__hint">{{ i18n.t('transactions.export.contentList') }}</p>
+      </div>
+    } @else {
+      <div class="export-dialog__field">
+        <label class="app-dialog__label" for="export-depth">{{
+          i18n.t('transactions.export.depth')
+        }}</label>
+        <input
+          id="export-depth"
+          class="app-dialog__range"
+          type="range"
+          min="0"
+          step="1"
+          [max]="depthSteps().length - 1"
+          [value]="depthIndex()"
+          [attr.aria-valuetext]="depthLabel()"
+          (input)="onDepthInput($event)"
+        />
+        <div
+          class="export-dialog__ticks"
+          aria-hidden="true"
+          [style.grid-template-columns]="'repeat(' + depthSteps().length + ', minmax(0, 1fr))'"
+        >
+          @for (step of depthSteps(); track step; let index = $index) {
+            <span
+              class="export-dialog__tick"
+              [class.export-dialog__tick--on]="index === depthIndex()"
+              >{{ tickLabel(step) }}</span
+            >
+          }
+        </div>
+        <p class="app-dialog__hint" aria-live="polite">
+          {{
+            i18n.t('transactions.export.depthSummary', { level: depthLabel(), count: rowCount() })
+          }}
+        </p>
+      </div>
+    }
+
+    @if (format() === 'pdf') {
+      <fieldset class="export-dialog__field export-dialog__page">
+        <legend class="app-dialog__label">{{ i18n.t('transactions.export.page') }}</legend>
+        <div class="export-dialog__row">
+          <div class="export-dialog__control">
+            <label class="app-dialog__sublabel" for="export-paper">{{
+              i18n.t('transactions.export.paper')
+            }}</label>
+            <select
+              id="export-paper"
+              class="app-dialog__select"
+              [value]="paper()"
+              (change)="onPaperChange($event)"
+            >
+              @for (option of papers; track option) {
+                <option [value]="option" [selected]="option === paper()">
+                  {{ i18n.t(paperKeys[option]) }}
+                </option>
+              }
+            </select>
+          </div>
+          <div class="export-dialog__control">
+            <span class="app-dialog__sublabel" id="export-orientation-label">{{
+              i18n.t('transactions.export.orientation')
+            }}</span>
+            <div
+              class="app-dialog__segmented"
+              role="group"
+              aria-labelledby="export-orientation-label"
+            >
+              @for (option of orientations; track option) {
+                <button
+                  type="button"
+                  class="app-dialog__segment"
+                  [attr.aria-pressed]="orientation() === option"
+                  (click)="orientation.set(option)"
+                >
+                  <span
+                    class="export-dialog__sheet-icon"
+                    [class.export-dialog__sheet-icon--landscape]="option === 'landscape'"
+                    aria-hidden="true"
+                  ></span>
+                  {{
+                    option === 'portrait'
+                      ? i18n.t('transactions.export.portrait')
+                      : i18n.t('transactions.export.landscape')
+                  }}
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+
+        <fieldset class="export-dialog__fit">
+          <legend class="app-dialog__sublabel">{{ i18n.t('transactions.export.fit') }}</legend>
+          @for (choice of fits; track choice.value) {
+            <label class="export-dialog__fit-choice">
+              <input
+                type="radio"
+                name="export-fit"
+                class="app-dialog__radio"
+                [value]="choice.value"
+                [checked]="fit() === choice.value"
+                (change)="fit.set(choice.value)"
+              />
+              <span>{{ i18n.t(choice.labelKey) }}</span>
+              <small class="app-dialog__hint">{{ i18n.t(choice.hintKey) }}</small>
+            </label>
+          }
+        </fieldset>
+
+        @if (hitsFloor()) {
+          <p class="export-dialog__warning" role="status">
+            {{ i18n.t('transactions.export.floorWarning') }}
+          </p>
+        }
+      </fieldset>
+    }
+  </div>
+
+  <section
+    class="export-dialog__preview"
+    [class.export-dialog__preview--pending]="previewPending()"
+    [attr.aria-label]="i18n.t('transactions.export.preview')"
+    [attr.aria-busy]="previewPending()"
+  >
+    @if (preview(); as shown) {
+      @if (shown.kind === 'pdf') {
+        <iframe
+          class="export-dialog__frame"
+          [src]="shown.src"
+          [title]="i18n.t('transactions.export.previewPdf')"
+        ></iframe>
+      } @else {
+        <pre class="export-dialog__code" tabindex="0">{{ shown.text }}</pre>
+      }
+    } @else {
+      <p class="app-dialog__hint">{{ i18n.t('transactions.export.previewLoading') }}</p>
+    }
+  </section>
+</div>
+
+<footer class="app-dialog__footer">
+  <span class="export-dialog__file">{{ fileName() }}</span>
+  <button type="button" class="app-dialog__button" [disabled]="busy()" (click)="cancel()">
+    {{ i18n.t('transactions.export.cancel') }}
+  </button>
+  <button
+    type="button"
+    class="app-dialog__button app-dialog__button--primary export-dialog__submit"
+    [disabled]="busy()"
+    [attr.aria-busy]="busy()"
+    (click)="download()"
+  >
+    {{
+      busy()
+        ? i18n.t('transactions.export.exporting')
+        : i18n.t('transactions.export.submit', { format: format().toUpperCase() })
+    }}
+  </button>
+</footer>

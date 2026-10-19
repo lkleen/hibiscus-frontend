@@ -99,3 +99,29 @@ export function buildCategoryReport(input: CategoryReportInput): CategoryReportR
   }
   return [...categoryRows, ...rows];
 }
+
+export function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: 'accent' });
+}
+
+/**
+ * Categories before transactions; categories by number then name with the unassigned node last;
+ * transactions newest booking first. Ascending, as the data-table expects of a comparator.
+ */
+export function compareReportRows(a: CategoryReportRow, b: CategoryReportRow): number {
+  if (a.kind === 'category' && b.kind === 'category') {
+    if (a.category === null || b.category === null) {
+      return Number(a.category === null) - Number(b.category === null);
+    }
+    return (
+      compareText(a.category.nummer ?? '', b.category.nummer ?? '') ||
+      compareText(a.category.name, b.category.name) ||
+      a.category.id - b.category.id
+    );
+  }
+  if (a.kind === 'category') return -1;
+  if (b.kind === 'category') return 1;
+  return (
+    compareText(b.transaction.datum, a.transaction.datum) || b.transaction.id - a.transaction.id
+  );
+}

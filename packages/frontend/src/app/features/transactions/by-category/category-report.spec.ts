@@ -2,7 +2,7 @@ import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { transaction } from '../testing/transaction-fixture';
-import { buildCategoryReport, type CategoryReportRow } from './category-report';
+import { buildCategoryReport, compareReportRows, type CategoryReportRow } from './category-report';
 
 function build(
   transactions: TransactionRow[],
@@ -65,5 +65,40 @@ describe('buildCategoryReport', () => {
     expect(() =>
       buildCategoryReport({ transactions: [transaction()], assignment: new Map(), categories: [] }),
     ).toThrow();
+  });
+});
+
+describe('compareReportRows', () => {
+  const cat = (id: number, name: string, nummer: string | null = null): CategoryReportRow => ({
+    kind: 'category',
+    id: `c${id}`,
+    parentId: null,
+    category: categoryRow({ id, name, nummer }),
+  });
+  const unassigned: CategoryReportRow = {
+    kind: 'category',
+    id: 'c-none',
+    parentId: null,
+    category: null,
+  };
+  const tx = (id: number, datum: string): CategoryReportRow => ({
+    kind: 'transaction',
+    id: `t${id}`,
+    parentId: 'c1',
+    transaction: transaction({ id, datum }),
+  });
+
+  it('sorts categories by number then name, unassigned last, before transactions', () => {
+    const sorted: string[] = [tx(1, '2026-01-01'), unassigned, cat(2, 'B'), cat(1, 'A', '2')]
+      .sort(compareReportRows)
+      .map((row: CategoryReportRow) => row.id);
+    expect(sorted).toEqual(['c2', 'c1', 'c-none', 't1']);
+  });
+
+  it('sorts transactions newest first', () => {
+    const sorted: string[] = [tx(1, '2026-01-01'), tx(2, '2026-02-01')]
+      .sort(compareReportRows)
+      .map((row: CategoryReportRow) => row.id);
+    expect(sorted).toEqual(['t2', 't1']);
   });
 });

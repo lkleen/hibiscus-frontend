@@ -1,0 +1,212 @@
+// The sheet, header, body, footer and buttons come from the shared dialog styles
+// (`styles/_dialog.scss`). This adds the two-column body: settings left, live preview right.
+
+// Mobile first: settings above the preview; side by side once both have room.
+.export-dialog {
+  --export-dialog-label-color: var(--text-color);
+  --export-dialog-hint-color: var(--text-muted);
+  --export-dialog-border-color: var(--surface-border);
+  --export-dialog-radius: var(--radius-base);
+  --export-dialog-scope-bg: var(--surface-subtle);
+  --export-dialog-preview-bg: var(--surface-subtle);
+  --export-dialog-code-bg: var(--surface-card);
+  --export-dialog-accent: var(--color-accent);
+  --export-dialog-pressed-color: var(--color-accent);
+  --export-dialog-warning-bg: var(--color-danger-subtle);
+  --export-dialog-warning-color: var(--color-danger);
+
+  display: grid;
+  align-items: stretch;
+  gap: 1.25rem;
+
+  @media (min-width: 768px) {
+    // --ds-breakpoint-md
+    grid-template-columns: 22rem minmax(0, 1fr);
+  }
+}
+
+.export-dialog__settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.export-dialog__scope {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--export-dialog-scope-bg);
+  border-radius: var(--export-dialog-radius);
+  font-size: var(--text-sm);
+
+  dt {
+    color: var(--export-dialog-hint-color);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.export-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+// A fieldset carries a browser border, padding and min-inline-size; the field look replaces them.
+.export-dialog__page,
+.export-dialog__fit {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-inline-size: 0;
+}
+
+.export-dialog__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.export-dialog__control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+// A sheet of paper in its orientation, drawn with the text colour.
+.export-dialog__sheet-icon {
+  display: inline-block;
+  inline-size: 0.75rem;
+  block-size: 1rem;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+
+  &--landscape {
+    inline-size: 1rem;
+    block-size: 0.75rem;
+  }
+}
+
+.export-dialog__ticks {
+  display: grid;
+  color: var(--export-dialog-hint-color);
+  font-size: var(--text-xs);
+}
+
+.export-dialog__tick {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
+
+  &:first-child {
+    text-align: start;
+  }
+
+  &:last-child {
+    text-align: end;
+  }
+
+  &--on {
+    color: var(--export-dialog-pressed-color);
+    font-weight: 600;
+  }
+}
+
+.export-dialog__fit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-block-start: 0.75rem;
+}
+
+.export-dialog__fit-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 0.5rem;
+  font-size: var(--text-sm);
+  cursor: pointer;
+
+  .app-dialog__hint {
+    grid-column: 2;
+  }
+}
+
+.export-dialog__warning {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--export-dialog-warning-bg);
+  color: var(--export-dialog-warning-color);
+  border-radius: var(--export-dialog-radius);
+  font-size: var(--text-sm);
+}
+
+// The real file: a PDF in the browser's viewer, or the first lines of the CSV/JSON text.
+.export-dialog__preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-block-size: 24rem;
+  padding: 0.75rem;
+  background: var(--export-dialog-preview-bg);
+  border-radius: var(--export-dialog-radius);
+
+  &--pending > * {
+    opacity: 0.6;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    > * {
+      transition: opacity var(--transition-duration) ease;
+    }
+  }
+}
+
+.export-dialog__frame {
+  flex: 1;
+  inline-size: 100%;
+  min-block-size: 24rem;
+  border: 1px solid var(--export-dialog-border-color);
+  border-radius: var(--export-dialog-radius);
+}
+
+.export-dialog__code {
+  flex: 1;
+  margin: 0;
+  padding: 0.75rem;
+  overflow: auto;
+  background: var(--export-dialog-code-bg);
+  color: var(--export-dialog-label-color);
+  border: 1px solid var(--export-dialog-border-color);
+  border-radius: var(--export-dialog-radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+
+  &:focus-visible {
+    outline: 2px solid var(--export-dialog-accent);
+    outline-offset: 2px;
+  }
+}
+
+// In the footer (outside `.export-dialog`), before the buttons; takes the free width and wraps.
+.export-dialog__file {
+  --export-dialog-file-color: var(--text-muted);
+  --export-dialog-file-font: var(--font-mono);
+
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: var(--export-dialog-file-color);
+  font-family: var(--export-dialog-file-font);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}

@@ -55,6 +55,17 @@ describe('TransactionsStore', () => {
     expect(store.accountsById().get(1)?.id).toBe(1);
   });
 
+  it('describes the period and the account selection as one line each', () => {
+    load([account({ id: 1 }), account({ id: 2 }), account({ id: 3 })], []);
+    expect(store.periodText()).toBe('All dates');
+    expect(store.accountsText()).toBe('All accounts');
+
+    store.range.set({ from: '2026-01-01', to: null });
+    store.excludedAccountIds.set(new Set<number>([3]));
+    expect(store.periodText()).toBe('2026-01-01 – …');
+    expect(store.accountsText()).toBe('2 of 3 accounts');
+  });
+
   it('flags an error when a request fails', () => {
     httpMock.expectOne('/api/accounts').flush([]);
     httpMock.expectOne('/api/categories').flush([]);

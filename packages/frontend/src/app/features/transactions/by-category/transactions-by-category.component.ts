@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
@@ -18,39 +25,17 @@ import {
   type DataTableColDef,
   type DataTableMenuItem,
   type DataTableOptions,
+  type DataTableVisibleColDef,
 } from '../../../shared/components/data-table/data-table.model';
 import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component';
 import { TransactionsSelectionBarComponent } from '../selection-bar/transactions-selection-bar.component';
 import { CategoryDialogs } from '../../categories/category-dialogs';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
-import { buildCategoryReport, type CategoryReportRow } from './category-report';
-
-function compareText(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { sensitivity: 'accent' });
-}
-
-/**
- * Categories before transactions; categories by number then name with the unassigned node last;
- * transactions newest booking first. Ascending, as the data-table expects of a comparator.
- */
-function compareReportRows(a: CategoryReportRow, b: CategoryReportRow): number {
-  if (a.kind === 'category' && b.kind === 'category') {
-    if (a.category === null || b.category === null) {
-      return Number(a.category === null) - Number(b.category === null);
-    }
-    return (
-      compareText(a.category.nummer ?? '', b.category.nummer ?? '') ||
-      compareText(a.category.name, b.category.name) ||
-      a.category.id - b.category.id
-    );
-  }
-  if (a.kind === 'category') return -1;
-  if (b.kind === 'category') return 1;
-  return (
-    compareText(b.transaction.datum, a.transaction.datum) || b.transaction.id - a.transaction.id
-  );
-}
+import { buildCategoryExport, maxCategoryDepth } from '../export/category-export';
+import type { ExportDepth, ExportDocument } from '../export/export.model';
+import { TransactionsExport } from '../export/transactions-export';
+import { buildCategoryReport, compareReportRows, type CategoryReportRow } from './category-report';
 
 /**
  * "Umsätze nach Kategorien": the category tree with sums per category (over its subcategories)
@@ -77,6 +62,7 @@ export class TransactionsByCategoryComponent {
   protected readonly densityView: TableViewId = tabDensityView('categories');
   private readonly dialogs = inject(TransactionDialogs);
   private readonly categoryDialogs = inject(CategoryDialogs);
+  private readonly exporter = inject(TransactionsExport);
 
   /** The ticked transaction leaves (ids); the table prunes it to the rows that pass the filters. */
   protected readonly selectedRowIds = signal<ReadonlySet<string | number>>(new Set());
@@ -186,6 +172,28 @@ export class TransactionsByCategoryComponent {
       });
     },
   };
+
+  constructor() {
+    // The Export band exports this report while the tab is shown, with the table's columns and sums.
+    const unregister: () => void = this.exporter.register({
+      view: this.densityView,
+      maxDepth: computed<number>((): number => maxCategoryDepth(this.rows())),
+      build: (depth: ExportDepth): ExportDocument =>
+        buildCategoryExport({
+          rows: this.rows(),
+          columns: this.columns,
+          depth,
+          labels: {
+            title: this.i18n.t('transactions.export.docTitleByCategory'),
+            scope: this.exporter.scope(),
+            header: (column: DataTableVisibleColDef<CategoryReportRow, unknown>): string =>
+              this.i18n.t(column.headerKey),
+            total: this.i18n.t('transactions.export.total'),
+          },
+        }),
+    });
+    inject(DestroyRef).onDestroy(unregister);
+  }
 
   private transactionText(
     colId: 'datum' | 'zweck' | 'zweck2' | 'zweck3',

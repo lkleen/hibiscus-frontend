@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
   inject,
   signal,
@@ -14,6 +15,7 @@ import { DataTableComponent } from '../../../shared/components/data-table/data-t
 import type {
   DataTableMenuItem,
   DataTableOptions,
+  DataTableVisibleColDef,
 } from '../../../shared/components/data-table/data-table.model';
 import { TableDensityService } from '../../../core/services/table-density.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -24,6 +26,9 @@ import { AmountCellComponent } from '../cells/amount-cell/amount-cell.component'
 import { TransactionsSelectionBarComponent } from '../selection-bar/transactions-selection-bar.component';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
+import type { ExportDocument } from '../export/export.model';
+import { buildListExport } from '../export/list-export';
+import { TransactionsExport } from '../export/transactions-export';
 
 /**
  * The transactions table over the shell's store. Sorting, column filters and paging are
@@ -50,6 +55,7 @@ export class TransactionsListComponent {
   protected readonly densities: TableDensityService = inject(TableDensityService);
   protected readonly densityView: TableViewId = tabDensityView('list');
   private readonly dialogs = inject(TransactionDialogs);
+  private readonly exporter = inject(TransactionsExport);
   private readonly table = viewChild.required(DataTableComponent<TransactionRow>);
 
   /** The ticked rows (ids); the table prunes it to the rows that pass the filters. */
@@ -69,6 +75,24 @@ export class TransactionsListComponent {
   };
 
   constructor() {
+    // The Export band exports the table as shown: its visible columns, filters and sort, read
+    // from the table only when a document is built.
+    const unregister: () => void = this.exporter.register({
+      view: this.densityView,
+      maxDepth: null,
+      build: (): ExportDocument =>
+        buildListExport({
+          snapshot: this.table().exportSnapshot(),
+          labels: {
+            title: this.i18n.t('transactions.export.docTitleList'),
+            scope: this.exporter.scope(),
+            header: (column: DataTableVisibleColDef<TransactionRow, unknown>): string =>
+              this.i18n.t(column.headerKey),
+          },
+        }),
+    });
+    inject(DestroyRef).onDestroy(unregister);
+
     // A saved edit mutates its row in place (see `TransactionsStore.saveTransaction`), so the
     // table only needs a repaint, which keeps its page and filters. The first run is skipped:
     // nothing has been edited yet.

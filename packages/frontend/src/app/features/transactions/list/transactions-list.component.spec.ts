@@ -13,6 +13,7 @@ import { installMutationObserverMock } from '../../../core/utils/testing/mutatio
 import { RibbonHost } from '../../../shared/components/ribbon/ribbon-host';
 import { RibbonComponent } from '../../../shared/components/ribbon/ribbon.component';
 import { TransactionDialogs } from '../transaction-dialogs';
+import { TransactionsExport } from '../export/transactions-export';
 import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
@@ -58,6 +59,7 @@ describe('TransactionsListComponent', () => {
         RibbonHost,
         TransactionsStore,
         TransactionDialogs,
+        TransactionsExport,
         CategoryDialogs,
       ],
     });
