@@ -24,7 +24,12 @@
   height: 100%;
 }
 
-.app-main:has(app-transactions, app-categories) {
+// The tax return is prepared on a large screen and its tables are wide, so it also spans the full
+// width; it keeps the normal page scroll (its steps are taller than the viewport).
+.app-main:has(app-transactions, app-categories, app-tax-return) {
   max-width: none;
+}
+
+.app-main:has(app-transactions, app-categories) {
   min-height: 0;
 }
