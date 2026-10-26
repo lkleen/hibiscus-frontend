@@ -1,0 +1,95 @@
+<div class="tax-row">
+  <p class="tax-muted">{{ i18n.t('tax.result.lead') }}</p>
+  <div class="tax-row__end">
+    <button
+      type="button"
+      class="tax-button tax-button--primary"
+      [disabled]="downloading() || !hasSections()"
+      (click)="download()"
+    >
+      {{ downloading() ? i18n.t('tax.result.downloading') : i18n.t('tax.result.download') }}
+    </button>
+  </div>
+</div>
+@if (downloadError()) {
+  <p class="tax-status tax-status--error" role="alert">{{ i18n.t('tax.result.downloadError') }}</p>
+}
+
+@if (!hasSections()) {
+  <p class="tax-status">{{ i18n.t('tax.result.empty', { year: report().year }) }}</p>
+}
+
+<div class="tax-sheets">
+  @for (sheet of report().sections; track sheet.section.code) {
+    <article class="tax-sheet" [attr.aria-labelledby]="'tax-sheet-' + sheet.section.code">
+      <header class="tax-sheet__header">
+        <h2 class="tax-sheet__form" [id]="'tax-sheet-' + sheet.section.code">
+          {{ i18n.t(nameKey(sheet.section.formKey)) }}
+        </h2>
+        <app-tax-code [code]="sheet.section.code" />
+        <span class="tax-muted">{{ i18n.t(nameKey(sheet.section.nameKey)) }}</span>
+        <dl class="tax-sheet__totals">
+          @if (sheet.income > 0) {
+            <div class="tax-sheet__total">
+              <dt>{{ i18n.t('tax.result.income') }}</dt>
+              <dd class="tax-amount">{{ sheet.income | taxEuro: locale() }}</dd>
+            </div>
+          }
+          @if (sheet.expenses > 0) {
+            <div class="tax-sheet__total">
+              <dt>{{ i18n.t('tax.result.expenses') }}</dt>
+              <dd class="tax-amount">{{ sheet.expenses | taxEuro: locale() }}</dd>
+            </div>
+          }
+          <div class="tax-sheet__total">
+            <dt>{{ i18n.t('tax.result.payments') }}</dt>
+            <dd class="tax-amount">{{ sheet.count }}</dd>
+          </div>
+        </dl>
+      </header>
+
+      <div class="tax-sheet__body">
+        <ul class="tax-sheet__categories">
+          @for (total of sheet.categories; track total.category.id) {
+            <li class="tax-sheet__category">
+              <span class="tax-sheet__category-path">{{ total.path }}</span>
+              @if (total.income > 0) {
+                <span class="tax-amount">
+                  {{ i18n.t('tax.result.incomeShort') }} {{ total.income | taxEuro: locale() }}
+                </span>
+              }
+              @if (total.expenses > 0) {
+                <span class="tax-amount">{{ total.expenses | taxEuro: locale() }}</span>
+              }
+            </li>
+          }
+        </ul>
+
+        <details class="tax-sheet__receipts" (toggle)="onToggle(sheet.section.code, $event)">
+          <summary class="tax-sheet__summary">
+            {{
+              i18n.t('tax.result.showReceipts', {
+                count: sheet.receipts.length,
+                from: sheet.receipts[0]?.no ?? 0,
+                to: sheet.receipts[sheet.receipts.length - 1]?.no ?? 0,
+              })
+            }}
+          </summary>
+          @if (open().has(sheet.section.code)) {
+            <app-data-table
+              [value]="sheet.receipts"
+              [columns]="receiptColumns"
+              [options]="receiptOptions"
+            >
+              <ng-template appDataTableCell="amount" let-value="value">
+                <app-transaction-amount-cell [amount]="asAmount(value)" />
+              </ng-template>
+            </app-data-table>
+          }
+        </details>
+
+        <p class="tax-note">{{ i18n.t(noteKey(sheet.section)) }}</p>
+      </div>
+    </article>
+  }
+</div>

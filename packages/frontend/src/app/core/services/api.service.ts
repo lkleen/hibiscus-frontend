@@ -5,7 +5,9 @@ import { Me } from '../models/me.model';
 import type {
   DatePresetList,
   TableDensities,
+  TaxProfile,
 } from '@hibiscus-frontend/shared/contracts/user-settings';
+import type { TaxTag, TaxTagsUpdateRequest } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   CategoryCreateRequest,
@@ -107,5 +109,23 @@ export class ApiService {
   /** The body is the whole map; the backend answers `204 No Content`. */
   saveTableDensities(densities: TableDensities): Observable<void> {
     return this.http.put<void>('/api/settings/table-densities', densities);
+  }
+
+  getTaxProfile(): Observable<TaxProfile> {
+    return this.http.get<TaxProfile>('/api/settings/tax-profile');
+  }
+
+  /** The body is the whole profile; the backend answers `204 No Content`. */
+  saveTaxProfile(profile: TaxProfile): Observable<void> {
+    return this.http.put<void>('/api/settings/tax-profile', profile);
+  }
+
+  getTaxTags(): Observable<TaxTag[]> {
+    return this.http.get<TaxTag[]>('/api/tax-tags');
+  }
+
+  /** Applied all or nothing; the backend answers `204 No Content`, or `409` with a TaxTagsConflict. */
+  saveTaxTags(request: TaxTagsUpdateRequest): Observable<void> {
+    return this.http.put<void>('/api/tax-tags', request);
   }
 }

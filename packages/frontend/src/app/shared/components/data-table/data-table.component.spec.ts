@@ -133,10 +133,16 @@ class TestHostComponent {
       [columns]="columns"
       [options]="options"
       [(selectedRowId)]="selectedId"
-    />
+    >
+      <ng-template appDataTableCell="picker">
+        <select aria-label="pick">
+          <option>a</option>
+        </select>
+      </ng-template>
+    </app-data-table>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DataTableComponent],
+  imports: [DataTableComponent, DataTableCellDirective],
 })
 class SelectionTreeHostComponent {
   readonly rows: readonly (ToyRow & { readonly parentId: number | null })[] = [
@@ -146,6 +152,13 @@ class SelectionTreeHostComponent {
   ];
   readonly columns: readonly DataTableColDef<ToyRow, unknown>[] = [
     colDef<ToyRow, string | null>({ colId: 'name', headerKey: 'transactions.colRecipient' }),
+    colDef<ToyRow, null>({
+      colId: 'pick',
+      headerKey: 'transactions.colDate',
+      valueGetter: () => null,
+      cellRenderer: 'picker',
+      filter: false,
+    }),
   ];
   readonly options: DataTableOptions<ToyRow> = {
     getRowId: (row: ToyRow): number => row.id,
@@ -1349,6 +1362,28 @@ describe('DataTableComponent', () => {
         await treeSettle();
         expect(treeSelected()).toHaveLength(1);
         expect(treeSelected()[0]).toContain('Parent');
+      });
+
+      it('a press, click or Space on a select inside a row neither selects the row nor is cancelled', async () => {
+        await treeSettle();
+        const select: HTMLSelectElement | null = treeRows()[1].querySelector('select');
+        if (!select) throw new Error('select not rendered');
+
+        // A cancelled mousedown never focuses the select, so its list cannot open.
+        const press: MouseEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        select.dispatchEvent(press);
+        select.click();
+        const space: KeyboardEvent = new KeyboardEvent('keydown', {
+          code: 'Space',
+          bubbles: true,
+          cancelable: true,
+        });
+        select.dispatchEvent(space);
+        await treeSettle();
+
+        expect(treeFixture.componentInstance.selectedId()).toBeNull();
+        expect(press.defaultPrevented).toBe(false);
+        expect(space.defaultPrevented).toBe(false);
       });
     });
   });

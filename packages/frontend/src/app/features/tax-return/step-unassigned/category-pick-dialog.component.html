@@ -1,0 +1,18 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">{{ i18n.t('tax.unassigned.pickTitle') }}</h2>
+</header>
+
+<div class="app-dialog__body">
+  <p class="app-dialog__hint">{{ i18n.t('tax.unassigned.pickHint') }}</p>
+  <app-category-picker
+    [categories]="categories"
+    [(selectedId)]="selectedId"
+    (picked)="pick($event)"
+  />
+</div>
+
+<footer class="app-dialog__footer">
+  <button type="button" class="app-dialog__button" (click)="cancel()">
+    {{ i18n.t('tax.dialog.cancel') }}
+  </button>
+</footer>

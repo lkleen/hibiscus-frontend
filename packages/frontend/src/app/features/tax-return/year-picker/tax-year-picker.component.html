@@ -1,0 +1,56 @@
+<h1 class="tax-picker__title">{{ i18n.t('tax.title') }}</h1>
+<p class="tax-muted">{{ i18n.t('tax.picker.lead') }}</p>
+
+@if (store.years().length === 0) {
+  <p class="tax-status">{{ i18n.t('tax.picker.noYears') }}</p>
+} @else {
+  <div class="tax-picker__years" role="group" [attr.aria-label]="i18n.t('tax.picker.yearLabel')">
+    @for (option of store.years(); track option.year) {
+      <button
+        type="button"
+        class="tax-picker__year"
+        [attr.aria-pressed]="selected() === option.year"
+        (click)="pick(option.year)"
+      >
+        <strong class="tax-picker__year-number">{{ option.year }}</strong>
+        <span class="tax-muted">{{
+          i18n.t('tax.picker.transactions', { count: option.count })
+        }}</span>
+      </button>
+    }
+  </div>
+}
+
+<section class="tax-card tax-picker__accounts" aria-labelledby="tax-picker-accounts">
+  <h2 class="tax-card__title" id="tax-picker-accounts">{{ i18n.t('tax.picker.accounts') }}</h2>
+  <p class="tax-muted">{{ i18n.t('tax.picker.accountsHint') }}</p>
+  <app-account-filter
+    [accounts]="store.transactions.accounts()"
+    [(excludedIds)]="store.excludedAccountIds"
+  />
+</section>
+
+@if (!store.hasTags()) {
+  <section class="tax-picker__intro" [attr.aria-label]="i18n.t('tax.intro.label')">
+    <div class="tax-picker__intro-item">
+      <h3 class="tax-picker__intro-title">{{ i18n.t('tax.intro.getTitle') }}</h3>
+      <p class="tax-muted">{{ i18n.t('tax.intro.get') }}</p>
+    </div>
+    <div class="tax-picker__intro-item">
+      <h3 class="tax-picker__intro-title">{{ i18n.t('tax.intro.notTitle') }}</h3>
+      <p class="tax-muted">{{ i18n.t('tax.intro.not') }}</p>
+    </div>
+    <div class="tax-picker__intro-item">
+      <h3 class="tax-picker__intro-title">{{ i18n.t('tax.intro.timeTitle') }}</h3>
+      <p class="tax-muted">{{ i18n.t('tax.intro.time') }}</p>
+    </div>
+  </section>
+}
+
+@if (selected(); as year) {
+  <div class="tax-row">
+    <button type="button" class="tax-button tax-button--primary" (click)="continue()">
+      {{ i18n.t('tax.picker.continue', { year }) }}
+    </button>
+  </div>
+}

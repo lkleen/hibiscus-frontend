@@ -65,7 +65,9 @@ export class TransactionDialogs {
         {
           nameKey: 'transactions.menuCreateCategory',
           tooltipKey: 'transactions.menuCreateCategoryTooltip',
-          action: (): void => this.categoryDialogs.openCreate(this.store, categoryDraftFrom(row)),
+          action: (): void => {
+            this.categoryDialogs.openCreate(this.store, categoryDraftFrom(row));
+          },
         },
       ];
     }

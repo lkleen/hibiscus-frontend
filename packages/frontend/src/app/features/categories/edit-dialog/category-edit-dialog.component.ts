@@ -144,8 +144,9 @@ function descendantIds(categories: readonly CategoryRow[], rootId: number): Set<
 export class CategoryEditDialogComponent {
   protected readonly i18n = inject(TranslationService);
   private readonly data: CategoryEditDialogData = inject<CategoryEditDialogData>(DIALOG_DATA);
-  private readonly dialogRef: DialogRef<void, CategoryEditDialogComponent> =
-    inject<DialogRef<void, CategoryEditDialogComponent>>(DialogRef);
+  /** Closes with the saved category as stored; with nothing on cancel. */
+  private readonly dialogRef: DialogRef<CategoryRow, CategoryEditDialogComponent> =
+    inject<DialogRef<CategoryRow, CategoryEditDialogComponent>>(DialogRef);
   private readonly destroyed = signal<boolean>(false);
   private readonly source: CategoryEditSource = this.data.source;
 
@@ -435,8 +436,8 @@ export class CategoryEditDialogComponent {
     // even if the page went away first.
     this.dialogRef.disableClose = true;
     this.source.saveCategory(save).subscribe({
-      next: (): void => {
-        if (!this.destroyed()) this.dialogRef.close();
+      next: (row: CategoryRow): void => {
+        if (!this.destroyed()) this.dialogRef.close(row);
       },
       error: (cause: unknown): void => {
         if (this.destroyed()) return;

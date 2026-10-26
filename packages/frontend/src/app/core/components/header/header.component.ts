@@ -26,5 +26,6 @@ export class HeaderComponent {
     { path: 'accounts', labelKey: 'nav.accounts' },
     { path: 'transactions', labelKey: 'nav.transactions' },
     { path: 'categories', labelKey: 'nav.categories' },
+    { path: 'tax-return', labelKey: 'nav.taxReturn' },
   ];
 }

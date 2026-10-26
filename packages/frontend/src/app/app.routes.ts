@@ -29,6 +29,11 @@ export const routes: Routes = [
           import('./features/categories/categories.component').then((m) => m.CategoriesComponent),
       },
       {
+        path: 'tax-return',
+        loadChildren: () =>
+          import('./features/tax-return/tax-return.routes').then((m) => m.TAX_RETURN_ROUTES),
+      },
+      {
         path: 'settings',
         loadChildren: () =>
           import('./features/settings/settings.routes').then((m) => m.SETTINGS_ROUTES),

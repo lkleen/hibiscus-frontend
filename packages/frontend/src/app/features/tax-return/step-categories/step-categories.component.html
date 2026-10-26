@@ -1,0 +1,223 @@
+@if (!expanded()) {
+  <section class="tax-card" [attr.aria-label]="i18n.t('tax.summary.label')">
+    <div class="tax-row">
+      <span class="tax-summary__badge">{{ i18n.t('tax.summary.badge') }}</span>
+      <span>{{
+        i18n.t('tax.summary.tagged', {
+          sections: store.tagSummary().sections,
+          categories: store.tagSummary().categories,
+        })
+      }}</span>
+    </div>
+    @if (store.reviewCategories().length > 0) {
+      <p class="tax-muted">
+        {{ i18n.t('tax.summary.review', { count: store.reviewCategories().length, year: year() }) }}
+      </p>
+    }
+    <div class="tax-row">
+      <button type="button" class="tax-button" (click)="expanded.set(true)">
+        {{ i18n.t('tax.summary.expand') }}
+      </button>
+      @if (store.reviewCategories().length > 0) {
+        <button type="button" class="tax-button" (click)="review()">
+          {{ i18n.t('tax.summary.reviewButton', { count: store.reviewCategories().length }) }}
+        </button>
+      }
+      <div class="tax-row__end">
+        <button type="button" class="tax-button tax-button--primary" (click)="go.emit(2)">
+          {{ i18n.t('tax.wizard.continue') }}
+        </button>
+      </div>
+    </div>
+  </section>
+} @else {
+  <section class="tax-card" aria-labelledby="tax-situation-title">
+    <h2 class="tax-card__title" id="tax-situation-title">
+      {{ i18n.t('tax.situation.title', { year: year() }) }}
+    </h2>
+    <p class="tax-muted">{{ i18n.t('tax.situation.lead') }}</p>
+    @if (answers(); as current) {
+      <ul class="tax-questions">
+        @for (question of situations; track question.id) {
+          <li class="tax-questions__item">
+            <span class="tax-questions__text" [id]="'tax-q-' + question.id">{{
+              i18n.t(question.key)
+            }}</span>
+            <span
+              class="tax-segmented"
+              role="group"
+              [attr.aria-labelledby]="'tax-q-' + question.id"
+            >
+              <button
+                type="button"
+                class="tax-segmented__option"
+                [attr.aria-pressed]="current[question.id] === true"
+                (click)="answer(question.id, true)"
+              >
+                {{ i18n.t('tax.situation.yes') }}
+              </button>
+              <button
+                type="button"
+                class="tax-segmented__option"
+                [attr.aria-pressed]="current[question.id] === false"
+                (click)="answer(question.id, false)"
+              >
+                {{ i18n.t('tax.situation.no') }}
+              </button>
+            </span>
+          </li>
+        }
+      </ul>
+    }
+    @if (store.profileSaveError()) {
+      <p class="tax-status tax-status--error" role="alert">
+        {{ i18n.t('tax.situation.saveError') }}
+      </p>
+    }
+    <p class="tax-note">{{ i18n.t('tax.situation.alwaysOn') }}</p>
+  </section>
+
+  @if (store.suggestions().length > 0) {
+    <section class="tax-card" aria-labelledby="tax-suggestions-title">
+      <div class="tax-row">
+        <h2 class="tax-card__title" id="tax-suggestions-title">
+          {{ i18n.t('tax.suggestions.title') }}
+        </h2>
+        <span class="tax-muted">{{
+          i18n.t('tax.suggestions.count', { count: store.suggestions().length })
+        }}</span>
+        <div class="tax-row__end">
+          <button type="button" class="tax-button" (click)="acceptAll()">
+            {{ i18n.t('tax.suggestions.acceptAll') }}
+          </button>
+        </div>
+      </div>
+      <p class="tax-muted">{{ i18n.t('tax.suggestions.lead') }}</p>
+      <app-data-table
+        [value]="store.suggestions()"
+        [columns]="suggestionColumns"
+        [options]="suggestionOptions"
+      >
+        <ng-template appDataTableCell="amount" let-value="value">
+          <app-transaction-amount-cell [amount]="asAmount(value)" />
+        </ng-template>
+        <ng-template appDataTableCell="suggestedSection" let-row>
+          <span class="tax-cell-section">
+            <app-tax-code [code]="asSuggestion(row).section.code" />
+            {{ i18n.t(sectionNameKey(asSuggestion(row).section)) }}
+          </span>
+        </ng-template>
+        <ng-template appDataTableCell="suggestionActions" let-row>
+          <span class="tax-cell-actions">
+            <button
+              type="button"
+              class="tax-button tax-button--link"
+              (click)="accept(asSuggestion(row))"
+            >
+              {{ i18n.t('tax.suggestions.accept') }}
+            </button>
+            <button
+              type="button"
+              class="tax-button tax-button--link"
+              (click)="reject(asSuggestion(row))"
+            >
+              {{ i18n.t('tax.suggestions.reject') }}
+            </button>
+          </span>
+        </ng-template>
+      </app-data-table>
+    </section>
+  }
+
+  <section class="tax-card" aria-labelledby="tax-tree-title">
+    <div class="tax-row">
+      <h2 class="tax-card__title" id="tax-tree-title">{{ i18n.t('tax.tree.title') }}</h2>
+      <div class="tax-row__end">
+        @if (scope() === 'review') {
+          <span class="tax-muted">{{
+            i18n.t('tax.tree.reviewing', { count: store.reviewCategories().length })
+          }}</span>
+          <button type="button" class="tax-button tax-button--link" (click)="showYear()">
+            {{ i18n.t('tax.tree.showAll') }}
+          </button>
+        } @else {
+          <label class="tax-check">
+            <input
+              type="checkbox"
+              [checked]="scope() === 'year'"
+              (change)="onOnlyYearChange($event)"
+            />
+            {{ i18n.t('tax.tree.onlyYear', { year: year() }) }}
+          </label>
+        }
+      </div>
+    </div>
+    <app-data-table
+      [value]="treeRows()"
+      [columns]="treeColumns"
+      [options]="treeOptions"
+      [(selectedRowId)]="selectedRowId"
+    >
+      <ng-template appDataTableCell="sectionPicker" let-row>
+        @let category = asCategory(row);
+        <span class="tax-cell-section">
+          <app-tax-section-picker
+            [options]="pickerOptions(category)"
+            [value]="pickerValue(category)"
+            [muted]="isInherited(category)"
+            [ariaLabel]="i18n.t('tax.tree.pickerLabel', { name: category.name })"
+            (valueChange)="onPick(category, $event)"
+          />
+          @if (isPending(category)) {
+            <span class="tax-pending">{{ i18n.t('tax.tree.unsaved') }}</span>
+          }
+        </span>
+      </ng-template>
+    </app-data-table>
+    <aside class="tax-guidance-box" [attr.aria-label]="i18n.t('tax.guidance.label')">
+      <app-tax-guidance [categoryName]="selectedName()" [effective]="selectedEffective()" />
+    </aside>
+    <div class="tax-row">
+      <span class="tax-muted" role="status">{{
+        i18n.t('tax.tree.pending', { count: pendingCount() })
+      }}</span>
+      <div class="tax-row__end">
+        <button
+          type="button"
+          class="tax-button"
+          [disabled]="pendingCount() === 0 || store.saving()"
+          (click)="discard()"
+        >
+          {{ i18n.t('tax.tree.discard') }}
+        </button>
+        <button
+          type="button"
+          class="tax-button tax-button--primary"
+          [disabled]="pendingCount() === 0 || store.saving()"
+          (click)="saveTags()"
+        >
+          {{ i18n.t(store.saving() ? 'tax.dialog.saving' : 'tax.tree.save') }}
+        </button>
+      </div>
+    </div>
+    @if (saveMessage(); as message) {
+      <p class="tax-status tax-status--error" role="alert">{{ message }}</p>
+    }
+  </section>
+
+  <div class="tax-row">
+    <div class="tax-row__end">
+      @if (!store.hasTags()) {
+        <span class="tax-muted">{{ i18n.t('tax.wizard.needTag') }}</span>
+      }
+      <button
+        type="button"
+        class="tax-button tax-button--primary"
+        [disabled]="!store.hasTags()"
+        (click)="go.emit(2)"
+      >
+        {{ i18n.t('tax.wizard.continue') }}
+      </button>
+    </div>
+  </div>
+}

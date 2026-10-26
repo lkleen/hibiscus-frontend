@@ -120,8 +120,8 @@
         [class.data-table__row--selected]="
           multiSelectionEnabled() && isRowChecked(serialized.node.data)
         "
-        (click)="multiSelectionEnabled() && onRowClick($event, serialized.node.data)"
-        (mousedown)="multiSelectionEnabled() && onRowMouseDown($event)"
+        (click)="onRowClick($event, serialized.node.data)"
+        (mousedown)="onRowMouseDown($event)"
       >
         @if (multiSelectionEnabled()) {
           <td class="data-table__select-cell">
@@ -137,6 +137,8 @@
           <td
             [class.data-table__col--end]="column.align === 'end'"
             (contextmenu)="onCellContextMenu($event, column, serialized.node.data)"
+            (click)="onCellControlEvent($event)"
+            (keydown)="onCellControlEvent($event)"
           >
             @if (column.colId === treeGroupColId()) {
               <span class="data-table__group-cell">
@@ -269,8 +271,8 @@
         [cdkContextMenuTriggerFor]="rowMenu"
         [cdkContextMenuDisabled]="!contextMenuEnabled()"
         [class.data-table__row--selected]="multiSelectionEnabled() && isRowChecked(row)"
-        (click)="multiSelectionEnabled() && onRowClick($event, row)"
-        (mousedown)="multiSelectionEnabled() && onRowMouseDown($event)"
+        (click)="onRowClick($event, row)"
+        (mousedown)="onRowMouseDown($event)"
       >
         @if (multiSelectionEnabled()) {
           <td class="data-table__select-cell">
@@ -286,6 +288,8 @@
           <td
             [class.data-table__col--end]="column.align === 'end'"
             (contextmenu)="onCellContextMenu($event, column, row)"
+            (click)="onCellControlEvent($event)"
+            (keydown)="onCellControlEvent($event)"
           >
             <ng-container
               [ngTemplateOutlet]="cellContent"

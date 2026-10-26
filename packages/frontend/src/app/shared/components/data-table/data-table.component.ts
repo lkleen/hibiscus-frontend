@@ -81,6 +81,10 @@ const ROW_CONTROL_SELECTOR: string =
   'input, button, a, label, select, textarea, ' +
   '[data-pc-column-resizer="true"], [data-pc-section="columnresizer"], .p-treetable-node-toggle-button';
 
+/** Cell controls that PrimeNG's own row-click check misses (it skips only `input`, `textarea`,
+ *  `button` and `a`): their clicks and keys would select the row and swallow Space/Enter. */
+const ROW_SELECTION_EXEMPT_SELECTOR = 'select';
+
 /**
  * Shape of `p-table`'s `(sortFunction)` payload. PrimeNG types this `EventEmitter<any>` (see
  * `types/primeng-table.d.ts`), so this interface — not `any` — is what this component's own
@@ -732,6 +736,7 @@ export class DataTableComponent<Row extends object> {
    *  belong to a control inside the row (checkbox, tree toggler, inputs, the resize handle) are
    *  theirs. */
   protected onRowClick(event: MouseEvent, row: Row): void {
+    if (!this.multiSelectionEnabled()) return;
     if (!event.ctrlKey && !event.metaKey && !event.shiftKey) return;
     if (!(event.target instanceof Element)) return;
     if (event.target.closest(ROW_CONTROL_SELECTOR)) return;
@@ -740,8 +745,16 @@ export class DataTableComponent<Row extends object> {
     this.toggleRow(raw, event.shiftKey && !event.ctrlKey && !event.metaKey);
   }
 
+  /** Keeps a click or key on a cell's `select` from reaching PrimeNG's selectable row, which would
+   *  select the row (re-rendering it under the open picker) and cancel the key's default. */
+  protected onCellControlEvent(event: Event): void {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest(ROW_SELECTION_EXEMPT_SELECTOR)) event.stopPropagation();
+  }
+
   /** Stops the browser's text selection from a Shift-click, which would paint over the range. */
   protected onRowMouseDown(event: MouseEvent): void {
+    if (!this.multiSelectionEnabled()) return;
     if (event.shiftKey && event.target instanceof Element) {
       if (!event.target.closest(ROW_CONTROL_SELECTOR)) event.preventDefault();
     }

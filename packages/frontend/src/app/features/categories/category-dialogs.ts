@@ -1,5 +1,6 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DestroyRef, Injectable, inject } from '@angular/core';
+import type { Observable } from 'rxjs';
 import type {
   CategoryEditableFields,
   CategoryRow,
@@ -26,24 +27,30 @@ import type {
 @Injectable()
 export class CategoryDialogs {
   private readonly dialog = inject(Dialog);
-  private ref: DialogRef<void> | null = null;
+  private ref: DialogRef<CategoryRow> | null = null;
 
   constructor() {
     inject(DestroyRef).onDestroy((): void => this.ref?.close());
   }
 
-  /** A new category, prefilled with `initial` (nothing is stored until Create). */
-  openCreate(source: CategoryEditSource, initial: CategoryEditableFields): void {
-    this.open({ mode: 'create', initial, source });
+  /**
+   * A new category, prefilled with `initial` (nothing is stored until Create). Emits once when the
+   * dialog closes: the created category as stored, or `undefined` when nothing was created.
+   */
+  openCreate(
+    source: CategoryEditSource,
+    initial: CategoryEditableFields,
+  ): Observable<CategoryRow | undefined> {
+    return this.open({ mode: 'create', initial, source });
   }
 
   openEdit(source: CategoryEditSource, category: CategoryRow): void {
     this.open({ mode: 'edit', category, source });
   }
 
-  private open(data: CategoryEditDialogData): void {
+  private open(data: CategoryEditDialogData): Observable<CategoryRow | undefined> {
     this.ref?.close();
-    const ref: DialogRef<void> = this.dialog.open<void, CategoryEditDialogData>(
+    const ref: DialogRef<CategoryRow> = this.dialog.open<CategoryRow, CategoryEditDialogData>(
       CategoryEditDialogComponent,
       {
         data,
@@ -57,5 +64,6 @@ export class CategoryDialogs {
     ref.closed.subscribe((): void => {
       if (this.ref === ref) this.ref = null;
     });
+    return ref.closed;
   }
 }

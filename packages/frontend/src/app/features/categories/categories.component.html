@@ -38,15 +38,36 @@
   [value]="store.categories()"
   [columns]="columns"
   [options]="options"
-  [loading]="store.loading()"
+  [loading]="store.loading() || taxTagsPending()"
   [quickFilterText]="search()"
   [density]="densities.densityFor('categories')()"
 >
   <ng-template appDataTableCell="color" let-row let-value="value">
     <app-category-color-cell [cssColor]="asCssColor(value)" [stored]="row.color" />
   </ng-template>
+  <ng-template appDataTableCell="taxSection" let-row>
+    @let tax = taxOf(row);
+    @if (tax === null) {
+      <!-- The tax tags are still loading; the table shows its loading state. -->
+    } @else if (tax.section) {
+      <span class="tax-cell">
+        <app-tax-code [code]="tax.section.code" [inherited]="tax.inherited" />
+        <span class="tax-cell__name">{{ sectionName(tax) }}</span>
+        @if (tax.inherited) {
+          <span class="tax-cell__note">{{ i18n.t('categories.taxInherited') }}</span>
+        }
+      </span>
+    } @else if (tax.sourceCategoryId !== null) {
+      <span class="tax-cell__note">{{ i18n.t('tax.section.excluded') }}</span>
+    } @else {
+      <span class="tax-cell__note">—</span>
+    }
+  </ng-template>
 </app-data-table>
 
 @if (store.error()) {
   <p class="status-text status-text--error">{{ i18n.t('categories.error') }}</p>
+}
+@if (taxTagsError()) {
+  <p class="status-text status-text--error">{{ i18n.t('categories.taxTagsError') }}</p>
 }

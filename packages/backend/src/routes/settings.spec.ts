@@ -1,8 +1,9 @@
 import express, { Express } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DatePresetList } from '@hibiscus-frontend/shared/contracts/user-settings';
+import type { DatePresetList, TaxProfile } from '@hibiscus-frontend/shared/contracts/user-settings';
 import { DEFAULT_DATE_PRESETS } from '../settings/date-presets';
 import { DEFAULT_TABLE_DENSITIES } from '../settings/table-density';
+import { DEFAULT_TAX_PROFILE } from '../settings/tax-profile';
 import { createSettingsRouter } from './settings';
 
 vi.mock('../repositories/user-setting', () => ({
@@ -495,6 +496,101 @@ describe('settings router', () => {
       });
 
       expect(response.status).toBe(400);
+      expect(putUserSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /settings/tax-profile', () => {
+    it('returns the default profile when no stored row exists', async () => {
+      vi.mocked(getUserSetting).mockResolvedValueOnce(undefined);
+
+      const response = await fetchSettings({ path: '/settings/tax-profile', method: 'GET' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(DEFAULT_TAX_PROFILE);
+      expect(getUserSetting).toHaveBeenCalledWith('alice', 'tax-profile');
+    });
+
+    it('returns the stored valid profile', async () => {
+      const stored: TaxProfile = {
+        ...DEFAULT_TAX_PROFILE,
+        situations: { ...DEFAULT_TAX_PROFILE.situations, employed: true, rental: false },
+        hintDismissedYear: 2025,
+      };
+      vi.mocked(getUserSetting).mockResolvedValueOnce(stored);
+
+      const response = await fetchSettings({ path: '/settings/tax-profile', method: 'GET' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(stored);
+    });
+
+    it('returns 500 when the stored value is corrupt', async () => {
+      vi.mocked(getUserSetting).mockResolvedValueOnce({ situations: {}, hintDismissedYear: 1 });
+
+      const response = await fetchSettings({ path: '/settings/tax-profile', method: 'GET' });
+
+      expect(response.status).toBe(500);
+    });
+  });
+
+  describe('PUT /settings/tax-profile', () => {
+    it('saves a valid profile and returns 204', async () => {
+      vi.mocked(putUserSetting).mockResolvedValueOnce(undefined);
+      const profile: TaxProfile = {
+        ...DEFAULT_TAX_PROFILE,
+        situations: { ...DEFAULT_TAX_PROFILE.situations, children: true },
+        hintDismissedYear: 2025,
+      };
+
+      const response = await fetchSettings({
+        path: '/settings/tax-profile',
+        method: 'PUT',
+        body: profile,
+      });
+
+      expect(response.status).toBe(204);
+      expect(putUserSetting).toHaveBeenCalledWith({
+        user: 'alice',
+        key: 'tax-profile',
+        value: profile,
+      });
+    });
+
+    it('rejects a missing situation with 400', async () => {
+      const response = await fetchSettings({
+        path: '/settings/tax-profile',
+        method: 'PUT',
+        body: { situations: { employed: true }, hintDismissedYear: null },
+      });
+
+      expect(response.status).toBe(400);
+      expect(putUserSetting).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown situation with 400', async () => {
+      const response = await fetchSettings({
+        path: '/settings/tax-profile',
+        method: 'PUT',
+        body: {
+          ...DEFAULT_TAX_PROFILE,
+          situations: { ...DEFAULT_TAX_PROFILE.situations, pets: true },
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(putUserSetting).not.toHaveBeenCalled();
+    });
+
+    it('rejects an out-of-range or fractional year with 400', async () => {
+      for (const year of [1899, 10000, 2025.5]) {
+        const response = await fetchSettings({
+          path: '/settings/tax-profile',
+          method: 'PUT',
+          body: { ...DEFAULT_TAX_PROFILE, hintDismissedYear: year },
+        });
+        expect(response.status).toBe(400);
+      }
       expect(putUserSetting).not.toHaveBeenCalled();
     });
   });

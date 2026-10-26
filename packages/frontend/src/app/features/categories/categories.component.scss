@@ -14,3 +14,14 @@
     color: var(--color-danger);
   }
 }
+
+.tax-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.tax-cell__note {
+  color: var(--text-muted);
+}

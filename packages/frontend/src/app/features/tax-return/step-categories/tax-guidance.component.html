@@ -1,0 +1,32 @@
+@let current = view();
+@switch (current.kind) {
+  @case ('section') {
+    <div class="tax-guidance__head">
+      <app-tax-code [code]="current.section.code" [inherited]="current.inherited" />
+      <h3 class="tax-guidance__title">{{ i18n.t(nameKey(current.section.nameKey)) }}</h3>
+      <p class="tax-muted">
+        {{ i18n.t('tax.guidance.form', { form: i18n.t(nameKey(current.section.formKey)) }) }}
+      </p>
+    </div>
+    <dl class="tax-guidance__list">
+      @for (entry of entries(); track entry.termKey) {
+        <dt class="tax-guidance__term">{{ i18n.t(entry.termKey) }}</dt>
+        <dd class="tax-guidance__text">{{ i18n.t(entry.textKey) }}</dd>
+      }
+    </dl>
+    <p class="tax-note">{{ i18n.t(noteKey(current.section)) }}</p>
+  }
+  @case ('excluded') {
+    <div class="tax-guidance__head">
+      <app-tax-code [code]="excludedCode" [inherited]="current.inherited" />
+      <h3 class="tax-guidance__title">{{ i18n.t('tax.section.excluded') }}</h3>
+    </div>
+    <p class="tax-muted">{{ i18n.t('tax.guidance.excluded') }}</p>
+  }
+  @case ('untagged') {
+    <p class="tax-muted">{{ i18n.t('tax.guidance.untagged', { name: current.name }) }}</p>
+  }
+  @default {
+    <p class="tax-muted">{{ i18n.t('tax.guidance.pick') }}</p>
+  }
+}

@@ -40,8 +40,9 @@
 
 Backed by a MariaDB database matching the schema Hibiscus (the desktop Jameica/Hibiscus
 home-banking client) creates via its own `mysql-create.sql`. This repo never owns or migrates
-that schema — it only reads/writes against tables that already exist, with one exception: the
-app-owned `hf_user_setting` table for per-user settings (see below).
+that schema — it only reads/writes against tables that already exist, with these exceptions: the
+app-owned `hf_` tables (`hf_user_setting` for per-user settings, `hf_tax_section` and
+`hf_category_tax_tag` for tax-return tags; see below), created at startup.
 
 Tables this app uses:
 
@@ -51,12 +52,15 @@ Tables this app uses:
 | `umsatz`          | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
 | `umsatztyp`       | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
 | `hf_user_setting` | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
+| `hf_tax_section`  | Valid tax tag codes; seeded at startup from `TAX_TAG_CODES` (never deleted)                      |
+| `hf_category_tax_tag` | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`          |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope is per-user settings (date range presets, table densities per view) in `hf_user_setting`, and two
+Write scope is per-user settings (date range presets, table densities per view, tax profile) in `hf_user_setting`, tax tags in
+`hf_category_tax_tag`, and two
 user-maintained fields of `umsatz`: `kommentar` and `umsatztyp_id` (the category), via
 `PATCH /api/transactions/:id`. Both are written in one atomic `UPDATE ... WHERE` that only succeeds
 while the row still holds the values the edit started from (`expected`); otherwise the API answers
@@ -91,6 +95,10 @@ itself requires authentication too — there is no unauthenticated route in this
 | `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                               |
 | `GET /api/settings/table-densities`      | User's stored density map (`TableDensities`, view → density); `{}` if not stored                                                                                                                                                                                                                                                              |
 | `PUT /api/settings/table-densities`      | Save the whole map (zod-validated); answers `204`                                                                                                                                                                                                                                                                                             |
+| `GET /api/settings/tax-profile`          | User's tax profile (`TaxProfile`: life-situation answers, dismissed hint year); every answer `null` if not stored                                                                                                                                                                                                                             |
+| `PUT /api/settings/tax-profile`          | Save the whole profile (zod-validated); answers `204`                                                                                                                                                                                                                                                                                         |
+| `GET /api/tax-tags`                      | Every tax tag (`TaxTag[]`: `category_id`, `code`)                                                                                                                                                                                                                                                                                             |
+| `PUT /api/tax-tags`                      | Apply `TaxTagsUpdateRequest` changes (`expected`, `next`) all or nothing in one DB transaction; `204`; `400` invalid body; `409` `TaxTagsConflict` (`conflictIds`) when a tag changed or its category is gone                                                                                                                                 |
 
 ### Shared contracts
 
@@ -147,7 +155,12 @@ the map once at app startup, exposes `densityFor(view)` and `save(view, density)
 `<html>`. The density is picked in the ribbon's View tab via `<app-density-picker [view]>`; each
 `<app-data-table>` takes it as its `density` input (see the data table paragraph above).
 
-Both settings services (date presets and table densities) share the load-once / serial-write-queue /
+**Tax profile** (third setting): `TaxProfile` holds the answer per `TaxSituation` (`employed |
+children | household | rental | donations`, `null` = not answered) and `hintDismissedYear`. The
+backend default (`DEFAULT_TAX_PROFILE`) is the only default; frontend `TaxProfileService.profile` is
+`null` until loaded.
+
+All settings services (date presets, table densities, tax profile) share the load-once / serial-write-queue /
 confirmed-state-only logic via `UserSettingChannel<T>` (`core/services/user-setting-channel.ts`): reads
 and writes go through these services, which load settings once at app startup, queue all writes through a single serial
 channel (so the server receives them in order), and only surface confirmed state to the UI
@@ -265,6 +278,41 @@ row menu (single-row menu only; disabled in the bulk menu). It opens the dialog 
 transaction (`categoryDraftFrom`, `features/categories/category-draft.ts`): name and pattern are the
 counterparty name with commas escaped, and the type follows the amount's sign. On the by-category tab,
 category nodes (not "Unassigned") offer Edit.
+
+### Tax return
+
+A separate feature for the German income tax return (`/:locale/tax-return`, own nav entry,
+`features/tax-return/`). It does not use the transactions export. `/tax-return` picks the year and
+the accounts; `/tax-return/:year` is a four-step wizard: ① mark the tax-relevant categories (life
+situation questions, suggested tags, the category tree with a tax-section picker), ② the year's
+unassigned transactions (assign, create or edit categories with the existing dialogs), ③ check
+(refunds in tagged categories, sections that should have entries but are empty, year over year),
+④ result (summary per form, numbered receipt list, PDF via `tax-pdf.ts`). The shell provides its own
+`TransactionsStore`, `TransactionDialogs`, `CategoryDialogs` and `TaxTagDialogs`.
+
+**Tax tags live in the app-owned `hf_category_tax_tag` table**, one row per tagged category, never
+in a Hibiscus column. (`umsatztyp.nummer` was ruled out: it is the first key of Hibiscus's matching
+order, `ORDER BY COALESCE(nummer,''), name`, so a tag there moved pattern-matched payments out of the
+tagged category, in this app and in the desktop client.) The codes are `St-WK`, `St-VA`, `St-SA`,
+`St-AB`, `St-HH`, `St-KI`, `St-V`, and `St-0` (not tax-relevant, stops inheritance), declared once as
+`TaxTagCode` in `@hibiscus-frontend/shared/contracts/tax-tags`; the section metadata is in
+`core/tax/tax-sections.ts`. A category without its own tag inherits its nearest tagged ancestor's.
+
+Integrity is enforced by the DB: `category_id` references `umsatztyp(id)` with `ON UPDATE CASCADE`
+(the tag follows a changed id) and `ON DELETE CASCADE` (a deleted category takes its tag along), and
+`code` references `hf_tax_section(code)`, which startup seeds from `TAX_TAG_CODES`
+(`packages/backend/src/tax/tax-tag-codes.ts`) and never prunes. Startup fails if the tables or keys
+cannot be created.
+
+Saves go through `TaxTagsService` (`core/services/tax-tags.service.ts`) and `PUT /api/tax-tags`:
+each change carries the tag it started from (`expected`); the backend applies all changes in one
+transaction in ascending `category_id` order, or none. A changed tag, a duplicate first insert or a
+deleted category answers `409` with `conflictIds`; the service then reloads the tags and the wizard
+keeps the user's draft.
+
+Entry points outside the feature: the categories page has a "Tax section" column (effective
+section, inherited ones muted) and a "Tax section…" row action. The accounts page shows a dismissible
+hint from 1 January to 31 July for the previous year.
 
 ## Ribbon toolbar
 

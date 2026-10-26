@@ -1,0 +1,59 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.tax-findings {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Badge, text, fix: the fix sits on the trailing edge and drops below the text on narrow screens.
+.tax-finding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem 0;
+  border-block-end: 1px solid var(--surface-border);
+
+  &:last-child {
+    border-block-end: none;
+  }
+
+  .tax-button {
+    margin-inline-start: auto;
+  }
+}
+
+.tax-finding__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.tax-badge {
+  --tax-badge-bg: var(--surface-subtle);
+  --tax-badge-color: var(--text-color);
+
+  flex: none;
+  padding: 0.1rem 0.6rem;
+  background: var(--tax-badge-bg);
+  color: var(--tax-badge-color);
+  border-radius: var(--radius-base);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+
+  &--ok {
+    --tax-badge-bg: var(--color-accent-subtle);
+    --tax-badge-color: var(--color-accent);
+  }
+}

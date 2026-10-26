@@ -76,3 +76,22 @@ export type TableViewId = 'transactions-list' | 'transactions-by-category' | 'ca
  * `GET /api/settings/table-densities`; a view that is missing is rendered `normal`.
  */
 export type TableDensities = Partial<Record<TableViewId, TableDensity>>;
+
+/**
+ * A yes/no question about the user's life situation that switches tax-return sections on or off
+ * (the frontend's `TAX_SECTIONS` names the situation each section depends on).
+ *
+ * Types-only, so each side declares its own runtime list of the ids, checked against this union.
+ */
+export type TaxSituation = 'employed' | 'children' | 'household' | 'rental' | 'donations';
+
+/**
+ * The user's tax-return profile. Body of `PUT /api/settings/tax-profile` and response of
+ * `GET /api/settings/tax-profile`.
+ */
+export interface TaxProfile {
+  /** Answer per situation; `null` = not answered yet (the section stays visible). */
+  situations: Record<TaxSituation, boolean | null>;
+  /** Tax year whose seasonal hint the user dismissed; `null` = never dismissed. */
+  hintDismissedYear: number | null;
+}

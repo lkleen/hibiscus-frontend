@@ -11,13 +11,16 @@ import { createAccountsRouter } from './routes/accounts';
 import { createCategoriesRouter } from './routes/categories';
 import { createMeRouter } from './routes/me';
 import { createSettingsRouter } from './routes/settings';
+import { createTaxTagsRouter } from './routes/tax-tags';
 import { createTransactionsRouter } from './routes/transactions';
+import { ensureTaxTagTables } from './repositories/tax-tag';
 import { ensureUserSettingTable } from './repositories/user-setting';
 
 async function main(): Promise<void> {
   const config = loadConfig();
   initPool(config);
   await ensureUserSettingTable();
+  await ensureTaxTagTables();
 
   const app = express();
 
@@ -43,6 +46,7 @@ async function main(): Promise<void> {
   api.use('/transactions', createTransactionsRouter());
   api.use('/categories', createCategoriesRouter());
   api.use('/settings', createSettingsRouter());
+  api.use('/tax-tags', createTaxTagsRouter());
   app.use('/api', api);
 
   // A path under /api that didn't match any route above is a real 404 — it must not fall

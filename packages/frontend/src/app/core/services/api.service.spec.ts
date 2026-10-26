@@ -10,6 +10,7 @@ import type {
 import type {
   DatePresetList,
   TableDensities,
+  TaxProfile,
 } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type {
   CategoryCreateRequest,
@@ -17,6 +18,7 @@ import type {
   CategoryRow,
   CategoryUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxTagsUpdateRequest } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { categoryRow } from '../utils/testing/category-row-fixture';
 import {
   transaction,
@@ -179,6 +181,53 @@ describe('ApiService', () => {
     const req = httpMock.expectOne('/api/settings/table-densities');
     expect(req.request.method).toBe('PUT');
     expect(req.request.body).toEqual(densities);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('requests the tax profile', () => {
+    service.getTaxProfile().subscribe();
+
+    const req = httpMock.expectOne('/api/settings/tax-profile');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('puts the whole tax profile as JSON', () => {
+    const profile: TaxProfile = {
+      situations: {
+        employed: true,
+        children: null,
+        household: null,
+        rental: false,
+        donations: null,
+      },
+      hintDismissedYear: 2025,
+    };
+    service.saveTaxProfile(profile).subscribe();
+
+    const req = httpMock.expectOne('/api/settings/tax-profile');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(profile);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('requests the tax tags', () => {
+    service.getTaxTags().subscribe();
+
+    const req = httpMock.expectOne('/api/tax-tags');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('puts the tax tag changes as JSON', () => {
+    const request: TaxTagsUpdateRequest = {
+      changes: [{ category_id: 3, expected: null, next: 'St-AB' }],
+    };
+    service.saveTaxTags(request).subscribe();
+
+    const req = httpMock.expectOne('/api/tax-tags');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(request);
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 

@@ -4,15 +4,23 @@ import {
   Component,
   Signal,
   WritableSignal,
+  DestroyRef,
   computed,
   effect,
   inject,
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { accountLabel } from '../../core/utils/account-label';
+import { TaxCodeComponent } from '../../core/tax/tax-code/tax-code.component';
+import { effectiveTaxSection, type EffectiveTaxSection } from '../../core/tax/tax-sections';
+import { taxKey } from '../../core/tax/tax-i18n';
+import { TaxTagDialogs } from '../../core/tax/tax-tag-dialog/tax-tag-dialogs';
+import { TaxTagsService } from '../../core/services/tax-tags.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { toCssColor } from '../../core/utils/category-color';
 import { TableDensityService } from '../../core/services/table-density.service';
@@ -53,18 +61,49 @@ const DASH = '—';
     DataTableComponent,
     DataTableCellDirective,
     ColorCellComponent,
+    TaxCodeComponent,
     DensityPickerComponent,
     RibbonBandDirective,
     RibbonComponent,
     RibbonGroupComponent,
   ],
-  providers: [CategoriesStore, CategoryDialogs, RibbonHost, DataTableToolbarOutlet],
+  providers: [CategoriesStore, CategoryDialogs, TaxTagDialogs, RibbonHost, DataTableToolbarOutlet],
 })
 export class CategoriesComponent {
   protected readonly i18n = inject(TranslationService);
   protected readonly store = inject(CategoriesStore);
   protected readonly densities = inject(TableDensityService);
   private readonly categoryDialogs = inject(CategoryDialogs);
+  private readonly taxTagDialogs = inject(TaxTagDialogs);
+  private readonly taxTags = inject(TaxTagsService);
+
+  /**
+   * Each category's effective tax section, recomputed when the categories or the tags change;
+   * `null` until the tags are loaded.
+   */
+  private readonly taxByCategoryId: Signal<ReadonlyMap<number, EffectiveTaxSection> | null> =
+    computed((): ReadonlyMap<number, EffectiveTaxSection> | null => {
+      const tags: ReadonlyMap<number, TaxTagCode> | null = this.taxTags.tags();
+      if (tags === null) return null;
+      const categories: readonly CategoryRow[] = this.store.categories();
+      const byId: ReadonlyMap<number, CategoryRow> = new Map<number, CategoryRow>(
+        categories.map((c: CategoryRow): [number, CategoryRow] => [c.id, c]),
+      );
+      return new Map<number, EffectiveTaxSection>(
+        categories.map((c: CategoryRow): [number, EffectiveTaxSection] => [
+          c.id,
+          effectiveTaxSection({ category: c, byId, tags }),
+        ]),
+      );
+    });
+
+  /** The tax tags could not be loaded; the "Tax section" column stays empty. */
+  protected readonly taxTagsError: WritableSignal<boolean> = signal<boolean>(false);
+
+  /** The table shows its loading state until the tax tags are loaded too. */
+  protected readonly taxTagsPending: Signal<boolean> = computed(
+    (): boolean => this.taxTags.tags() === null && !this.taxTagsError(),
+  );
 
   protected readonly search: WritableSignal<string> = signal<string>('');
   protected readonly searchActive: Signal<boolean> = computed((): boolean => this.search() !== '');
@@ -76,6 +115,17 @@ export class CategoriesComponent {
   constructor() {
     const tableToolbar: DataTableToolbarOutlet = inject(DataTableToolbarOutlet);
     effect((): void => tableToolbar.outlet.set(this.toolbarOutlet()));
+    if (this.taxTags.tags() === null) {
+      this.taxTags
+        .load()
+        .pipe(takeUntilDestroyed(inject(DestroyRef)))
+        .subscribe({
+          error: (cause: unknown): void => {
+            this.taxTagsError.set(true);
+            throw cause;
+          },
+        });
+    }
   }
 
   protected onSearchInput(event: Event): void {
@@ -87,6 +137,12 @@ export class CategoriesComponent {
   protected readonly columns: readonly DataTableColDef<CategoryRow>[] = [
     { colId: 'name', headerKey: 'categories.colName' },
     { colId: 'nummer', headerKey: 'categories.colNumber' },
+    colDef<CategoryRow, string | null>({
+      colId: 'taxSection',
+      headerKey: 'categories.colTaxSection',
+      valueGetter: (row) => this.taxSectionLabel(row),
+      cellRenderer: 'taxSection',
+    }),
     colDef<CategoryRow, number | null>({
       colId: 'umsatztyp',
       headerKey: 'categories.colType',
@@ -154,14 +210,45 @@ export class CategoriesComponent {
         nameKey: 'categories.menuEdit',
         action: (): void => this.categoryDialogs.openEdit(this.store, row),
       },
+      {
+        nameKey: 'categories.menuTaxSection',
+        action: (): void => {
+          this.taxTagDialogs.openSection(row).subscribe();
+        },
+      },
     ],
   };
+
+  /** The effective tax section of `row` for the cell template; `null` while the tags load. */
+  protected taxOf(row: CategoryRow): EffectiveTaxSection | null {
+    const byId: ReadonlyMap<number, EffectiveTaxSection> | null = this.taxByCategoryId();
+    if (byId === null) return null;
+    const tax: EffectiveTaxSection | undefined = byId.get(row.id);
+    if (!tax) throw new Error(`category ${row.id} has no tax section entry`);
+    return tax;
+  }
+
+  protected sectionName(tax: EffectiveTaxSection): string {
+    if (!tax.section) throw new Error('no section to name');
+    return this.i18n.t(taxKey(tax.section.nameKey));
+  }
 
   // `DataTableCellContext.value` is `unknown`; the "color" renderer is only wired to the `color`
   // column, whose value is `string | null`. Anything else means a mis-wired column.
   protected asCssColor(value: unknown): string | null {
     if (value === null || typeof value === 'string') return value;
     throw new Error(`color cell expects string | null, got ${typeof value}`);
+  }
+
+  /**
+   * The text the table sorts and filters the tax column by: the section code and name, "Not
+   * tax-relevant" for St-0, null (a dash) when nothing is tagged on the chain.
+   */
+  private taxSectionLabel(row: CategoryRow): string | null {
+    const tax: EffectiveTaxSection | null = this.taxOf(row);
+    if (tax === null) return null;
+    if (tax.section) return `${tax.section.code} ${this.sectionName(tax)}`;
+    return tax.sourceCategoryId === null ? null : this.i18n.t('tax.section.excluded');
   }
 
   /** 0 = expense, 1 = income, 2 or NULL = any (as Hibiscus shows it); anything else raw. */

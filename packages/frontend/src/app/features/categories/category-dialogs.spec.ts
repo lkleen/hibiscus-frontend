@@ -53,6 +53,21 @@ describe('CategoryDialogs', () => {
     expect(document.querySelector('.app-dialog-backdrop')).not.toBeNull();
   });
 
+  it('emits the created category once the create dialog closes with it', async () => {
+    const service: CategoryDialogs = TestBed.inject(CategoryDialogs);
+    const created: CategoryRow = categoryRow({ id: 9, name: 'Shop' });
+    const emitted: (CategoryRow | undefined)[] = [];
+
+    service
+      .openCreate(source, editableFieldsOf(created))
+      .subscribe((row: CategoryRow | undefined) => emitted.push(row));
+    await settle();
+    TestBed.inject(Dialog).openDialogs[0].close(created);
+    await settle();
+
+    expect(emitted).toEqual([created]);
+  });
+
   it('closes the dialog when the providing scope is destroyed', async () => {
     TestBed.inject(CategoryDialogs).openEdit(source, categoryRow({ id: 1, name: 'Living' }));
     await settle();

@@ -1,0 +1,58 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">
+    {{ i18n.t('tax.section.title', { name: category.name }) }}
+  </h2>
+</header>
+
+<div class="app-dialog__body">
+  @if (afterCreate) {
+    <p class="app-dialog__hint">{{ i18n.t('tax.section.afterCreate') }}</p>
+  }
+
+  <fieldset class="tax-tag-dialog__options" [disabled]="saving() || !ready()">
+    <legend class="visually-hidden">{{ i18n.t('tax.section.legend') }}</legend>
+    @for (option of options(); track option.choice) {
+      <label
+        class="tax-tag-dialog__option"
+        (mouseenter)="show(option.choice)"
+        (focusin)="show(option.choice)"
+      >
+        <input
+          type="radio"
+          class="app-dialog__radio"
+          [name]="radioName"
+          [value]="option.choice"
+          [checked]="choice() === option.choice"
+          [attr.aria-describedby]="describedChoice() === option.choice ? descriptionId : null"
+          (change)="pick(option.choice)"
+        />
+        <span class="tax-tag-dialog__option-label">{{ option.label }}</span>
+        @if (option.code; as code) {
+          <app-tax-code [code]="code" [inherited]="option.inherited" />
+        }
+      </label>
+    }
+  </fieldset>
+  <app-tax-description
+    class="tax-tag-dialog__description"
+    [id]="descriptionId"
+    [description]="described().description"
+  />
+</div>
+
+<footer class="app-dialog__footer">
+  @if (error(); as message) {
+    <p class="app-dialog__error" role="alert">{{ message }}</p>
+  }
+  <button type="button" class="app-dialog__button" [disabled]="saving()" (click)="cancel()">
+    {{ afterCreate ? i18n.t('tax.dialog.skip') : i18n.t('tax.dialog.cancel') }}
+  </button>
+  <button
+    type="button"
+    class="app-dialog__button app-dialog__button--primary"
+    [disabled]="!canSave()"
+    (click)="save()"
+  >
+    {{ saving() ? i18n.t('tax.dialog.saving') : i18n.t('tax.section.save') }}
+  </button>
+</footer>
