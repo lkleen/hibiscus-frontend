@@ -10,11 +10,6 @@ import {
   TABLE_DENSITIES_SETTING_KEY,
   TableDensitiesSchema,
 } from '../settings/table-density';
-import {
-  DEFAULT_TAX_PROFILE,
-  TAX_PROFILE_SETTING_KEY,
-  TaxProfileSchema,
-} from '../settings/tax-profile';
 import { deleteUserSetting, getUserSetting, putUserSetting } from '../repositories/user-setting';
 import { respondWithValidationError } from './zod-validation';
 
@@ -104,45 +99,6 @@ export function createSettingsRouter(): Router {
     putUserSetting({
       user,
       key: TABLE_DENSITIES_SETTING_KEY,
-      value: parseResult.data,
-    })
-      .then(() => res.status(204).send())
-      .catch(next);
-  });
-
-  /**
-   * GET /tax-profile: retrieve the user's tax-return profile, or the defaults if none saved.
-   * A stored value is re-validated against the schema; a corrupt row throws a 500.
-   */
-  router.get('/tax-profile', (_req: Request, res: Response, next: NextFunction): void => {
-    const user = res.locals['user'] as string;
-    getUserSetting(user, TAX_PROFILE_SETTING_KEY)
-      .then((value: unknown | undefined) => {
-        const profile: unknown = value === undefined ? DEFAULT_TAX_PROFILE : value;
-        const parseResult = TaxProfileSchema.safeParse(profile);
-        if (!parseResult.success) {
-          next(new Error(`Stored tax profile is invalid: ${parseResult.error.message}`));
-          return;
-        }
-        res.json(parseResult.data);
-      })
-      .catch(next);
-  });
-
-  /**
-   * PUT /tax-profile: save the user's whole tax-return profile after validating it.
-   */
-  router.put('/tax-profile', (req: Request, res: Response, next: NextFunction): void => {
-    const user = res.locals['user'] as string;
-    const parseResult = TaxProfileSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      respondWithValidationError(res, parseResult.error);
-      return;
-    }
-
-    putUserSetting({
-      user,
-      key: TAX_PROFILE_SETTING_KEY,
       value: parseResult.data,
     })
       .then(() => res.status(204).send())

@@ -42,24 +42,24 @@ Backed by a MariaDB database matching the schema Hibiscus (the desktop Jameica/H
 home-banking client) creates via its own `mysql-create.sql`. This repo never owns or migrates
 that schema — it only reads/writes against tables that already exist, with these exceptions: the
 app-owned `hf_` tables (`hf_user_setting` for per-user settings, `hf_tax_section` and
-`hf_category_tax_tag` for tax-return tags; see below), created at startup.
+`hf_category_tax_tag` for the user's tax sections and category tax tags; see below), created at startup.
 
 Tables this app uses:
 
-| Table             | Purpose                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------ |
-| `konto`           | Bank accounts — name, IBAN/BIC, currency, current balance                                        |
-| `umsatz`          | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
-| `umsatztyp`       | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
-| `hf_user_setting` | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
-| `hf_tax_section`  | Valid tax tag codes; seeded at startup from `TAX_TAG_CODES` (never deleted)                      |
-| `hf_category_tax_tag` | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`          |
+| Table                 | Purpose                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| `konto`               | Bank accounts — name, IBAN/BIC, currency, current balance                                        |
+| `umsatz`              | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
+| `umsatztyp`           | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
+| `hf_user_setting`     | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
+| `hf_tax_section`      | User-maintained tax sections (code, name, form, guidance); default sections seeded once          |
+| `hf_category_tax_tag` | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`              |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
 `reminder`, `systemnachricht`, `empfaenger` (payee address book).
 
-Write scope is per-user settings (date range presets, table densities per view, tax profile) in `hf_user_setting`, tax tags in
+Write scope is per-user settings (date range presets, table densities per view) in `hf_user_setting`, tax sections in `hf_tax_section`, tax tags in
 `hf_category_tax_tag`, and two
 user-maintained fields of `umsatz`: `kommentar` and `umsatztyp_id` (the category), via
 `PATCH /api/transactions/:id`. Both are written in one atomic `UPDATE ... WHERE` that only succeeds
@@ -71,7 +71,8 @@ row does not match its `expected` values, the whole batch is rolled back and not
 body limit for this route is 10 MB (`server.ts`). No other column of `umsatz` is ever written. The category table `umsatztyp` is written too, every
 column but `id`: `POST /api/categories` inserts a row, and `PUT /api/categories/:id` updates one
 (`expected`/`next`) with one `UPDATE … WHERE` that compares every column with `<=>`, in one DB
-transaction, under the same `409` guard as transaction edits. There is no delete. Bank-imported transaction
+transaction, under the same `409` guard as transaction edits. Both carry the category's tax tag
+(`taxTag`), written in the same DB transaction (see Tax sections and tags). There is no delete. Bank-imported transaction
 fields (amount, date, counterparty) are synced from the bank by the desktop client and are not this
 app's data to change.
 
@@ -80,25 +81,26 @@ app's data to change.
 All routes are under `/api` and require authentication (see below) except `/api/me`, which
 itself requires authentication too — there is no unauthenticated route in this app at all.
 
-| Method & path                            | Purpose                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/me`                            | Echoes the authenticated identity                                                                                                                                                                                                                                                                                                             |
-| `GET /api/accounts`                      | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                                                                                                                                                   |
-| `GET /api/transactions`                  | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                                                                                                                                                     |
-| `PATCH /api/transactions/:id`            | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                   |
-| `POST /api/transactions/assign-category` | Set `umsatztyp_id` on 1–10,000 selected rows (`TransactionAssignRequest`: `items` of `{ id, expected: { kommentar, umsatztyp_id } }`, `umsatztyp_id`); one DB transaction, all-or-nothing; `204`; `400` invalid body or unknown category; `409` `{ error: 'conflict', conflictIds }` if any row no longer holds its `expected`, nothing saved |
-| `GET /api/categories`                    | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                                                                                                                                                              |
-| `POST /api/categories`                   | Create a `umsatztyp` row (`CategoryCreateRequest`: every column but `id`, zod-validated); answers `201` with the created `CategoryRow` as stored; `400` invalid body or unknown parent/account                                                                                                                                                |
-| `PUT /api/categories/:id`                | Change every editable column (`CategoryUpdateRequest`: `expected`, `next`); one DB transaction; `204`; `400` invalid body, unknown parent/account, or `{ error: 'cycle' }` when the new parent is the category itself or one of its descendants; `404` no such row; `409` if the row no longer holds `expected`                               |
-| `GET /api/settings/date-presets`         | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                   |
-| `PUT /api/settings/date-presets`         | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                         |
-| `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                               |
-| `GET /api/settings/table-densities`      | User's stored density map (`TableDensities`, view → density); `{}` if not stored                                                                                                                                                                                                                                                              |
-| `PUT /api/settings/table-densities`      | Save the whole map (zod-validated); answers `204`                                                                                                                                                                                                                                                                                             |
-| `GET /api/settings/tax-profile`          | User's tax profile (`TaxProfile`: life-situation answers, dismissed hint year); every answer `null` if not stored                                                                                                                                                                                                                             |
-| `PUT /api/settings/tax-profile`          | Save the whole profile (zod-validated); answers `204`                                                                                                                                                                                                                                                                                         |
-| `GET /api/tax-tags`                      | Every tax tag (`TaxTag[]`: `category_id`, `code`)                                                                                                                                                                                                                                                                                             |
-| `PUT /api/tax-tags`                      | Apply `TaxTagsUpdateRequest` changes (`expected`, `next`) all or nothing in one DB transaction; `204`; `400` invalid body; `409` `TaxTagsConflict` (`conflictIds`) when a tag changed or its category is gone                                                                                                                                 |
+| Method & path                            | Purpose                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/me`                            | Echoes the authenticated identity                                                                                                                                                                                                                                                                                                                 |
+| `GET /api/accounts`                      | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                                                                                                                                                       |
+| `GET /api/transactions`                  | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                                                                                                                                                         |
+| `PATCH /api/transactions/:id`            | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                       |
+| `POST /api/transactions/assign-category` | Set `umsatztyp_id` on 1–10,000 selected rows (`TransactionAssignRequest`: `items` of `{ id, expected: { kommentar, umsatztyp_id } }`, `umsatztyp_id`); one DB transaction, all-or-nothing; `204`; `400` invalid body or unknown category; `409` `{ error: 'conflict', conflictIds }` if any row no longer holds its `expected`, nothing saved     |
+| `GET /api/categories`                    | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                                                                                                                                                                  |
+| `POST /api/categories`                   | Create a `umsatztyp` row (`CategoryCreateRequest`: every column but `id` plus `taxTag`, zod-validated); answers `201` with the created `CategoryRow` as stored; `400` invalid body, unknown parent/account or unknown tax section                                                                                                                 |
+| `PUT /api/categories/:id`                | Change every editable column (`CategoryUpdateRequest`: `expected`, `next`, `taxTag`); one DB transaction with the tag; `204`; `400` invalid body, unknown parent/account, or `{ error: 'cycle' }` when the new parent is the category itself or one of its descendants; `404` no such row; `409` if the row or its tag no longer holds `expected` |
+| `GET /api/settings/date-presets`         | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                       |
+| `PUT /api/settings/date-presets`         | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                             |
+| `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                                   |
+| `GET /api/settings/table-densities`      | User's stored density map (`TableDensities`, view → density); `{}` if not stored                                                                                                                                                                                                                                                                  |
+| `PUT /api/settings/table-densities`      | Save the whole map (zod-validated); answers `204`                                                                                                                                                                                                                                                                                                 |
+| `GET /api/tax-tags`                      | Every tax tag (`TaxTag[]`: `category_id`, `code`)                                                                                                                                                                                                                                                                                                 |
+| `GET /api/tax-sections`                  | Every tax section (`TaxSection[]`), ordered by code; never the built-in `St-0`                                                                                                                                                                                                                                                                    |
+| `POST /api/tax-sections`                 | Create a section (`TaxSection`, zod-validated); `201` with the section as stored; `400` invalid body or code; `409` `{ error: 'duplicate' }` when the code is taken                                                                                                                                                                               |
+| `PUT /api/tax-sections/:code`            | Change a section (`TaxSectionUpdateRequest`: `expected`, `next`; a new code carries its tags along); `204`; `400` invalid body or `:code` ≠ `expected.code`; `409` `conflict` (changed or gone) or `duplicate`                                                                                                                                    |
+| `DELETE /api/tax-sections/:code`         | Delete a section; `204`; `404` no such section; `409` `{ error: 'in-use' }` while a category is tagged with it                                                                                                                                                                                                                                    |
 
 ### Shared contracts
 
@@ -155,12 +157,7 @@ the map once at app startup, exposes `densityFor(view)` and `save(view, density)
 `<html>`. The density is picked in the ribbon's View tab via `<app-density-picker [view]>`; each
 `<app-data-table>` takes it as its `density` input (see the data table paragraph above).
 
-**Tax profile** (third setting): `TaxProfile` holds the answer per `TaxSituation` (`employed |
-children | household | rental | donations`, `null` = not answered) and `hintDismissedYear`. The
-backend default (`DEFAULT_TAX_PROFILE`) is the only default; frontend `TaxProfileService.profile` is
-`null` until loaded.
-
-All settings services (date presets, table densities, tax profile) share the load-once / serial-write-queue /
+All settings services (date presets, table densities) share the load-once / serial-write-queue /
 confirmed-state-only logic via `UserSettingChannel<T>` (`core/services/user-setting-channel.ts`): reads
 and writes go through these services, which load settings once at app startup, queue all writes through a single serial
 channel (so the server receives them in order), and only surface confirmed state to the UI
@@ -251,8 +248,10 @@ table. Its ribbon has a Filter band (search, driving the tree through `quickFilt
 band (expand/collapse-all and the density for view `categories`). Every column is rendered as stored: `type` is
 translated (`0` = expense, `1` = income, `2` or `NULL` = any), `konto_id` is resolved to the
 account label via `/api/accounts`, and the `flags` column's bit 1 (`FLAG_SKIP_REPORTS = 1`)
-indicates "skip in reports". The `color` column is rendered via `toCssColor`. Right-clicking a category and choosing Edit opens the
-category dialog (below). The page has its own `CategoriesStore` (`features/categories/categories.store.ts`),
+indicates "skip in reports". The `color` column is rendered via `toCssColor`. The "Tax section" column shows each category's effective
+tax section (inherited ones muted, "Not tax-relevant" for `St-0`). Right-clicking a category and choosing
+Edit opens the category dialog (below); the ribbon's "Tax sections…" button opens the tax sections
+dialog. The page has its own `CategoriesStore` (`features/categories/categories.store.ts`),
 which also loads the transactions for the dialog's preview.
 
 ### Category dialog
@@ -260,7 +259,8 @@ which also loads the transactions for the dialog's preview.
 `CategoryEditDialogComponent` (`features/categories/edit-dialog/`), opened by `CategoryDialogs`, creates
 or edits a category and covers every `umsatztyp` column: name, parent (`<app-category-picker>`, which
 excludes the category itself and its descendants), pattern with the regex flag, type, account, account
-category, number, colour, comment and the skip-in-reports flag.
+category, number, colour, comment, the skip-in-reports flag, and the tax section ("As parent category",
+a section, or "Not tax-relevant", with the chosen section's guidance underneath).
 
 A live preview table (`<app-data-table>`) lists every transaction that the draft's pattern, type and
 account scope match, updated as you type (debounced 300 ms). Its status column shows "assigned here",
@@ -279,40 +279,41 @@ transaction (`categoryDraftFrom`, `features/categories/category-draft.ts`): name
 counterparty name with commas escaped, and the type follows the amount's sign. On the by-category tab,
 category nodes (not "Unassigned") offer Edit.
 
-### Tax return
-
-A separate feature for the German income tax return (`/:locale/tax-return`, own nav entry,
-`features/tax-return/`). It does not use the transactions export. `/tax-return` picks the year and
-the accounts; `/tax-return/:year` is a four-step wizard: ① mark the tax-relevant categories (life
-situation questions, suggested tags, the category tree with a tax-section picker), ② the year's
-unassigned transactions (assign, create or edit categories with the existing dialogs), ③ check
-(refunds in tagged categories, sections that should have entries but are empty, year over year),
-④ result (summary per form, numbered receipt list, PDF via `tax-pdf.ts`). The shell provides its own
-`TransactionsStore`, `TransactionDialogs`, `CategoryDialogs` and `TaxTagDialogs`.
+### Tax sections and tags
 
 **Tax tags live in the app-owned `hf_category_tax_tag` table**, one row per tagged category, never
 in a Hibiscus column. (`umsatztyp.nummer` was ruled out: it is the first key of Hibiscus's matching
 order, `ORDER BY COALESCE(nummer,''), name`, so a tag there moved pattern-matched payments out of the
-tagged category, in this app and in the desktop client.) The codes are `St-WK`, `St-VA`, `St-SA`,
-`St-AB`, `St-HH`, `St-KI`, `St-V`, and `St-0` (not tax-relevant, stops inheritance), declared once as
-`TaxTagCode` in `@hibiscus-frontend/shared/contracts/tax-tags`; the section metadata is in
-`core/tax/tax-sections.ts`. A category without its own tag inherits its nearest tagged ancestor's.
+tagged category, in this app and in the desktop client.) A tag is a section code or the built-in
+`St-0` (not tax-relevant, stops inheritance); a category without its own tag inherits its nearest
+tagged ancestor's (`effectiveTaxSection`, `core/tax/tax-sections.ts`).
+
+**Sections are the user's data** in `hf_tax_section`: code, name, form and four guidance texts
+(what belongs, what does not, receipts to keep, a note), declared once as `TaxSection` in
+`@hibiscus-frontend/shared/contracts/tax-tags`. Startup seeds the German defaults
+(`packages/backend/src/tax/tax-section-defaults.ts`) exactly once — when the table is created, or when
+the old one-column table is migrated — so a deleted section never comes back. The `St-0` row always
+exists as the foreign key target and is never served, edited or deleted. The sections are maintained in
+the tax sections dialog (`features/categories/tax-section-dialog/`) through `TaxSectionsService`
+(`core/services/tax-sections.service.ts`) and `/api/tax-sections`.
 
 Integrity is enforced by the DB: `category_id` references `umsatztyp(id)` with `ON UPDATE CASCADE`
 (the tag follows a changed id) and `ON DELETE CASCADE` (a deleted category takes its tag along), and
-`code` references `hf_tax_section(code)`, which startup seeds from `TAX_TAG_CODES`
-(`packages/backend/src/tax/tax-tag-codes.ts`) and never prunes. Startup fails if the tables or keys
-cannot be created.
+`code` references `hf_tax_section(code)` with `ON UPDATE CASCADE` (renaming a section's code carries
+its tags along) and `ON DELETE RESTRICT` (a section in use cannot be deleted; the API answers `409`
+`in-use`). Startup fails if the tables or keys cannot be created.
 
-Saves go through `TaxTagsService` (`core/services/tax-tags.service.ts`) and `PUT /api/tax-tags`:
-each change carries the tag it started from (`expected`); the backend applies all changes in one
-transaction in ascending `category_id` order, or none. A changed tag, a duplicate first insert or a
-deleted category answers `409` with `conflictIds`; the service then reloads the tags and the wizard
-keeps the user's draft.
+A tag is saved only together with its category, in the category dialog: `POST`/`PUT
+/api/categories` write the category and the tag in one DB transaction, and the update is guarded by
+the tag the dialog opened with (`taxTag.expected`, read `FOR UPDATE`), so a tag changed elsewhere
+answers `409` and nothing is saved. After a save the dialog updates `TaxTagsService`
+(`core/services/tax-tags.service.ts`, read via `GET /api/tax-tags`).
 
-Entry points outside the feature: the categories page has a "Tax section" column (effective
-section, inherited ones muted) and a "Tax section…" row action. The accounts page shows a dismissible
-hint from 1 January to 31 July for the previous year.
+**Export filter.** The by-category export can be limited to chosen tax sections ("Only tax-relevant
+categories" in the export dialog): `filterReportByTaxSections` (`features/transactions/by-category/
+category-report.ts`) keeps the transactions of categories whose effective section is chosen, plus
+their ancestor category rows for the tree, and drops the unassigned node; the chosen sections are
+named in the export's scope lines.
 
 ## Ribbon toolbar
 

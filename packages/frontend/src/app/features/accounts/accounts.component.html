@@ -1,25 +1,5 @@
 <h1 class="visually-hidden">{{ i18n.t('accounts.title') }}</h1>
 
-@if (showTaxHint()) {
-  <div class="tax-hint" role="status">
-    <div class="tax-hint__text">
-      <strong class="tax-hint__title">{{ i18n.t('tax.hint.title', { year: lastYear }) }}</strong>
-      <span class="tax-hint__detail">{{ i18n.t('tax.hint.text') }}</span>
-    </div>
-    <a class="tax-hint__action" [routerLink]="['/', locale(), 'tax-return', lastYear]">{{
-      i18n.t('tax.hint.start', { year: lastYear })
-    }}</a>
-    <button
-      type="button"
-      class="tax-hint__dismiss"
-      [attr.aria-label]="i18n.t('tax.hint.dismissLabel')"
-      (click)="dismissTaxHint()"
-    >
-      {{ i18n.t('tax.hint.dismiss') }}
-    </button>
-  </div>
-}
-
 @if (loading()) {
   <p class="status-text">{{ i18n.t('accounts.loading') }}</p>
 } @else if (error()) {

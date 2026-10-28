@@ -12,6 +12,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import type { TaxSection } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
 import { from, switchMap, tap, timer } from 'rxjs';
 import type { Locale } from '../../../../core/models/locale.model';
@@ -165,6 +166,8 @@ export class ExportDialogComponent {
 
   protected readonly format = signal<ExportFormat>(this.data.initial.format);
   private readonly depth = signal<ExportDepth>(this.data.initial.depth);
+  /** The chosen tax section codes, `null` = not limited; see {@link effectiveTaxSections}. */
+  private readonly taxSelection = signal<readonly string[] | null>(this.data.initial.taxSections);
   protected readonly paper = signal<PdfPaperFormat>(this.data.initial.page.format);
   protected readonly orientation = signal<PdfOrientation>(this.data.initial.page.orientation);
   protected readonly fit = signal<PdfFit>(this.data.initial.page.fit);
@@ -191,6 +194,37 @@ export class ExportDialogComponent {
     clampDepth(this.depth(), this.data.source.maxDepth?.() ?? null),
   );
 
+  /** The sections on offer; `null` while they load (and for the list, which has none). */
+  protected readonly taxSectionChoices: Signal<readonly TaxSection[] | null> = computed(
+    (): readonly TaxSection[] | null => this.data.source.taxSections?.() ?? null,
+  );
+
+  /** The chosen codes without those that no longer exist once the sections are loaded. */
+  private readonly effectiveTaxSections: Signal<readonly string[] | null> = computed(
+    (): readonly string[] | null => {
+      const selection: readonly string[] | null = this.taxSelection();
+      const choices: readonly TaxSection[] | null = this.taxSectionChoices();
+      if (selection === null || choices === null) return selection;
+      return selection.filter((code: string): boolean =>
+        choices.some((section: TaxSection): boolean => section.code === code),
+      );
+    },
+  );
+
+  protected readonly taxOnly: Signal<boolean> = computed(
+    (): boolean => this.effectiveTaxSections() !== null,
+  );
+
+  /** The tax filter is on but no section is ticked: nothing to export. */
+  protected readonly noTaxSection: Signal<boolean> = computed(
+    (): boolean => this.effectiveTaxSections()?.length === 0,
+  );
+
+  /** Export waits for the sections (the filter needs them) and for at least one ticked section. */
+  protected readonly exportBlocked: Signal<boolean> = computed(
+    (): boolean => (!this.isList && this.taxSectionChoices() === null) || this.noTaxSection(),
+  );
+
   protected readonly depthIndex: Signal<number> = computed((): number => {
     const index: number = this.depthSteps().indexOf(this.effectiveDepth());
     if (index < 0 && !this.isList) throw new Error(`depth ${this.effectiveDepth()} has no step`);
@@ -204,12 +238,13 @@ export class ExportDialogComponent {
   protected readonly options: Signal<ExportOptions> = computed((): ExportOptions => ({
     format: this.format(),
     depth: this.effectiveDepth(),
+    taxSections: this.effectiveTaxSections(),
     page: { format: this.paper(), orientation: this.orientation(), fit: this.fit() },
   }));
 
   /** The document as the preview shows it; Export builds its own at click time. */
   private readonly document: Signal<ExportDocument> = computed((): ExportDocument =>
-    this.data.source.build(this.effectiveDepth()),
+    this.data.source.build(this.options()),
   );
 
   protected readonly rowCount: Signal<number> = computed((): number => this.document().rows.length);
@@ -287,6 +322,39 @@ export class ExportDialogComponent {
     this.depth.set(step);
   }
 
+  protected onTaxOnlyChange(event: Event): void {
+    const choices: readonly TaxSection[] | null = this.taxSectionChoices();
+    if (choices === null) throw new Error('tax sections are not loaded');
+    this.taxSelection.set(
+      this.checkboxOf(event).checked ? choices.map((section: TaxSection) => section.code) : null,
+    );
+  }
+
+  protected isTaxSectionChosen(code: string): boolean {
+    return this.effectiveTaxSections()?.includes(code) ?? false;
+  }
+
+  protected onTaxSectionChange(code: string, event: Event): void {
+    const current: readonly string[] | null = this.effectiveTaxSections();
+    const choices: readonly TaxSection[] | null = this.taxSectionChoices();
+    if (current === null || choices === null) throw new Error('the tax filter is off');
+    const chosen: boolean = this.checkboxOf(event).checked;
+    // In the sections' order, so the file names them the same way however they were ticked.
+    this.taxSelection.set(
+      choices
+        .map((section: TaxSection): string => section.code)
+        .filter((candidate: string): boolean =>
+          candidate === code ? chosen : current.includes(candidate),
+        ),
+    );
+  }
+
+  private checkboxOf(event: Event): HTMLInputElement {
+    const target: EventTarget | null = event.target;
+    if (!(target instanceof HTMLInputElement)) throw new Error('expected a checkbox event');
+    return target;
+  }
+
   protected onPaperChange(event: Event): void {
     const target: EventTarget | null = event.target;
     if (!(target instanceof HTMLSelectElement)) throw new Error('expected a select change event');
@@ -305,11 +373,11 @@ export class ExportDialogComponent {
   protected async download(): Promise<void> {
     // A second click before the disabled button repaints.
     if (this.busy()) return;
+    if (this.exportBlocked())
+      throw new Error('the export is blocked: sections missing or none chosen');
     const options: ExportOptions = this.options();
     const fileName: string = this.fileName();
-    const doc: ExportDocument = untracked((): ExportDocument =>
-      this.data.source.build(options.depth),
-    );
+    const doc: ExportDocument = untracked((): ExportDocument => this.data.source.build(options));
     this.busy.set(true);
     this.dialogRef.disableClose = true;
     try {

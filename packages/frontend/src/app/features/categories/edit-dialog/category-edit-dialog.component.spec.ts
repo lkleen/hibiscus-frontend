@@ -8,7 +8,10 @@ import type {
   CategoryRow,
 } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
-import { Subject } from 'rxjs';
+import type { TaxSection, TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import { EMPTY, Subject } from 'rxjs';
+import { TaxSectionsService } from '../../../core/services/tax-sections.service';
+import { TaxTagsService } from '../../../core/services/tax-tags.service';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../../core/utils/testing/mutation-observer-mock';
 import { account, transaction } from '../../transactions/testing/transaction-fixture';
@@ -19,6 +22,18 @@ import {
   type CategorySave,
 } from './category-edit-dialog.model';
 
+function section(code: string, name: string): TaxSection {
+  return {
+    code,
+    name,
+    form: null,
+    belongs: `${name} belongs`,
+    excludes: null,
+    receipts: null,
+    note: null,
+  };
+}
+
 const NEW_FIELDS: CategoryEditableFields = editableFieldsOf(categoryRow({ name: 'Shop' }));
 
 describe('CategoryEditDialogComponent', () => {
@@ -28,12 +43,29 @@ describe('CategoryEditDialogComponent', () => {
   let saves: Subject<CategoryRow>;
   let saveCalls: CategorySave[];
   let categories: WritableSignal<readonly CategoryRow[]>;
+  let tags: WritableSignal<ReadonlyMap<number, TaxTagCode>>;
+  let applySaved: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     // Fake from the start: the debounce reuses the timer of its first emission.
     vi.useFakeTimers();
     installMutationObserverMock();
-    TestBed.configureTestingModule({ providers: [CategoryDialogs] });
+    tags = signal<ReadonlyMap<number, TaxTagCode>>(new Map<number, TaxTagCode>());
+    applySaved = vi.fn();
+    const sections: readonly TaxSection[] = [
+      section('St-VA', 'Insurance'),
+      section('St-WK', 'Work costs'),
+    ];
+    TestBed.configureTestingModule({
+      providers: [
+        CategoryDialogs,
+        { provide: TaxTagsService, useValue: { tags, load: () => EMPTY, applySaved } },
+        {
+          provide: TaxSectionsService,
+          useValue: { sections: signal(sections), load: () => EMPTY },
+        },
+      ],
+    });
     service = TestBed.inject(CategoryDialogs);
     appRef = TestBed.inject(ApplicationRef);
     saves = new Subject<CategoryRow>();
@@ -198,13 +230,89 @@ describe('CategoryEditDialogComponent', () => {
     appRef.tick();
     const fields: CategoryEditableFields = editableFieldsOf(category);
     expect(saveCalls).toEqual([
-      { kind: 'update', category, next: { ...fields, name: 'Groceries 2' } },
+      {
+        kind: 'update',
+        category,
+        next: { ...fields, name: 'Groceries 2' },
+        taxTag: { expected: null, next: null },
+      },
     ]);
     expect(button('Apply').disabled).toBe(true);
 
     saves.next(category);
     await settle();
     expect(document.querySelector('app-category-edit-dialog')).toBeNull();
+  });
+
+  function taxSelect(): HTMLSelectElement {
+    const el: HTMLSelectElement | null =
+      dialog().querySelector<HTMLSelectElement>('#category-edit-tax');
+    if (!el) throw new Error('tax select not rendered');
+    return el;
+  }
+
+  function pickTax(value: string): void {
+    const el: HTMLSelectElement = taxSelect();
+    el.value = value;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    appRef.tick();
+  }
+
+  it('lets an edit that only changes the tax section be saved, expecting the opened tag', async () => {
+    tags.set(new Map<number, TaxTagCode>([[2, 'St-VA']]));
+    const category: CategoryRow = categoryRow({ id: 2, name: 'Food', parent_id: 1, flags: null });
+    await openEdit(category);
+
+    expect(taxSelect().value).toBe('St-VA');
+    expect(button('Apply').disabled).toBe(true);
+    pickTax('St-WK');
+    expect(button('Apply').disabled).toBe(false);
+    expect(dialog().querySelector('app-tax-description')?.textContent).toContain(
+      'Work costs belongs',
+    );
+
+    // A change made elsewhere meanwhile must not move `expected`.
+    tags.set(new Map<number, TaxTagCode>([[2, 'St-0']]));
+    button('Apply').click();
+    appRef.tick();
+    expect(saveCalls[0]).toMatchObject({ taxTag: { expected: 'St-VA', next: 'St-WK' } });
+
+    saves.next(category);
+    await settle();
+    expect(applySaved).toHaveBeenCalledWith(2, 'St-WK');
+  });
+
+  it('sends the chosen tax section on create and records it under the new id', async () => {
+    await openCreate();
+
+    pickTax('St-0');
+    button('Create').click();
+    appRef.tick();
+    expect(saveCalls[0]).toMatchObject({ kind: 'create', taxTag: 'St-0' });
+
+    saves.next(categoryRow({ id: 9, name: 'Shop' }));
+    await settle();
+    expect(applySaved).toHaveBeenCalledWith(9, 'St-0');
+  });
+
+  it('labels the inherit option with what the chosen parent resolves to', async () => {
+    tags.set(new Map<number, TaxTagCode>([[1, 'St-VA']]));
+    await openCreate();
+
+    const inheritText = (): string => taxSelect().options[0].textContent?.trim() ?? '';
+    expect(inheritText()).toBe('As parent category: none');
+    // Pick the parent through the picker's selection signal: the first tree item is "Living".
+    const item: HTMLElement | undefined = Array.from(
+      dialog().querySelectorAll<HTMLElement>('app-category-picker *'),
+    ).find((el: HTMLElement) => el.children.length === 0 && el.textContent?.trim() === 'Living');
+    if (!item) throw new Error('parent option not rendered');
+    item.click();
+    appRef.tick();
+
+    expect(inheritText()).toContain('St-VA');
+    expect(dialog().querySelector('app-tax-description')?.textContent).toContain(
+      'Insurance belongs',
+    );
   });
 
   it('excludes the category and its subtree from the parent choices', async () => {

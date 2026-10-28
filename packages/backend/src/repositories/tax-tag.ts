@@ -1,27 +1,65 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type {
+  TaxSection,
   TaxTag,
-  TaxTagChange,
   TaxTagCode,
-  TaxTagsUpdateRequest,
+  TaxTagUpdate,
 } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { getPool } from '../db/pool';
-import { TAX_TAG_CODES } from '../tax/tax-tag-codes';
+import { DEFAULT_TAX_SECTIONS, TAX_NOT_RELEVANT_SECTION } from '../tax/tax-section-defaults';
 
 interface TaxTagRow extends RowDataPacket {
   category_id: number;
   code: TaxTagCode;
 }
 
-export type TaxTagApplyResult = { result: 'saved' } | { result: 'conflict'; conflictIds: number[] };
+interface ColumnNameRow extends RowDataPacket {
+  column_name: string;
+}
 
-/** MySQL error codes that mean "someone else changed this category's tag / deleted the category". */
+/** Parameters of `applyTaxTagUpdate`. */
+export interface TaxTagUpdateParams {
+  readonly categoryId: number;
+  readonly update: TaxTagUpdate;
+}
+
+/** MySQL error code: the category got tagged by someone else in the meantime. */
 const DUPLICATE_ENTRY_CODE = 'ER_DUP_ENTRY';
-const NO_REFERENCED_ROW_CODE = 'ER_NO_REFERENCED_ROW_2';
+
+/** The `hf_tax_section` columns in `TaxSection` order (the `INSERT` list). */
+const SECTION_COLUMNS: (keyof TaxSection)[] = [
+  'code',
+  'name',
+  'form',
+  'belongs',
+  'excludes',
+  'receipts',
+  'note',
+];
+
+/** Inserts the sections, overwriting the texts of codes that already exist. */
+async function upsertSections(sections: readonly TaxSection[]): Promise<void> {
+  await getPool().query(
+    `INSERT INTO hf_tax_section (${SECTION_COLUMNS.join(', ')}) VALUES ?
+     ON DUPLICATE KEY UPDATE ${SECTION_COLUMNS.filter((c: string) => c !== 'code')
+       .map((c: string) => `${c} = VALUES(${c})`)
+       .join(', ')}`,
+    [
+      sections.map((section: TaxSection) =>
+        SECTION_COLUMNS.map((c: keyof TaxSection) => section[c]),
+      ),
+    ],
+  );
+}
 
 /**
- * Create the app-owned tax tag tables (prefix `hf_`, clear of Hibiscus's own schema) and seed the
- * section codes (`INSERT IGNORE`, never deletes).
+ * Create the app-owned tax tag tables (prefix `hf_`, clear of Hibiscus's own schema).
+ *
+ * `hf_tax_section` is user-maintained, so it is seeded exactly once: when the table does not exist
+ * it is created with the default sections, and when it still has its old one-column form the text
+ * columns are added and the defaults filled in. Later startups never touch its rows, apart from
+ * making sure the built-in `St-0` row (the foreign key target for "not tax-relevant") exists; a
+ * section the user deleted never comes back.
  *
  * Tags live in their own table, not in `umsatztyp.nummer`, because writing them into a Hibiscus
  * column would change Hibiscus's category matching order. The foreign keys keep a tag attached when
@@ -30,9 +68,42 @@ const NO_REFERENCED_ROW_CODE = 'ER_NO_REFERENCED_ROW_2';
  */
 export async function ensureTaxTagTables(): Promise<void> {
   const pool = getPool();
-  await pool.query(
-    `CREATE TABLE IF NOT EXISTS hf_tax_section (code VARCHAR(16) NOT NULL PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  const [columns] = await pool.query<ColumnNameRow[]>(
+    `SELECT column_name AS column_name FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'hf_tax_section'`,
   );
+  const names: Set<string> = new Set<string>(columns.map((c: ColumnNameRow) => c.column_name));
+  if (names.size === 0) {
+    await pool.query(`
+      CREATE TABLE hf_tax_section (
+        code VARCHAR(16) NOT NULL PRIMARY KEY,
+        name VARCHAR(200) NOT NULL,
+        form VARCHAR(200) NULL,
+        belongs TEXT NULL,
+        excludes TEXT NULL,
+        receipts TEXT NULL,
+        note TEXT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await upsertSections([...DEFAULT_TAX_SECTIONS, TAX_NOT_RELEVANT_SECTION]);
+  } else if (!names.has('name')) {
+    await pool.query(`
+      ALTER TABLE hf_tax_section
+        ADD COLUMN name VARCHAR(200) NOT NULL DEFAULT '',
+        ADD COLUMN form VARCHAR(200) NULL,
+        ADD COLUMN belongs TEXT NULL,
+        ADD COLUMN excludes TEXT NULL,
+        ADD COLUMN receipts TEXT NULL,
+        ADD COLUMN note TEXT NULL
+    `);
+    await upsertSections([...DEFAULT_TAX_SECTIONS, TAX_NOT_RELEVANT_SECTION]);
+    await pool.query('ALTER TABLE hf_tax_section MODIFY name VARCHAR(200) NOT NULL');
+  } else {
+    await pool.query('INSERT IGNORE INTO hf_tax_section (code, name) VALUES (?, ?)', [
+      TAX_NOT_RELEVANT_SECTION.code,
+      TAX_NOT_RELEVANT_SECTION.name,
+    ]);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS hf_category_tax_tag (
       category_id INT(10) NOT NULL PRIMARY KEY,
@@ -42,9 +113,6 @@ export async function ensureTaxTagTables(): Promise<void> {
       CONSTRAINT fk_hf_tax_tag_section FOREIGN KEY (code) REFERENCES hf_tax_section (code) ON UPDATE CASCADE ON DELETE RESTRICT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
-  await pool.query('INSERT IGNORE INTO hf_tax_section (code) VALUES ?', [
-    TAX_TAG_CODES.map((code: TaxTagCode): string[] => [code]),
-  ]);
 }
 
 /** Every tagged category, ordered by category id. */
@@ -55,76 +123,58 @@ export async function listTaxTags(): Promise<TaxTag[]> {
   return rows.map((row: TaxTagRow): TaxTag => ({ category_id: row.category_id, code: row.code }));
 }
 
-function isErrorWithCode(error: unknown, code: string): boolean {
-  return (error as { code?: unknown }).code === code;
-}
-
-/** Runs one change guarded by its `expected` tag; returns whether it matched exactly one row. */
-async function applyChange(connection: PoolConnection, change: TaxTagChange): Promise<boolean> {
-  const { category_id, expected, next } = change;
+/** Runs the INSERT / UPDATE / DELETE that turns `expected` into `next`; they differ. */
+async function writeChange(connection: PoolConnection, params: TaxTagUpdateParams): Promise<void> {
+  const { categoryId, update } = params;
   let result: ResultSetHeader;
-  try {
-    if (expected === null) {
-      [result] = await connection.query<ResultSetHeader>(
-        'INSERT INTO hf_category_tax_tag (category_id, code) VALUES (?, ?)',
-        [category_id, next],
-      );
-    } else if (next === null) {
-      [result] = await connection.query<ResultSetHeader>(
-        'DELETE FROM hf_category_tax_tag WHERE category_id = ? AND code = ?',
-        [category_id, expected],
-      );
-    } else {
-      [result] = await connection.query<ResultSetHeader>(
-        'UPDATE hf_category_tax_tag SET code = ? WHERE category_id = ? AND code = ?',
-        [next, category_id, expected],
-      );
-    }
-  } catch (error: unknown) {
-    // Already tagged by someone else, or the category is gone: a conflict, not a failure.
-    if (isErrorWithCode(error, DUPLICATE_ENTRY_CODE)) return false;
-    if (isErrorWithCode(error, NO_REFERENCED_ROW_CODE)) return false;
-    throw error;
-  }
-  if (result.affectedRows === 0) return false;
-  if (result.affectedRows !== 1) {
-    throw new Error(
-      `Changing the tax tag of category ${category_id} affected ${result.affectedRows} rows`,
+  if (update.expected === null) {
+    [result] = await connection.query<ResultSetHeader>(
+      'INSERT INTO hf_category_tax_tag (category_id, code) VALUES (?, ?)',
+      [categoryId, update.next],
+    );
+  } else if (update.next === null) {
+    [result] = await connection.query<ResultSetHeader>(
+      'DELETE FROM hf_category_tax_tag WHERE category_id = ? AND code = ?',
+      [categoryId, update.expected],
+    );
+  } else {
+    [result] = await connection.query<ResultSetHeader>(
+      'UPDATE hf_category_tax_tag SET code = ? WHERE category_id = ? AND code = ?',
+      [update.next, categoryId, update.expected],
     );
   }
-  return true;
+  if (result.affectedRows !== 1) {
+    throw new Error(
+      `Changing the tax tag of category ${categoryId} affected ${result.affectedRows} rows`,
+    );
+  }
 }
 
 /**
- * Applies many tag changes in one DB transaction, all or nothing. Each change is guarded by the tag
- * it expects (null = untagged); a change that no longer matches is collected as a conflict and
- * rolls everything back.
+ * Changes one category's tag inside the caller's transaction, guarded by `update.expected`
+ * (null = untagged). The stored tag is read with `FOR UPDATE` and compared, so `expected === next`
+ * is verified too; writes happen only when the two differ. Returns whether the stored tag matched
+ * `expected`. An unknown section code throws the foreign key error (`fk_hf_tax_tag_section`) for the
+ * caller to answer as a 400.
  */
-export async function applyTaxTagChanges(
-  request: TaxTagsUpdateRequest,
-): Promise<TaxTagApplyResult> {
-  const connection: PoolConnection = await getPool().getConnection();
+export async function applyTaxTagUpdate(
+  connection: PoolConnection,
+  params: TaxTagUpdateParams,
+): Promise<boolean> {
+  const { categoryId, update } = params;
+  const [rows] = await connection.query<TaxTagRow[]>(
+    'SELECT category_id, code FROM hf_category_tax_tag WHERE category_id = ? FOR UPDATE',
+    [categoryId],
+  );
+  const stored: TaxTagCode | null = rows[0]?.code ?? null;
+  if (stored !== update.expected) return false;
+  if (update.expected === update.next) return true;
   try {
-    await connection.beginTransaction();
-    const conflictIds: number[] = [];
-    // Ascending id order, so two overlapping requests lock rows in the same order and cannot
-    // deadlock each other.
-    const changes: TaxTagChange[] = [...request.changes].sort(
-      (a: TaxTagChange, b: TaxTagChange): number => a.category_id - b.category_id,
-    );
-    for (const change of changes) {
-      if (!(await applyChange(connection, change))) conflictIds.push(change.category_id);
-    }
-    if (conflictIds.length > 0) {
-      await connection.rollback();
-      return { result: 'conflict', conflictIds };
-    }
-    await connection.commit();
-    return { result: 'saved' };
+    await writeChange(connection, params);
   } catch (error: unknown) {
-    await connection.rollback();
+    // Another transaction tagged the category between our read and write: a conflict.
+    if ((error as { code?: unknown }).code === DUPLICATE_ENTRY_CODE) return false;
     throw error;
-  } finally {
-    connection.release();
   }
+  return true;
 }

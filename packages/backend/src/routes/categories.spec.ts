@@ -1,6 +1,7 @@
 import express, { Express } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  CategoryCreateRequest,
   CategoryEditableFields,
   CategoryRow,
   CategoryUpdateRequest,
@@ -37,7 +38,12 @@ const fields: CategoryEditableFields = {
   konto_kategorie: null,
   flags: null,
 };
-const validBody: CategoryUpdateRequest = { expected: fields, next: { ...fields, name: 'Meals' } };
+const validBody: CategoryUpdateRequest = {
+  expected: fields,
+  next: { ...fields, name: 'Meals' },
+  taxTag: { expected: null, next: 'St-WK' },
+};
+const createBody: CategoryCreateRequest = { ...fields, taxTag: null };
 
 async function send(method: string, path: string, body: unknown): Promise<HttpResponse> {
   const response: Response = await fetch(`${baseUrl}${path}`, {
@@ -106,20 +112,20 @@ describe('categories router POST /', () => {
     const created: CategoryRow = { id: 5, ...fields };
     vi.mocked(createCategory).mockResolvedValueOnce(created);
 
-    const response: HttpResponse = await send('POST', '/categories', fields);
+    const response: HttpResponse = await send('POST', '/categories', createBody);
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual(created);
-    expect(createCategory).toHaveBeenCalledWith(fields);
+    expect(createCategory).toHaveBeenCalledWith(createBody);
   });
 
   it.each([
-    ['empty name', { ...fields, name: '   ' }],
-    ['overlong nummer', { ...fields, nummer: '123456' }],
-    ['bad color', { ...fields, color: '256,0,0' }],
-    ['bad umsatztyp', { ...fields, umsatztyp: 3 }],
-    ['unknown key', { ...fields, id: 1 }],
-    ['non-positive parent', { ...fields, parent_id: 0 }],
+    ['empty name', { ...createBody, name: '   ' }],
+    ['overlong nummer', { ...createBody, nummer: '123456' }],
+    ['bad color', { ...createBody, color: '256,0,0' }],
+    ['bad umsatztyp', { ...createBody, umsatztyp: 3 }],
+    ['unknown key', { ...createBody, id: 1 }],
+    ['non-positive parent', { ...createBody, parent_id: 0 }],
   ])('returns 400 for %s', async (_label: string, body: unknown) => {
     const response: HttpResponse = await send('POST', '/categories', body);
 
@@ -130,23 +136,43 @@ describe('categories router POST /', () => {
   it('trims the name', async () => {
     vi.mocked(createCategory).mockResolvedValueOnce({ id: 5, ...fields });
 
-    await send('POST', '/categories', { ...fields, name: '  Food ' });
+    await send('POST', '/categories', { ...createBody, name: '  Food ' });
 
-    expect(createCategory).toHaveBeenCalledWith(fields);
+    expect(createCategory).toHaveBeenCalledWith(createBody);
   });
 
   it('returns 400 for an unknown parent or account', async () => {
     vi.mocked(createCategory).mockRejectedValueOnce(fkError('fk_umsatztyp_umsatztyp'));
-    expect((await send('POST', '/categories', fields)).body).toEqual({ error: 'Unknown parent' });
+    expect((await send('POST', '/categories', createBody)).body).toEqual({
+      error: 'Unknown parent',
+    });
 
     vi.mocked(createCategory).mockRejectedValueOnce(fkError('fk_umsatztyp_konto'));
-    expect((await send('POST', '/categories', fields)).body).toEqual({ error: 'Unknown account' });
+    expect((await send('POST', '/categories', createBody)).body).toEqual({
+      error: 'Unknown account',
+    });
+  });
+
+  it('passes a tax tag on and rejects a malformed or missing one', async () => {
+    vi.mocked(createCategory).mockResolvedValue({ id: 5, ...fields });
+
+    expect((await send('POST', '/categories', { ...createBody, taxTag: 'St-0' })).status).toBe(201);
+    expect(createCategory).toHaveBeenCalledWith({ ...createBody, taxTag: 'St-0' });
+    expect((await send('POST', '/categories', { ...createBody, taxTag: 'St X' })).status).toBe(400);
+    expect((await send('POST', '/categories', fields)).status).toBe(400);
+  });
+
+  it('returns 400 for an unknown tax section', async () => {
+    vi.mocked(createCategory).mockRejectedValueOnce(fkError('fk_hf_tax_tag_section'));
+    expect((await send('POST', '/categories', createBody)).body).toEqual({
+      error: 'Unknown tax section',
+    });
   });
 
   it('returns 500 for other errors', async () => {
     vi.mocked(createCategory).mockRejectedValueOnce(new Error('boom'));
 
-    expect((await send('POST', '/categories', fields)).status).toBe(500);
+    expect((await send('POST', '/categories', createBody)).status).toBe(500);
   });
 });
 
@@ -194,6 +220,21 @@ describe('categories router PUT /:id', () => {
     expect((await send('PUT', '/categories/42', { next: fields })).status).toBe(400);
     expect((await send('PUT', '/categories/42', { ...validBody, extra: 1 })).status).toBe(400);
     expect(updateCategory).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for an unknown tax section', async () => {
+    vi.mocked(updateCategory).mockRejectedValueOnce(fkError('fk_hf_tax_tag_section'));
+    expect((await send('PUT', '/categories/42', validBody)).body).toEqual({
+      error: 'Unknown tax section',
+    });
+  });
+
+  it('returns 400 when the tax tag is missing', async () => {
+    const withoutTag: Pick<CategoryUpdateRequest, 'expected' | 'next'> = {
+      expected: validBody.expected,
+      next: validBody.next,
+    };
+    expect((await send('PUT', '/categories/42', withoutTag)).status).toBe(400);
   });
 
   it('returns 400 for an unknown parent or account', async () => {

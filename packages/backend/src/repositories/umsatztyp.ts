@@ -6,6 +6,7 @@ import type {
   CategoryUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/categories';
 import { getPool } from '../db/pool';
+import { applyTaxTagUpdate } from './tax-tag';
 
 type CategoryRowPacket = CategoryRow & RowDataPacket;
 
@@ -43,21 +44,41 @@ export const CATEGORY_EDITABLE_COLUMNS: (keyof CategoryEditableFields)[] = CATEG
   (column: keyof CategoryRow): column is keyof CategoryEditableFields => column !== 'id',
 );
 
-/** Inserts a row and returns it as stored (the DB may normalise values). */
+/**
+ * Inserts a row and, when `taxTag` is set, its tax tag, in one DB transaction; returns the row as
+ * stored (the DB may normalise values). A foreign key violation (unknown `parent_id` / `konto_id` /
+ * tax section) is thrown to the caller after the rollback.
+ */
 export async function createCategory(fields: CategoryCreateRequest): Promise<CategoryRow> {
-  const pool = getPool();
-  const [result] = await pool.query<ResultSetHeader>(
-    `INSERT INTO umsatztyp (${CATEGORY_EDITABLE_COLUMNS.join(', ')})
-     VALUES (${CATEGORY_EDITABLE_COLUMNS.map(() => '?').join(', ')})`,
-    CATEGORY_EDITABLE_COLUMNS.map((column: keyof CategoryEditableFields) => fields[column]),
-  );
-  const [rows] = await pool.query<CategoryRowPacket[]>(
-    `SELECT ${CATEGORY_COLUMNS.join(', ')} FROM umsatztyp WHERE id = ?`,
-    [result.insertId],
-  );
-  const created: CategoryRow | undefined = rows[0];
-  if (!created) throw new Error(`Created umsatztyp ${result.insertId} could not be read back`);
-  return created;
+  const connection: PoolConnection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query<ResultSetHeader>(
+      `INSERT INTO umsatztyp (${CATEGORY_EDITABLE_COLUMNS.join(', ')})
+       VALUES (${CATEGORY_EDITABLE_COLUMNS.map(() => '?').join(', ')})`,
+      CATEGORY_EDITABLE_COLUMNS.map((column: keyof CategoryEditableFields) => fields[column]),
+    );
+    if (fields.taxTag !== null) {
+      const tagged: boolean = await applyTaxTagUpdate(connection, {
+        categoryId: result.insertId,
+        update: { expected: null, next: fields.taxTag },
+      });
+      if (!tagged) throw new Error(`New umsatztyp ${result.insertId} already has a tax tag`);
+    }
+    const [rows] = await connection.query<CategoryRowPacket[]>(
+      `SELECT ${CATEGORY_COLUMNS.join(', ')} FROM umsatztyp WHERE id = ?`,
+      [result.insertId],
+    );
+    const created: CategoryRow | undefined = rows[0];
+    if (!created) throw new Error(`Created umsatztyp ${result.insertId} could not be read back`);
+    await connection.commit();
+    return created;
+  } catch (error: unknown) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export type CategoryUpdateResult = 'updated' | 'not-found' | 'conflict' | 'cycle';
@@ -85,9 +106,10 @@ function createsCycle(
 }
 
 /**
- * Updates one row if it still holds `request.expected`, in one DB transaction. The tree is read
+ * Updates one row if it still holds `request.expected` and its tax tag `request.taxTag.expected`,
+ * in one DB transaction (a tag mismatch is a `conflict` like a row mismatch). The tree is read
  * with `FOR UPDATE` so a concurrent re-parenting cannot slip a cycle in between check and write.
- * A foreign key violation (unknown `parent_id` / `konto_id`) is thrown to the caller after the
+ * A foreign key violation (unknown `parent_id` / `konto_id` / tax section) is thrown to the caller after the
  * rollback.
  */
 export async function updateCategory(
@@ -129,6 +151,14 @@ export async function updateCategory(
     }
     if (result.affectedRows !== 1) {
       throw new Error(`Updating umsatztyp ${id} affected ${result.affectedRows} rows`);
+    }
+    const tagMatched: boolean = await applyTaxTagUpdate(connection, {
+      categoryId: id,
+      update: request.taxTag,
+    });
+    if (!tagMatched) {
+      await connection.rollback();
+      return 'conflict';
     }
     await connection.commit();
     return 'updated';

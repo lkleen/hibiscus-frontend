@@ -6,10 +6,16 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxSection, TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
+import { TaxSectionsService } from '../../../core/services/tax-sections.service';
+import { TaxTagsService } from '../../../core/services/tax-tags.service';
+import { effectiveTaxSection } from '../../../core/tax/tax-sections';
+import type { Observable } from 'rxjs';
 import { TableDensityService } from '../../../core/services/table-density.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RibbonBandDirective } from '../../../shared/components/ribbon/ribbon-band.directive';
@@ -33,9 +39,14 @@ import { CategoryDialogs } from '../../categories/category-dialogs';
 import { TransactionDialogs } from '../transaction-dialogs';
 import { TransactionsStore } from '../transactions.store';
 import { buildCategoryExport, maxCategoryDepth } from '../export/category-export';
-import type { ExportDepth, ExportDocument } from '../export/export.model';
+import type { ExportDocument, ExportOptions, ExportScope } from '../export/export.model';
 import { TransactionsExport } from '../export/transactions-export';
-import { buildCategoryReport, compareReportRows, type CategoryReportRow } from './category-report';
+import {
+  buildCategoryReport,
+  compareReportRows,
+  filterReportByTaxSections,
+  type CategoryReportRow,
+} from './category-report';
 
 /**
  * "Umsätze nach Kategorien": the category tree with sums per category (over its subcategories)
@@ -63,6 +74,13 @@ export class TransactionsByCategoryComponent {
   private readonly dialogs = inject(TransactionDialogs);
   private readonly categoryDialogs = inject(CategoryDialogs);
   private readonly exporter = inject(TransactionsExport);
+  private readonly taxTags = inject(TaxTagsService);
+  private readonly taxSections = inject(TaxSectionsService);
+
+  /** What the export can be limited to; `null` until the tags and the sections are loaded. */
+  private readonly exportTaxSections = computed<readonly TaxSection[] | null>(() =>
+    this.taxTags.tags() === null ? null : this.taxSections.sections(),
+  );
 
   /** The ticked transaction leaves (ids); the table prunes it to the rows that pass the filters. */
   protected readonly selectedRowIds = signal<ReadonlySet<string | number>>(new Set());
@@ -178,14 +196,15 @@ export class TransactionsByCategoryComponent {
     const unregister: () => void = this.exporter.register({
       view: this.densityView,
       maxDepth: computed<number>((): number => maxCategoryDepth(this.rows())),
-      build: (depth: ExportDepth): ExportDocument =>
+      taxSections: this.exportTaxSections,
+      build: (options: ExportOptions): ExportDocument =>
         buildCategoryExport({
-          rows: this.rows(),
+          rows: this.exportRows(options.taxSections),
           columns: this.columns,
-          depth,
+          depth: options.depth,
           labels: {
             title: this.i18n.t('transactions.export.docTitleByCategory'),
-            scope: this.exporter.scope(),
+            scope: this.exportScope(options.taxSections),
             header: (column: DataTableVisibleColDef<CategoryReportRow, unknown>): string =>
               this.i18n.t(column.headerKey),
             total: this.i18n.t('transactions.export.total'),
@@ -193,6 +212,57 @@ export class TransactionsByCategoryComponent {
         }),
     });
     inject(DestroyRef).onDestroy(unregister);
+
+    // The export dialog offers the sections once both are in; a failed load is not swallowed.
+    if (this.taxTags.tags() === null) this.loadTaxData(this.taxTags.load());
+    if (this.taxSections.sections() === null) this.loadTaxData(this.taxSections.load());
+  }
+
+  private loadTaxData(load: Observable<void>): void {
+    load.pipe(takeUntilDestroyed()).subscribe({
+      error: (error: unknown): never => {
+        throw error;
+      },
+    });
+  }
+
+  /** The report limited to the categories of the chosen sections; all rows without a filter. */
+  private exportRows(codes: readonly string[] | null): readonly CategoryReportRow[] {
+    if (codes === null) return this.rows();
+    const tags: ReadonlyMap<number, TaxTagCode> | null = this.taxTags.tags();
+    const sections: readonly TaxSection[] | null = this.taxSections.sections();
+    if (tags === null || sections === null) throw new Error('tax tags and sections are not loaded');
+    const sectionsByCode = new Map<string, TaxSection>(
+      sections.map((section: TaxSection): [string, TaxSection] => [section.code, section]),
+    );
+    const byId = new Map<number, CategoryRow>(
+      this.store
+        .categories()
+        .map((category: CategoryRow): [number, CategoryRow] => [category.id, category]),
+    );
+    return filterReportByTaxSections({
+      rows: this.rows(),
+      keep: (category: CategoryRow): boolean => {
+        const code: string | undefined = effectiveTaxSection({
+          category,
+          byId,
+          tags,
+          sections: sectionsByCode,
+        }).section?.code;
+        return code !== undefined && codes.includes(code);
+      },
+    });
+  }
+
+  private exportScope(codes: readonly string[] | null): ExportScope {
+    const scope: ExportScope = this.exporter.scope();
+    if (codes === null) return scope;
+    return {
+      ...scope,
+      taxSections: this.i18n.t('transactions.export.scopeTaxSections', {
+        sections: codes.join(', '),
+      }),
+    };
   }
 
   private transactionText(

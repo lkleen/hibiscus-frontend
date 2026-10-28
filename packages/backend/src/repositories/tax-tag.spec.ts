@@ -1,5 +1,5 @@
-import type { Pool } from 'mysql2/promise';
-import type { TaxTagsUpdateRequest } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import type { Pool, PoolConnection } from 'mysql2/promise';
+import type { TaxTagUpdate } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/pool', () => ({
@@ -7,31 +7,75 @@ vi.mock('../db/pool', () => ({
 }));
 
 import { getPool } from '../db/pool';
-import { TAX_TAG_CODES } from '../tax/tax-tag-codes';
-import { applyTaxTagChanges, ensureTaxTagTables, listTaxTags } from './tax-tag';
+import { DEFAULT_TAX_SECTIONS, TAX_NOT_RELEVANT_SECTION } from '../tax/tax-section-defaults';
+import { applyTaxTagUpdate, ensureTaxTagTables, listTaxTags } from './tax-tag';
 
 function normalize(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim();
 }
 
 describe('ensureTaxTagTables', () => {
-  it('creates both tables with their foreign keys, then seeds every code with INSERT IGNORE', async () => {
-    const pool: { query: ReturnType<typeof vi.fn> } = { query: vi.fn().mockResolvedValue([{}]) };
+  function poolWithColumns(columns: string[]): { query: ReturnType<typeof vi.fn> } {
+    const pool: { query: ReturnType<typeof vi.fn> } = { query: vi.fn() };
+    pool.query.mockResolvedValueOnce([columns.map((c: string) => ({ column_name: c }))]);
+    pool.query.mockResolvedValue([{}]);
     vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
+    return pool;
+  }
+
+  function statements(pool: { query: ReturnType<typeof vi.fn> }): string[] {
+    return (pool.query.mock.calls as [string][]).slice(1).map(([sql]: [string]) => normalize(sql));
+  }
+
+  it('creates the section table and seeds the defaults plus St-0 when it does not exist', async () => {
+    const pool = poolWithColumns([]);
 
     await ensureTaxTagTables();
 
-    expect(pool.query).toHaveBeenCalledTimes(3);
-    const calls: [string, unknown[]?][] = pool.query.mock.calls as [string, unknown[]?][];
-    expect(normalize(calls[0][0])).toContain('CREATE TABLE IF NOT EXISTS hf_tax_section');
-    const second: string = normalize(calls[1][0]);
-    expect(second).toContain('CREATE TABLE IF NOT EXISTS hf_category_tax_tag');
-    expect(second).toContain('REFERENCES umsatztyp (id) ON UPDATE CASCADE ON DELETE CASCADE');
-    expect(second).toContain(
+    const sql: string[] = statements(pool);
+    expect(sql[0]).toContain('CREATE TABLE hf_tax_section');
+    expect(sql[0]).toContain('name VARCHAR(200) NOT NULL');
+    expect(sql[1]).toContain('INSERT INTO hf_tax_section');
+    const rows = (pool.query.mock.calls[2] as [string, unknown[][][]])[1][0];
+    expect(rows.map((r: unknown[]) => r[0])).toEqual([
+      ...DEFAULT_TAX_SECTIONS.map((s) => s.code),
+      TAX_NOT_RELEVANT_SECTION.code,
+    ]);
+    expect(sql[2]).toContain('CREATE TABLE IF NOT EXISTS hf_category_tax_tag');
+    expect(sql[2]).toContain(
       'REFERENCES hf_tax_section (code) ON UPDATE CASCADE ON DELETE RESTRICT',
     );
-    expect(calls[2][0]).toBe('INSERT IGNORE INTO hf_tax_section (code) VALUES ?');
-    expect(calls[2][1]).toEqual([TAX_TAG_CODES.map((code: string): string[] => [code])]);
+  });
+
+  it('migrates the old one-column table: adds the columns, fills the defaults once', async () => {
+    const pool = poolWithColumns(['code']);
+
+    await ensureTaxTagTables();
+
+    const sql: string[] = statements(pool);
+    expect(sql[0]).toContain('ALTER TABLE hf_tax_section ADD COLUMN name');
+    expect(sql[1]).toContain('INSERT INTO hf_tax_section');
+    expect(sql[1]).toContain('ON DUPLICATE KEY UPDATE name = VALUES(name)');
+    expect(sql[2]).toContain('MODIFY name VARCHAR(200) NOT NULL');
+  });
+
+  it('never re-seeds a migrated table, it only ensures St-0', async () => {
+    const pool = poolWithColumns([
+      'code',
+      'name',
+      'form',
+      'belongs',
+      'excludes',
+      'receipts',
+      'note',
+    ]);
+
+    await ensureTaxTagTables();
+
+    const sql: string[] = statements(pool);
+    expect(sql[0]).toContain('INSERT IGNORE INTO hf_tax_section (code, name) VALUES (?, ?)');
+    expect(pool.query.mock.calls[1]?.[1]).toEqual(['St-0', TAX_NOT_RELEVANT_SECTION.name]);
+    expect(sql.some((s: string) => s.includes('ON DUPLICATE KEY'))).toBe(false);
   });
 });
 
@@ -47,95 +91,84 @@ describe('listTaxTags', () => {
   });
 });
 
-describe('applyTaxTagChanges', () => {
-  interface FakeConnection {
-    beginTransaction: ReturnType<typeof vi.fn>;
-    query: ReturnType<typeof vi.fn>;
-    commit: ReturnType<typeof vi.fn>;
-    rollback: ReturnType<typeof vi.fn>;
-    release: ReturnType<typeof vi.fn>;
-  }
-  let connection: FakeConnection;
+describe('applyTaxTagUpdate', () => {
+  let connection: { query: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    connection = {
-      beginTransaction: vi.fn().mockResolvedValue(undefined),
-      query: vi.fn(),
-      commit: vi.fn().mockResolvedValue(undefined),
-      rollback: vi.fn().mockResolvedValue(undefined),
-      release: vi.fn(),
-    };
-    const pool: { getConnection: ReturnType<typeof vi.fn> } = {
-      getConnection: vi.fn().mockResolvedValue(connection),
-    };
-    vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
+    connection = { query: vi.fn() };
   });
 
-  const request: TaxTagsUpdateRequest = {
-    changes: [
-      { category_id: 9, expected: 'St-WK', next: 'St-0' },
-      { category_id: 4, expected: null, next: 'St-SA' },
-      { category_id: 6, expected: 'St-V', next: null },
-    ],
-  };
-
-  it('inserts, deletes and updates in id order, then commits', async () => {
-    connection.query.mockResolvedValue([{ affectedRows: 1 }]);
-
-    expect(await applyTaxTagChanges(request)).toEqual({ result: 'saved' });
-
-    const calls: [string, unknown[]][] = connection.query.mock.calls as [string, unknown[]][];
-    expect(calls).toEqual([
-      ['INSERT INTO hf_category_tax_tag (category_id, code) VALUES (?, ?)', [4, 'St-SA']],
-      ['DELETE FROM hf_category_tax_tag WHERE category_id = ? AND code = ?', [6, 'St-V']],
-      [
-        'UPDATE hf_category_tax_tag SET code = ? WHERE category_id = ? AND code = ?',
-        ['St-0', 9, 'St-WK'],
-      ],
+  function run(update: TaxTagUpdate, stored: string | null, write?: unknown): Promise<boolean> {
+    connection.query.mockResolvedValueOnce([
+      stored === null ? [] : [{ category_id: 4, code: stored }],
     ]);
-    expect(connection.commit).toHaveBeenCalledTimes(1);
-    expect(connection.rollback).not.toHaveBeenCalled();
-    expect(connection.release).toHaveBeenCalledTimes(1);
-  });
-
-  it('rolls back and reports every change that matched nothing', async () => {
-    connection.query.mockResolvedValue([{ affectedRows: 0 }]);
-
-    expect(await applyTaxTagChanges(request)).toEqual({
-      result: 'conflict',
-      conflictIds: [4, 6, 9],
+    if (write instanceof Error) connection.query.mockRejectedValueOnce(write);
+    else if (write !== undefined) connection.query.mockResolvedValueOnce(write);
+    return applyTaxTagUpdate(connection as unknown as PoolConnection, {
+      categoryId: 4,
+      update,
     });
-    expect(connection.rollback).toHaveBeenCalledTimes(1);
-    expect(connection.commit).not.toHaveBeenCalled();
-    expect(connection.release).toHaveBeenCalledTimes(1);
+  }
+
+  it('locks the row with SELECT ... FOR UPDATE', async () => {
+    await run({ expected: null, next: null }, null);
+    expect(connection.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
   });
 
-  it.each(['ER_DUP_ENTRY', 'ER_NO_REFERENCED_ROW_2'])(
-    'treats %s as a conflict, not a failure',
-    async (code: string) => {
-      connection.query
-        .mockRejectedValueOnce(Object.assign(new Error(code), { code }))
-        .mockResolvedValue([{ affectedRows: 1 }]);
+  it('inserts when untagged', async () => {
+    expect(await run({ expected: null, next: 'St-SA' }, null, [{ affectedRows: 1 }])).toBe(true);
+    expect(connection.query.mock.calls[1]).toEqual([
+      'INSERT INTO hf_category_tax_tag (category_id, code) VALUES (?, ?)',
+      [4, 'St-SA'],
+    ]);
+  });
 
-      expect(await applyTaxTagChanges(request)).toEqual({ result: 'conflict', conflictIds: [4] });
-      expect(connection.rollback).toHaveBeenCalledTimes(1);
-    },
-  );
+  it('deletes when next is null', async () => {
+    expect(await run({ expected: 'St-V', next: null }, 'St-V', [{ affectedRows: 1 }])).toBe(true);
+    expect(connection.query.mock.calls[1]).toEqual([
+      'DELETE FROM hf_category_tax_tag WHERE category_id = ? AND code = ?',
+      [4, 'St-V'],
+    ]);
+  });
 
-  it('rolls back, rethrows and releases on any other error', async () => {
-    const error: Error = new Error('boom');
-    connection.query.mockRejectedValue(error);
+  it('updates when the tag changes', async () => {
+    expect(await run({ expected: 'St-WK', next: 'St-0' }, 'St-WK', [{ affectedRows: 1 }])).toBe(
+      true,
+    );
+    expect(connection.query.mock.calls[1]).toEqual([
+      'UPDATE hf_category_tax_tag SET code = ? WHERE category_id = ? AND code = ?',
+      ['St-0', 4, 'St-WK'],
+    ]);
+  });
 
-    await expect(applyTaxTagChanges(request)).rejects.toBe(error);
-    expect(connection.rollback).toHaveBeenCalledTimes(1);
-    expect(connection.commit).not.toHaveBeenCalled();
-    expect(connection.release).toHaveBeenCalledTimes(1);
+  it('writes nothing when expected equals next and matches', async () => {
+    expect(await run({ expected: 'St-WK', next: 'St-WK' }, 'St-WK')).toBe(true);
+    expect(connection.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false without writing when expected equals next but differs from stored', async () => {
+    expect(await run({ expected: 'St-WK', next: 'St-WK' }, 'St-V')).toBe(false);
+    expect(connection.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false when the stored tag differs from expected', async () => {
+    expect(await run({ expected: null, next: 'St-SA' }, 'St-V')).toBe(false);
+    expect(connection.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a duplicate entry race as a mismatch', async () => {
+    const dup: Error = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY' });
+    expect(await run({ expected: null, next: 'St-SA' }, null, dup)).toBe(false);
+  });
+
+  it('rethrows other errors, such as an unknown section', async () => {
+    const error: Error = Object.assign(new Error('fk'), { code: 'ER_NO_REFERENCED_ROW_2' });
+    await expect(run({ expected: null, next: 'St-X' }, null, error)).rejects.toBe(error);
   });
 
   it('throws on an unexpected affected row count', async () => {
-    connection.query.mockResolvedValue([{ affectedRows: 2 }]);
-
-    await expect(applyTaxTagChanges(request)).rejects.toThrow('affected 2 rows');
-    expect(connection.rollback).toHaveBeenCalledTimes(1);
+    await expect(
+      run({ expected: null, next: 'St-SA' }, null, [{ affectedRows: 2 }]),
+    ).rejects.toThrow('affected 2 rows');
   });
 });

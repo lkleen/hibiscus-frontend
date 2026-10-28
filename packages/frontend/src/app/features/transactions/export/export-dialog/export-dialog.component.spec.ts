@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ApplicationRef, signal } from '@angular/core';
+import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { TaxSection } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { Mock } from 'vitest';
 import { installMutationObserverMock } from '../../../../core/utils/testing/mutation-observer-mock';
 import type { ExportDepth, ExportDocument, ExportOptions } from '../export.model';
@@ -36,12 +37,20 @@ function pdf(name: string, hitsFloor = false): PdfResult {
   return { blob: new Blob([name], { type: 'application/pdf' }), layout: layout(hitsFloor) };
 }
 
-function doc(depth: ExportDepth): ExportDocument {
+function section(code: string, name: string): TaxSection {
+  return { code, name, form: null, belongs: null, excludes: null, receipts: null, note: null };
+}
+
+const SECTIONS: readonly TaxSection[] = [section('St-A', 'Work'), section('St-B', 'Health')];
+
+function doc(options: ExportOptions): ExportDocument {
+  const depth: ExportDepth = options.depth;
+  const sectionCount: number = options.taxSections?.length ?? 0;
   return {
     title: 'Report',
     scope: { period: 'p', accounts: 'a', search: null },
     columns: [{ id: 'name', header: 'Name', kind: 'text' }],
-    rows: Array.from({ length: depth === 'all' ? 5 : depth + 1 }, () => ({
+    rows: Array.from({ length: (depth === 'all' ? 5 : depth + 1) + sectionCount }, () => ({
       kind: 'category' as const,
       level: 0,
       cells: ['Food'],
@@ -52,8 +61,11 @@ function doc(depth: ExportDepth): ExportDocument {
 const PDF_OPTIONS: ExportOptions = {
   format: 'pdf',
   depth: 1,
+  taxSections: null,
   page: { format: 'a4', orientation: 'portrait', fit: 'shrink' },
 };
+
+const PDF_OPTIONS_CSV: ExportOptions = { ...PDF_OPTIONS, format: 'csv' };
 
 interface FakeWriters {
   readonly toCsv: Mock<(doc: ExportDocument, options: object) => Blob>;
@@ -66,7 +78,8 @@ describe('ExportDialogComponent', () => {
   let appRef: ApplicationRef;
   let writers: FakeWriters;
   let downloadBlob: FakeWriters['download'];
-  let build: Mock<(depth: ExportDepth) => ExportDocument>;
+  let build: Mock<(options: ExportOptions) => ExportDocument>;
+  let taxSections: WritableSignal<readonly TaxSection[] | null>;
   let remember: Mock<(options: ExportOptions) => void>;
   let createObjectURL: Mock<(blob: Blob) => string>;
   let revokeObjectURL: Mock<(url: string) => void>;
@@ -85,6 +98,7 @@ describe('ExportDialogComponent', () => {
     });
     appRef = TestBed.inject(ApplicationRef);
     build = vi.fn(doc);
+    taxSections = signal<readonly TaxSection[] | null>(SECTIONS);
     remember = vi.fn();
     let urls = 0;
     createObjectURL = vi.fn((): string => `blob:preview-${++urls}`);
@@ -111,6 +125,7 @@ describe('ExportDialogComponent', () => {
       source: {
         view,
         maxDepth: view === 'transactions-list' ? null : signal<number>(2),
+        taxSections: view === 'transactions-list' ? null : taxSections,
         build,
       },
       scope: signal({
@@ -183,13 +198,82 @@ describe('ExportDialogComponent', () => {
     slider.dispatchEvent(new Event('input'));
     await settle();
     expect(slider.getAttribute('aria-valuetext')).toBe('Every transaction');
-    expect(build).toHaveBeenLastCalledWith('all');
+    expect(build).toHaveBeenLastCalledWith(expect.objectContaining({ depth: 'all' }));
     expect(el.textContent).toContain('5 rows in the file');
 
     TestBed.inject(Dialog).closeAll();
     const list: HTMLElement = await open({ ...PDF_OPTIONS, format: 'csv' }, 'transactions-list');
     expect(list.querySelector('#export-depth')).toBeNull();
     expect(list.textContent).toContain('Export transactions');
+  });
+
+  function taxBoxes(el: HTMLElement): HTMLInputElement[] {
+    return Array.from(el.querySelectorAll<HTMLInputElement>('.export-dialog__tax-list input'));
+  }
+
+  it('limits the report to ticked tax sections and builds with them', async () => {
+    const el: HTMLElement = await open({ ...PDF_OPTIONS, format: 'csv' });
+    const toggle: HTMLInputElement | null = el.querySelector('.export-dialog__taxes input');
+    if (!toggle) throw new Error('switch not rendered');
+    expect(toggle.checked).toBe(false);
+    expect(taxBoxes(el).length).toBe(0);
+
+    toggle.click();
+    await settle();
+    expect(taxBoxes(el).map((box) => box.checked)).toEqual([true, true]);
+    expect(el.querySelector('.export-dialog__tax-list')?.textContent).toContain('St-A – Work');
+    expect(build).toHaveBeenLastCalledWith(
+      expect.objectContaining({ taxSections: ['St-A', 'St-B'] }),
+    );
+    expect(el.textContent).toContain('4 rows in the file');
+
+    taxBoxes(el)[0].click();
+    await settle();
+    expect(build).toHaveBeenLastCalledWith(expect.objectContaining({ taxSections: ['St-B'] }));
+    expect(remember).toHaveBeenLastCalledWith(expect.objectContaining({ taxSections: ['St-B'] }));
+    expect(el.textContent).toContain('3 rows in the file');
+
+    toggle.click();
+    await settle();
+    expect(build).toHaveBeenLastCalledWith(expect.objectContaining({ taxSections: null }));
+  });
+
+  it('disables Export with a hint while no section is ticked', async () => {
+    const el: HTMLElement = await open({ ...PDF_OPTIONS, format: 'csv', taxSections: ['St-A'] });
+    taxBoxes(el)[0].click();
+    await settle();
+    expect(button(el, 'Export CSV').disabled).toBe(true);
+    expect(el.querySelector('.export-dialog__taxes .export-dialog__warning')).not.toBeNull();
+
+    taxBoxes(el)[1].click();
+    await settle();
+    expect(button(el, 'Export CSV').disabled).toBe(false);
+  });
+
+  it('drops remembered codes that no longer exist', async () => {
+    const el: HTMLElement = await open({
+      ...PDF_OPTIONS,
+      format: 'csv',
+      taxSections: ['St-A', 'St-GONE'],
+    });
+    expect(taxBoxes(el).map((box) => box.checked)).toEqual([true, false]);
+    expect(remember).toHaveBeenLastCalledWith(expect.objectContaining({ taxSections: ['St-A'] }));
+  });
+
+  it('disables the switch and Export while the sections load; the list has no filter', async () => {
+    taxSections.set(null);
+    const el: HTMLElement = await open({ ...PDF_OPTIONS, format: 'csv' });
+    expect(el.querySelector<HTMLInputElement>('.export-dialog__taxes input')?.disabled).toBe(true);
+    expect(button(el, 'Export CSV').disabled).toBe(true);
+    expect(el.textContent).toContain('Loading tax sections');
+
+    taxSections.set(SECTIONS);
+    await settle();
+    expect(button(el, 'Export CSV').disabled).toBe(false);
+
+    TestBed.inject(Dialog).closeAll();
+    const list: HTMLElement = await open({ ...PDF_OPTIONS, format: 'csv' }, 'transactions-list');
+    expect(list.querySelector('.export-dialog__taxes')).toBeNull();
   });
 
   it('builds, writes and downloads the file on Export, then closes', async () => {
@@ -199,8 +283,11 @@ describe('ExportDialogComponent', () => {
     button(el, 'Export CSV').click();
     await settle();
 
-    expect(build).toHaveBeenCalledWith(1);
-    expect(writers.toCsv).toHaveBeenCalledWith(doc(1), { locale: 'en', levelHeader: 'level' });
+    expect(build).toHaveBeenCalledWith(PDF_OPTIONS_CSV);
+    expect(writers.toCsv).toHaveBeenCalledWith(doc(PDF_OPTIONS_CSV), {
+      locale: 'en',
+      levelHeader: 'level',
+    });
     expect(downloadBlob).toHaveBeenCalledTimes(1);
     expect(downloadBlob.mock.calls[0][1]).toBe(
       'transactions-by-category_2026-01-01_2026-09-30.csv',

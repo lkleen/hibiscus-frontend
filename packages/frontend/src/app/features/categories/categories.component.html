@@ -34,11 +34,19 @@
   </app-ribbon-group>
 </ng-template>
 
+<ng-template appRibbonBand="tax" ribbonLabelKey="ribbon.tab.tax" [ribbonOrder]="2">
+  <app-ribbon-group captionKey="ribbon.group.taxSections">
+    <button type="button" class="filters__action" (click)="taxSectionDialogs.open()">
+      {{ i18n.t('categories.taxSections.open') }}
+    </button>
+  </app-ribbon-group>
+</ng-template>
+
 <app-data-table
   [value]="store.categories()"
   [columns]="columns"
   [options]="options"
-  [loading]="store.loading() || taxTagsPending()"
+  [loading]="store.loading() || taxPending()"
   [quickFilterText]="search()"
   [density]="densities.densityFor('categories')()"
 >
@@ -68,6 +76,6 @@
 @if (store.error()) {
   <p class="status-text status-text--error">{{ i18n.t('categories.error') }}</p>
 }
-@if (taxTagsError()) {
+@if (taxError()) {
   <p class="status-text status-text--error">{{ i18n.t('categories.taxTagsError') }}</p>
 }

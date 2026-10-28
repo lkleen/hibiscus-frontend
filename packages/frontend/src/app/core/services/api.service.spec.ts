@@ -10,7 +10,6 @@ import type {
 import type {
   DatePresetList,
   TableDensities,
-  TaxProfile,
 } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type {
   CategoryCreateRequest,
@@ -18,7 +17,10 @@ import type {
   CategoryRow,
   CategoryUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/categories';
-import type { TaxTagsUpdateRequest } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import type {
+  TaxSection,
+  TaxSectionUpdateRequest,
+} from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { categoryRow } from '../utils/testing/category-row-fixture';
 import {
   transaction,
@@ -126,6 +128,7 @@ describe('ApiService', () => {
       konto_id: null,
       konto_kategorie: null,
       flags: null,
+      taxTag: 'St-AB',
     };
     const stored: CategoryRow = categoryRow({ id: 9, name: 'Rent', pattern: 'rent', umsatztyp: 0 });
     let received: CategoryRow | undefined = undefined;
@@ -157,6 +160,7 @@ describe('ApiService', () => {
     const request: CategoryUpdateRequest = {
       expected,
       next: { ...expected, name: 'Housing', parent_id: 3 },
+      taxTag: { expected: null, next: 'St-AB' },
     };
     service.updateCategory(9, request).subscribe();
 
@@ -184,33 +188,6 @@ describe('ApiService', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
-  it('requests the tax profile', () => {
-    service.getTaxProfile().subscribe();
-
-    const req = httpMock.expectOne('/api/settings/tax-profile');
-    expect(req.request.method).toBe('GET');
-    req.flush({});
-  });
-
-  it('puts the whole tax profile as JSON', () => {
-    const profile: TaxProfile = {
-      situations: {
-        employed: true,
-        children: null,
-        household: null,
-        rental: false,
-        donations: null,
-      },
-      hintDismissedYear: 2025,
-    };
-    service.saveTaxProfile(profile).subscribe();
-
-    const req = httpMock.expectOne('/api/settings/tax-profile');
-    expect(req.request.method).toBe('PUT');
-    expect(req.request.body).toEqual(profile);
-    req.flush(null, { status: 204, statusText: 'No Content' });
-  });
-
   it('requests the tax tags', () => {
     service.getTaxTags().subscribe();
 
@@ -219,16 +196,38 @@ describe('ApiService', () => {
     req.flush([]);
   });
 
-  it('puts the tax tag changes as JSON', () => {
-    const request: TaxTagsUpdateRequest = {
-      changes: [{ category_id: 3, expected: null, next: 'St-AB' }],
+  it('requests, creates, updates and deletes tax sections', () => {
+    const section: TaxSection = {
+      code: 'St-X',
+      name: 'X',
+      form: null,
+      belongs: null,
+      excludes: null,
+      receipts: null,
+      note: null,
     };
-    service.saveTaxTags(request).subscribe();
+    service.getTaxSections().subscribe();
+    const get = httpMock.expectOne('/api/tax-sections');
+    expect(get.request.method).toBe('GET');
+    get.flush([]);
 
-    const req = httpMock.expectOne('/api/tax-tags');
-    expect(req.request.method).toBe('PUT');
-    expect(req.request.body).toEqual(request);
-    req.flush(null, { status: 204, statusText: 'No Content' });
+    service.createTaxSection(section).subscribe();
+    const post = httpMock.expectOne('/api/tax-sections');
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body).toEqual(section);
+    post.flush(section, { status: 201, statusText: 'Created' });
+
+    const request: TaxSectionUpdateRequest = { expected: section, next: { ...section, name: 'Y' } };
+    service.updateTaxSection('St-X', request).subscribe();
+    const put = httpMock.expectOne('/api/tax-sections/St-X');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual(request);
+    put.flush(null, { status: 204, statusText: 'No Content' });
+
+    service.deleteTaxSection('St-X').subscribe();
+    const del = httpMock.expectOne('/api/tax-sections/St-X');
+    expect(del.request.method).toBe('DELETE');
+    del.flush(null, { status: 204, statusText: 'No Content' });
   });
 
   it('requests the date presets', () => {

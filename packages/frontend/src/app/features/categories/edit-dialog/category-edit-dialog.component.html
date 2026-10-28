@@ -39,6 +39,34 @@
       </fieldset>
 
       <div class="category-edit__field">
+        <label class="category-edit__label" [for]="taxId">{{
+          i18n.t('categories.colTaxSection')
+        }}</label>
+        <select
+          class="category-edit__control"
+          [id]="taxId"
+          [disabled]="taxLoading()"
+          [attr.aria-describedby]="taxLoading() ? null : taxDescriptionId"
+          (change)="onTaxChange($event)"
+        >
+          <option [value]="taxInherit" [selected]="taxChoice() === taxInherit">
+            {{ taxInheritLabel() }}
+          </option>
+          @for (section of taxSectionList(); track section.code) {
+            <option [value]="section.code" [selected]="taxChoice() === section.code">
+              {{ sectionLabel(section) }}
+            </option>
+          }
+          <option [value]="taxExcluded" [selected]="taxChoice() === taxExcluded">
+            {{ i18n.t('tax.section.excluded') }}
+          </option>
+        </select>
+        @if (!taxLoading()) {
+          <app-tax-description [id]="taxDescriptionId" [description]="taxDescription()" />
+        }
+      </div>
+
+      <div class="category-edit__field">
         <label class="category-edit__label" for="category-edit-pattern">{{
           i18n.t('categories.colPattern')
         }}</label>

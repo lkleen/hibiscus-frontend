@@ -1,3 +1,5 @@
+import type { TaxTagCode, TaxTagUpdate } from './tax-tags';
+
 /**
  * One row of Hibiscus's `umsatztyp` table exactly as `GET /api/categories` serves it: the selected
  * columns under their DB names, unmodified.
@@ -38,13 +40,20 @@ export interface CategoryRow {
 /** Every `umsatztyp` column except the id: what `POST`/`PUT /api/categories` write. */
 export type CategoryEditableFields = Omit<CategoryRow, 'id'>;
 
-/** Body of `POST /api/categories`; answered `201` with the created `CategoryRow` as stored. */
-export type CategoryCreateRequest = CategoryEditableFields;
+/**
+ * Body of `POST /api/categories`; answered `201` with the created `CategoryRow` as stored. The
+ * category and its tax tag (`null` = untagged) are stored together or not at all.
+ */
+export type CategoryCreateRequest = CategoryEditableFields & { readonly taxTag: TaxTagCode | null };
 
-/** Body of `PUT /api/categories/:id`. `expected`: the values the edit started from. */
+/**
+ * Body of `PUT /api/categories/:id`. `expected`: the values the edit started from. The category
+ * and its tax tag are saved together or not at all; either one changed elsewhere answers `409`.
+ */
 export interface CategoryUpdateRequest {
   readonly expected: CategoryEditableFields;
   readonly next: CategoryEditableFields;
+  readonly taxTag: TaxTagUpdate;
 }
 
 /** `400` body of `PUT /api/categories/:id` when `next.parent_id` is the row or a descendant. */

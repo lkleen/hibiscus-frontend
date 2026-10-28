@@ -1,5 +1,6 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DestroyRef, Injectable, Signal, computed, inject } from '@angular/core';
+import type { TaxSection } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import {
   APP_DIALOG_BACKDROP_CLASS,
@@ -19,8 +20,13 @@ export interface ExportSource {
   readonly view: TableViewId;
   /** The deepest category level for the detail-level slider; `null` for a view without levels. */
   readonly maxDepth: Signal<number> | null;
+  /**
+   * The tax sections the report can be limited to, `null` until they are loaded; `null` itself for
+   * a view that cannot be limited.
+   */
+  readonly taxSections: Signal<readonly TaxSection[] | null> | null;
   /** Builds the document from the view's current state; called at preview and at export time. */
-  build(depth: ExportDepth): ExportDocument;
+  build(options: ExportOptions): ExportDocument;
 }
 
 /**
@@ -38,6 +44,7 @@ function defaultOptions(source: ExportSource): ExportOptions {
   return {
     format: 'pdf',
     depth: maxDepth === null ? 'all' : clampDepth(maxDepth, maxDepth),
+    taxSections: null,
     page: {
       format: 'a4',
       orientation: source.view === 'transactions-list' ? 'landscape' : 'portrait',

@@ -10,7 +10,7 @@ import { editableFieldsOf, type CategorySave } from './edit-dialog/category-edit
 /**
  * `CategoryEditSource.saveCategory` for a store holding `categories`. A create appends the row the
  * backend answers; an update replaces the stored row at the same position with the saved values.
- * Both swap the array rather than mutating it, so everything derived from it recomputes. Errors
+ * Neither touches the tax tags: the tag is saved with the category by the backend. Both swap the array rather than mutating it, so everything derived from it recomputes. Errors
  * propagate, and `categories` stays untouched.
  */
 export function saveCategoryInto(
@@ -19,7 +19,7 @@ export function saveCategoryInto(
   save: CategorySave,
 ): Observable<CategoryRow> {
   if (save.kind === 'create') {
-    return api.createCategory(save.fields).pipe(
+    return api.createCategory({ ...save.fields, taxTag: save.taxTag }).pipe(
       tap((row: CategoryRow): void => {
         categories.update((rows: readonly CategoryRow[]) => [...rows, row]);
       }),
@@ -29,6 +29,7 @@ export function saveCategoryInto(
   const request: CategoryUpdateRequest = {
     expected: editableFieldsOf(save.category),
     next: save.next,
+    taxTag: save.taxTag,
   };
   return api.updateCategory(id, request).pipe(
     map((): CategoryRow => ({ id, ...save.next })),

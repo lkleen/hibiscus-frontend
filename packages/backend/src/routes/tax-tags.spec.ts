@@ -1,14 +1,12 @@
 import express, { Express } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TaxTagsUpdateRequest } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { createTaxTagsRouter } from './tax-tags';
 
 vi.mock('../repositories/tax-tag', () => ({
   listTaxTags: vi.fn(),
-  applyTaxTagChanges: vi.fn(),
 }));
 
-import { applyTaxTagChanges, listTaxTags } from '../repositories/tax-tag';
+import { listTaxTags } from '../repositories/tax-tag';
 
 interface HttpResponse {
   status: number;
@@ -67,13 +65,6 @@ afterAll(
     }),
 );
 
-const validBody: TaxTagsUpdateRequest = {
-  changes: [
-    { category_id: 1, expected: null, next: 'St-WK' },
-    { category_id: 2, expected: 'St-SA', next: null },
-  ],
-};
-
 describe('tax-tags router GET /', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,61 +86,8 @@ describe('tax-tags router GET /', () => {
   });
 });
 
-describe('tax-tags router PUT /', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns 204 and passes the body to the repository', async () => {
-    vi.mocked(applyTaxTagChanges).mockResolvedValueOnce({ result: 'saved' });
-
-    expect((await send('PUT', validBody)).status).toBe(204);
-    expect(applyTaxTagChanges).toHaveBeenCalledWith(validBody);
-  });
-
-  it.each([
-    ['no changes', { changes: [] }],
-    [
-      'too many changes',
-      {
-        changes: Array.from({ length: 501 }, (_v: unknown, i: number) => ({
-          category_id: i + 1,
-          expected: null,
-          next: 'St-WK',
-        })),
-      },
-    ],
-    ['duplicate category ids', { changes: [validBody.changes[0], validBody.changes[0]] }],
-    ['expected equals next', { changes: [{ category_id: 1, expected: 'St-WK', next: 'St-WK' }] }],
-    ['both null', { changes: [{ category_id: 1, expected: null, next: null }] }],
-    ['unknown code', { changes: [{ category_id: 1, expected: null, next: 'St-X' }] }],
-    ['non-positive id', { changes: [{ category_id: 0, expected: null, next: 'St-WK' }] }],
-    ['extra key on body', { ...validBody, foo: 1 }],
-    [
-      'extra key on change',
-      { changes: [{ category_id: 1, expected: null, next: 'St-WK', foo: 1 }] },
-    ],
-    ['missing changes', {}],
-  ])('returns 400 for an invalid body (%s)', async (_name: string, body: unknown) => {
-    const response: HttpResponse = await send('PUT', body);
-
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Invalid request' });
-    expect(applyTaxTagChanges).not.toHaveBeenCalled();
-  });
-
-  it('returns 409 with the conflicting ids', async () => {
-    vi.mocked(applyTaxTagChanges).mockResolvedValueOnce({ result: 'conflict', conflictIds: [2] });
-
-    const response: HttpResponse = await send('PUT', validBody);
-
-    expect(response.status).toBe(409);
-    expect(response.body).toEqual({ error: 'conflict', conflictIds: [2] });
-  });
-
-  it('returns 500 for a repository error', async () => {
-    vi.mocked(applyTaxTagChanges).mockRejectedValueOnce(new Error('boom'));
-
-    expect((await send('PUT', validBody)).status).toBe(500);
+describe('tax-tags router writes', () => {
+  it('has no PUT: tags are saved with their category', async () => {
+    expect((await send('PUT', [])).status).toBe(404);
   });
 });

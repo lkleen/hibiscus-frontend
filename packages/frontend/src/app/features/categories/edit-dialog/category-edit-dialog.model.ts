@@ -6,16 +6,22 @@ import type {
   CategoryEditableFields,
   CategoryRow,
 } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxTagCode, TaxTagUpdate } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import type { Observable } from 'rxjs';
 
 /** A save from the category dialog: a new category, or an edit of a stored one. */
 export type CategorySave =
-  | { readonly kind: 'create'; readonly fields: CategoryEditableFields }
+  | {
+      readonly kind: 'create';
+      readonly fields: CategoryEditableFields;
+      readonly taxTag: TaxTagCode | null;
+    }
   | {
       readonly kind: 'update';
       readonly category: CategoryRow;
       readonly next: CategoryEditableFields;
+      readonly taxTag: TaxTagUpdate;
     };
 
 /**

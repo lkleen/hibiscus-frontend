@@ -80,6 +80,47 @@
       </div>
     }
 
+    @if (!isList) {
+      <fieldset class="export-dialog__field export-dialog__taxes">
+        <legend class="app-dialog__label">{{ i18n.t('transactions.export.taxSections') }}</legend>
+        <label class="export-dialog__fit-choice">
+          <input
+            type="checkbox"
+            role="switch"
+            class="app-dialog__radio"
+            [checked]="taxOnly()"
+            [disabled]="taxSectionChoices() === null"
+            (change)="onTaxOnlyChange($event)"
+          />
+          <span>{{ i18n.t('transactions.export.taxOnly') }}</span>
+        </label>
+        @if (taxSectionChoices() === null) {
+          <p class="app-dialog__hint" role="status">
+            {{ i18n.t('transactions.export.taxSectionsLoading') }}
+          </p>
+        } @else if (taxOnly()) {
+          <div class="export-dialog__tax-list">
+            @for (section of taxSectionChoices(); track section.code) {
+              <label class="export-dialog__fit-choice">
+                <input
+                  type="checkbox"
+                  class="app-dialog__radio"
+                  [checked]="isTaxSectionChosen(section.code)"
+                  (change)="onTaxSectionChange(section.code, $event)"
+                />
+                <span>{{ section.code }} – {{ section.name }}</span>
+              </label>
+            }
+          </div>
+          @if (noTaxSection()) {
+            <p class="export-dialog__warning" role="status">
+              {{ i18n.t('transactions.export.taxSectionsNone') }}
+            </p>
+          }
+        }
+      </fieldset>
+    }
+
     @if (format() === 'pdf') {
       <fieldset class="export-dialog__field export-dialog__page">
         <legend class="app-dialog__label">{{ i18n.t('transactions.export.page') }}</legend>
@@ -190,7 +231,7 @@
   <button
     type="button"
     class="app-dialog__button app-dialog__button--primary export-dialog__submit"
-    [disabled]="busy()"
+    [disabled]="busy() || exportBlocked()"
     [attr.aria-busy]="busy()"
     (click)="download()"
   >

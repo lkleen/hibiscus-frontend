@@ -2,11 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { EMPTY, config } from 'rxjs';
+import { config } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
-import type { TaxTag } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import type { TaxSection, TaxTag } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
 import { categoryRow } from '../../core/utils/testing/category-row-fixture';
 import type {
@@ -18,9 +18,9 @@ import { TableDensityService } from '../../core/services/table-density.service';
 import type { TableDensity } from '@hibiscus-frontend/shared/contracts/user-settings';
 import { account } from '../transactions/testing/transaction-fixture';
 import { CategoriesComponent } from './categories.component';
-import { TaxTagDialogs } from '../../core/tax/tax-tag-dialog/tax-tag-dialogs';
 import { CategoryDialogs } from './category-dialogs';
 import { CategoriesStore } from './categories.store';
+import { TaxSectionDialogs } from './tax-section-dialog/tax-section-dialogs';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -69,10 +69,15 @@ describe('CategoriesComponent', () => {
 
   async function load(
     categories: CategoryRow[],
-    params: { readonly accounts?: AccountRow[]; readonly tags?: TaxTag[] } = {},
+    params: {
+      readonly accounts?: AccountRow[];
+      readonly tags?: TaxTag[];
+      readonly sections?: TaxSection[];
+    } = {},
   ): Promise<void> {
     fixture.detectChanges();
     httpMock.expectOne('/api/tax-tags').flush(params.tags ?? []);
+    httpMock.expectOne('/api/tax-sections').flush(params.sections ?? []);
     httpMock.expectOne('/api/accounts').flush(params.accounts ?? []);
     httpMock.expectOne('/api/categories').flush(categories);
     httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
@@ -186,13 +191,35 @@ describe('CategoriesComponent', () => {
     expect(cellText(rowByName('b'), COL.color)).toBe('—');
   });
 
-  it('renders a ribbon with a Filter and a View tab', async () => {
+  it('renders a ribbon with a Filter, a View and a Tax tab', async () => {
     await load([categoryRow({ id: 1, name: 'Food' })]);
 
     const tabs: string[] = Array.from(root.querySelectorAll('.ribbon__tab')).map(
-      (t) => t.textContent?.trim() ?? '',
+      (t) => t.firstChild?.textContent?.trim() ?? '',
     );
-    expect(tabs.length).toBe(2);
+    expect(tabs).toEqual(['Filter', 'View', 'Tax']);
+  });
+
+  it("opens the tax sections dialog from the Tax band's button", async () => {
+    await load([categoryRow({ id: 1, name: 'Food' })]);
+    const dialogs: TaxSectionDialogs = fixture.debugElement.injector.get(TaxSectionDialogs);
+    const open: MockInstance<TaxSectionDialogs['open']> = vi
+      .spyOn(dialogs, 'open')
+      .mockImplementation(() => undefined);
+    const taxTab: HTMLElement | undefined = Array.from(
+      root.querySelectorAll<HTMLElement>('.ribbon__tab'),
+    ).find((tab: HTMLElement): boolean => tab.firstChild?.textContent?.trim() === 'Tax');
+    if (!taxTab) throw new Error('Tax ribbon tab not rendered');
+    taxTab.click();
+    await settle();
+
+    const button: HTMLButtonElement | undefined = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('.ribbon__band .filters__action'),
+    ).find((b: HTMLButtonElement): boolean => b.textContent?.trim() === 'Tax sections…');
+    if (!button) throw new Error('Tax sections… button not rendered');
+    button.click();
+
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it('filters the tree with the search field and shows the text as ribbon state', async () => {
@@ -233,6 +260,7 @@ describe('CategoriesComponent', () => {
     httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
     httpMock.expectOne('/api/settings/table-densities').flush({});
     httpMock.expectOne('/api/tax-tags').flush([]);
+    httpMock.expectOne('/api/tax-sections').flush([]);
     httpMock
       .expectOne('/api/categories')
       .flush('boom', { status: 500, statusText: 'Server Error' });
@@ -251,6 +279,7 @@ describe('CategoriesComponent', () => {
     try {
       fixture.detectChanges();
       httpMock.expectOne('/api/tax-tags').flush('boom', { status: 500, statusText: 'err' });
+      httpMock.expectOne('/api/tax-sections').flush([]);
       httpMock.expectOne('/api/accounts').flush([]);
       httpMock.expectOne('/api/categories').flush([categoryRow({ id: 1, name: 'Food' })]);
       httpMock.expectOne('/api/transactions').flush({ columns: [], rows: [] });
@@ -281,6 +310,17 @@ describe('CategoriesComponent', () => {
           { category_id: 1, code: 'St-VA' },
           { category_id: 3, code: 'St-0' },
         ],
+        sections: [
+          {
+            code: 'St-VA',
+            name: 'Insurance and pension contributions',
+            form: null,
+            belongs: null,
+            excludes: null,
+            receipts: null,
+            note: null,
+          },
+        ],
       },
     );
 
@@ -298,19 +338,15 @@ describe('CategoriesComponent', () => {
     expect(cellText(rowByName('Food'), COL.taxSection)).toBe('—');
   });
 
-  it('offers Edit and Tax section in the row menu, each opening its dialog for that row', async () => {
+  it('offers Edit in the row menu, opening its dialog for that row', async () => {
     await load([categoryRow({ id: 1, name: 'Food' })]);
     const options: DataTableOptions<CategoryRow> = fixture.componentInstance['options'];
     if (!options.getContextMenuItems) throw new Error('getContextMenuItems is not set');
     const dialogs: CategoryDialogs = fixture.debugElement.injector.get(CategoryDialogs);
-    const taxDialogs: TaxTagDialogs = fixture.debugElement.injector.get(TaxTagDialogs);
     const store: CategoriesStore = fixture.debugElement.injector.get(CategoriesStore);
     const openEdit: MockInstance<CategoryDialogs['openEdit']> = vi
       .spyOn(dialogs, 'openEdit')
       .mockImplementation(() => undefined);
-    const openSection: MockInstance<TaxTagDialogs['openSection']> = vi
-      .spyOn(taxDialogs, 'openSection')
-      .mockImplementation(() => EMPTY);
     const row: CategoryRow = categoryRow({ id: 1, name: 'Food' });
     // The menu reads only `row`; the other params are not needed for this assertion.
     const params: DataTableContextMenuParams<CategoryRow> = {
@@ -320,8 +356,8 @@ describe('CategoriesComponent', () => {
 
     const items: readonly DataTableMenuItem[] = options.getContextMenuItems(params);
 
-    expect(items.length).toBe(2);
-    const [edit, tax]: DataTableMenuItem[] = [...items];
+    expect(items.length).toBe(1);
+    const [edit]: DataTableMenuItem[] = [...items];
     if (
       typeof edit === 'string' ||
       !('nameKey' in edit) ||
@@ -329,16 +365,7 @@ describe('CategoriesComponent', () => {
     ) {
       throw new Error('expected the Edit entry');
     }
-    if (
-      typeof tax === 'string' ||
-      !('nameKey' in tax) ||
-      tax.nameKey !== 'categories.menuTaxSection'
-    ) {
-      throw new Error('expected the Tax section entry');
-    }
     edit.action();
     expect(openEdit).toHaveBeenCalledWith(store, row);
-    tax.action();
-    expect(openSection).toHaveBeenCalledWith(row);
   });
 });

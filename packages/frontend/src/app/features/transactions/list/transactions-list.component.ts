@@ -80,6 +80,7 @@ export class TransactionsListComponent {
     const unregister: () => void = this.exporter.register({
       view: this.densityView,
       maxDepth: null,
+      taxSections: null,
       build: (): ExportDocument =>
         buildListExport({
           snapshot: this.table().exportSnapshot(),

@@ -1,5 +1,6 @@
 import type { Pool } from 'mysql2/promise';
 import type {
+  CategoryCreateRequest,
   CategoryEditableFields,
   CategoryRow,
   CategoryUpdateRequest,
@@ -120,7 +121,11 @@ const fields: CategoryEditableFields = {
   konto_kategorie: null,
   flags: null,
 };
-const request: CategoryUpdateRequest = { expected: fields, next: { ...fields, parent_id: 3 } };
+const request: CategoryUpdateRequest = {
+  expected: fields,
+  next: { ...fields, parent_id: 3 },
+  taxTag: { expected: null, next: null },
+};
 
 describe('CATEGORY_EDITABLE_COLUMNS', () => {
   it('is the selected columns without id', () => {
@@ -129,27 +134,76 @@ describe('CATEGORY_EDITABLE_COLUMNS', () => {
 });
 
 describe('createCategory', () => {
-  it('inserts the editable columns and returns the row read back by insertId', async () => {
-    const pool: FakePool = makeFakePool();
-    vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
+  let connection: FakeConnection;
+  const untagged: CategoryCreateRequest = { ...fields, taxTag: null };
+
+  beforeEach(() => {
+    connection = {
+      query: vi.fn(),
+      beginTransaction: vi.fn().mockResolvedValue(undefined),
+      commit: vi.fn().mockResolvedValue(undefined),
+      rollback: vi.fn().mockResolvedValue(undefined),
+      release: vi.fn(),
+    };
+    vi.mocked(getPool).mockReturnValue({
+      getConnection: vi.fn().mockResolvedValue(connection),
+    } as unknown as Pool);
+  });
+
+  it('inserts the editable columns, reads the row back by insertId and commits', async () => {
     const stored: CategoryRow = { id: 9, ...fields };
-    pool.query.mockResolvedValueOnce([{ insertId: 9 }]).mockResolvedValueOnce([[stored]]);
+    connection.query.mockResolvedValueOnce([{ insertId: 9 }]).mockResolvedValueOnce([[stored]]);
 
-    const result: CategoryRow = await createCategory(fields);
+    const result: CategoryRow = await createCategory(untagged);
 
-    const [insertSql, values] = pool.query.mock.calls[0] as [string, unknown[]];
+    const [insertSql, values] = connection.query.mock.calls[0] as [string, unknown[]];
     expect(insertSql).toContain(`INSERT INTO umsatztyp (${CATEGORY_EDITABLE_COLUMNS.join(', ')})`);
     expect(values).toEqual(CATEGORY_EDITABLE_COLUMNS.map((c) => fields[c]));
-    expect(pool.query.mock.calls[1]?.[1]).toEqual([9]);
+    expect(connection.query.mock.calls[1]?.[1]).toEqual([9]);
+    expect(connection.query).toHaveBeenCalledTimes(2);
+    expect(connection.commit).toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalled();
     expect(result).toBe(stored);
   });
 
-  it('throws when the row cannot be read back', async () => {
-    const pool: FakePool = makeFakePool();
-    vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
-    pool.query.mockResolvedValueOnce([{ insertId: 9 }]).mockResolvedValueOnce([[]]);
+  it('inserts the tax tag in the same transaction when one is given', async () => {
+    const stored: CategoryRow = { id: 9, ...fields };
+    connection.query
+      .mockResolvedValueOnce([{ insertId: 9 }])
+      .mockResolvedValueOnce([[]]) // tag SELECT ... FOR UPDATE
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+      .mockResolvedValueOnce([[stored]]);
 
-    await expect(createCategory(fields)).rejects.toThrow('could not be read back');
+    await createCategory({ ...untagged, taxTag: 'St-WK' });
+
+    expect(connection.query.mock.calls[2]).toEqual([
+      'INSERT INTO hf_category_tax_tag (category_id, code) VALUES (?, ?)',
+      [9, 'St-WK'],
+    ]);
+    expect(connection.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back and rethrows when the tag insert fails (unknown section)', async () => {
+    const error: Error = Object.assign(new Error('fk_hf_tax_tag_section'), {
+      code: 'ER_NO_REFERENCED_ROW_2',
+    });
+    connection.query
+      .mockResolvedValueOnce([{ insertId: 9 }])
+      .mockResolvedValueOnce([[]])
+      .mockRejectedValueOnce(error);
+
+    await expect(createCategory({ ...untagged, taxTag: 'St-X' })).rejects.toBe(error);
+    expect(connection.rollback).toHaveBeenCalled();
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalled();
+  });
+
+  it('throws and rolls back when the row cannot be read back', async () => {
+    connection.query.mockResolvedValueOnce([{ insertId: 9 }]).mockResolvedValueOnce([[]]);
+
+    await expect(createCategory(untagged)).rejects.toThrow('could not be read back');
+    expect(connection.rollback).toHaveBeenCalled();
+    expect(connection.commit).not.toHaveBeenCalled();
   });
 });
 
@@ -179,7 +233,7 @@ describe('updateCategory', () => {
       { id: 2, parent_id: 1 },
       { id: 3, parent_id: null },
     ]);
-    connection.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    connection.query.mockResolvedValueOnce([{ affectedRows: 1 }]).mockResolvedValueOnce([[]]); // tag SELECT: untagged, expected untagged
 
     expect(await updateCategory(2, request)).toBe('updated');
 
@@ -223,6 +277,44 @@ describe('updateCategory', () => {
 
     expect(result).toBe('cycle');
     expect(connection.rollback).toHaveBeenCalled();
+  });
+
+  it('updates the tax tag in the same transaction', async () => {
+    mockTree([{ id: 2, parent_id: null }]);
+    connection.query
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+      .mockResolvedValueOnce([[{ category_id: 2, code: 'St-WK' }]])
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const result = await updateCategory(2, {
+      ...request,
+      next: { ...fields, parent_id: null },
+      taxTag: { expected: 'St-WK', next: 'St-SA' },
+    });
+
+    expect(result).toBe('updated');
+    expect(connection.query.mock.calls[3]).toEqual([
+      'UPDATE hf_category_tax_tag SET code = ? WHERE category_id = ? AND code = ?',
+      ['St-SA', 2, 'St-WK'],
+    ]);
+    expect(connection.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict and rolls back when the stored tax tag differs from expected', async () => {
+    mockTree([{ id: 2, parent_id: null }]);
+    connection.query
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+      .mockResolvedValueOnce([[{ category_id: 2, code: 'St-V' }]]);
+
+    const result = await updateCategory(2, {
+      ...request,
+      next: { ...fields, parent_id: null },
+      taxTag: { expected: 'St-WK', next: 'St-SA' },
+    });
+
+    expect(result).toBe('conflict');
+    expect(connection.rollback).toHaveBeenCalled();
+    expect(connection.commit).not.toHaveBeenCalled();
   });
 
   it('returns conflict when nothing matched', async () => {

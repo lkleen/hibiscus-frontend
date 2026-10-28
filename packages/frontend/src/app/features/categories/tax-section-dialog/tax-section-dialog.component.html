@@ -1,0 +1,268 @@
+<header class="app-dialog__header">
+  <div class="tax-sections__heading">
+    <h2 class="app-dialog__title" [id]="titleId">
+      {{ i18n.t('categories.taxSections.title') }}
+    </h2>
+    <p class="app-dialog__hint">{{ i18n.t('categories.taxSections.subtitle') }}</p>
+  </div>
+</header>
+
+<div class="app-dialog__body tax-sections">
+  @if (loadError()) {
+    <p class="app-dialog__error tax-sections__banner" role="alert">
+      {{ i18n.t('categories.taxSections.loadError') }}
+    </p>
+  } @else if (sections() === null) {
+    <p class="app-dialog__hint">{{ i18n.t('categories.taxSections.loading') }}</p>
+  } @else {
+    <ul class="tax-sections__list">
+      @for (row of rows(); track row.key) {
+        <li class="tax-sections__row" [class.tax-sections__row--open]="row.open">
+          <button
+            type="button"
+            class="tax-sections__head"
+            [attr.aria-expanded]="row.open"
+            [attr.aria-controls]="row.open ? editorId : null"
+            [disabled]="busy()"
+            (click)="toggle(row)"
+          >
+            @let code = headCode(row);
+            @if (code === '') {
+              <app-tax-code [code]="i18n.t('categories.taxSections.newCode')" [inherited]="true" />
+            } @else {
+              <app-tax-code [code]="code" />
+            }
+            <span class="tax-sections__head-name">
+              <span class="tax-sections__name">{{
+                headName(row) || i18n.t('categories.taxSections.untitled')
+              }}</span>
+              @if (row.section === null) {
+                <span class="tax-sections__badge">{{
+                  i18n.t('categories.taxSections.unsaved')
+                }}</span>
+              } @else if (row.open && dirty()) {
+                <span
+                  class="tax-sections__dot"
+                  [title]="i18n.t('categories.taxSections.unsavedChanges')"
+                  ><span class="visually-hidden">{{
+                    i18n.t('categories.taxSections.unsavedChanges')
+                  }}</span></span
+                >
+              }
+            </span>
+            <span class="tax-sections__form-name">{{ headForm(row) }}</span>
+            @if (row.section !== null) {
+              @let count = usageOf(row.section.code);
+              <span class="tax-sections__usage">
+                @if (count !== null) {
+                  {{ i18n.t('categories.taxSections.usedCount', { count }) }}
+                }
+              </span>
+            } @else {
+              <span class="tax-sections__usage"></span>
+            }
+            <span class="tax-sections__chevron" aria-hidden="true"></span>
+          </button>
+
+          @if (row.open) {
+            <div class="tax-sections__editor" [id]="editorId">
+              @if (error() === 'conflict') {
+                <div class="app-dialog__error tax-sections__banner" role="alert">
+                  <p class="tax-sections__grow">
+                    {{ i18n.t('categories.taxSections.conflict') }}
+                  </p>
+                  <button
+                    type="button"
+                    class="app-dialog__button"
+                    [disabled]="busy()"
+                    (click)="loadLatest()"
+                  >
+                    {{ i18n.t('categories.taxSections.loadLatest') }}
+                  </button>
+                </div>
+              } @else if (errorText(); as message) {
+                <p class="app-dialog__error tax-sections__banner" role="alert">{{ message }}</p>
+              }
+
+              <form class="tax-sections__form" (submit)="$event.preventDefault()">
+                <fieldset class="tax-sections__fields" [disabled]="busy()">
+                  <div class="tax-sections__identity">
+                    <div class="tax-sections__field">
+                      <label class="app-dialog__sublabel tax-sections__label" [for]="codeId">
+                        <span>{{ i18n.t('categories.taxSections.code') }}</span>
+                        <span class="tax-sections__counter"
+                          >{{ draft().code.length }}/{{ codeMaxLength }}</span
+                        >
+                      </label>
+                      <input
+                        #codeInput
+                        class="app-dialog__select tax-sections__control tax-sections__control--code"
+                        type="text"
+                        required
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="St-XX"
+                        [id]="codeId"
+                        [attr.maxlength]="codeMaxLength"
+                        [attr.aria-invalid]="codeErrorKey() ? 'true' : null"
+                        [attr.aria-describedby]="codeErrorKey() ? codeErrorId : null"
+                        [value]="draft().code"
+                        (input)="onInput('code', $event)"
+                        (blur)="onBlur('code')"
+                      />
+                      @if (codeErrorKey(); as key) {
+                        <p class="tax-sections__problem" [id]="codeErrorId">{{ i18n.t(key) }}</p>
+                      }
+                    </div>
+                    <div class="tax-sections__field">
+                      <label class="app-dialog__sublabel" [for]="nameId">{{
+                        i18n.t('categories.taxSections.name')
+                      }}</label>
+                      <input
+                        class="app-dialog__select tax-sections__control"
+                        type="text"
+                        required
+                        autocomplete="off"
+                        [id]="nameId"
+                        [attr.aria-invalid]="nameMissing() ? 'true' : null"
+                        [attr.aria-describedby]="nameMissing() ? nameErrorId : null"
+                        [value]="draft().name"
+                        (input)="onInput('name', $event)"
+                        (blur)="onBlur('name')"
+                      />
+                      @if (nameMissing()) {
+                        <p class="tax-sections__problem" [id]="nameErrorId">
+                          {{ i18n.t('categories.taxSections.nameRequired') }}
+                        </p>
+                      }
+                    </div>
+                    <div class="tax-sections__field">
+                      <label class="app-dialog__sublabel" [for]="formId">{{
+                        i18n.t('categories.taxSections.form')
+                      }}</label>
+                      <input
+                        class="app-dialog__select tax-sections__control"
+                        type="text"
+                        autocomplete="off"
+                        [id]="formId"
+                        [placeholder]="i18n.t('categories.taxSections.formPlaceholder')"
+                        [value]="draft().form"
+                        (input)="onInput('form', $event)"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="tax-sections__guidance">
+                    @for (field of guidanceFields; track field) {
+                      <div class="tax-sections__field">
+                        <label class="app-dialog__sublabel" [for]="fieldId(field)">{{
+                          i18n.t(labelKey(field))
+                        }}</label>
+                        <textarea
+                          class="app-dialog__select tax-sections__control"
+                          rows="3"
+                          [id]="fieldId(field)"
+                          [value]="draft()[field]"
+                          (input)="onInput(field, $event)"
+                        ></textarea>
+                      </div>
+                    }
+                  </div>
+                </fieldset>
+              </form>
+
+              <p class="app-dialog__hint">
+                @if (usageText(); as usage) {
+                  {{ usage }}
+                }
+                {{ i18n.t('categories.taxSections.guidanceHint') }}
+              </p>
+
+              <div class="tax-sections__actions">
+                <button
+                  type="button"
+                  class="app-dialog__button tax-sections__delete"
+                  [disabled]="busy()"
+                  (click)="remove()"
+                >
+                  {{
+                    i18n.t(
+                      row.section === null
+                        ? 'categories.taxSections.discard'
+                        : 'categories.taxSections.delete'
+                    )
+                  }}
+                </button>
+                <button
+                  type="button"
+                  class="app-dialog__button tax-sections__cancel"
+                  [disabled]="busy()"
+                  (click)="cancel()"
+                >
+                  {{ i18n.t('categories.taxSections.cancel') }}
+                </button>
+                <button
+                  type="button"
+                  class="app-dialog__button app-dialog__button--primary"
+                  [disabled]="!canSave()"
+                  (click)="save()"
+                >
+                  {{
+                    i18n.t(
+                      busy()
+                        ? 'categories.taxSections.saving'
+                        : saved() && !dirty()
+                          ? 'categories.taxSections.saved'
+                          : row.section === null
+                            ? 'categories.taxSections.create'
+                            : 'categories.taxSections.save'
+                    )
+                  }}
+                </button>
+              </div>
+            </div>
+          }
+        </li>
+      } @empty {
+        <li class="app-dialog__hint">{{ i18n.t('categories.taxSections.empty') }}</li>
+      }
+    </ul>
+  }
+</div>
+
+<footer class="app-dialog__footer">
+  @if (pending()) {
+    <p class="tax-sections__grow" role="alert">
+      {{ i18n.t('categories.taxSections.discardPrompt') }}
+    </p>
+    <button type="button" class="app-dialog__button" (click)="confirmDiscard()">
+      {{ i18n.t('categories.taxSections.discard') }}
+    </button>
+    <button
+      #keepEditingButton
+      type="button"
+      class="app-dialog__button app-dialog__button--primary"
+      (click)="keepEditing()"
+    >
+      {{ i18n.t('categories.taxSections.keepEditing') }}
+    </button>
+  } @else {
+    <button
+      type="button"
+      class="app-dialog__button tax-sections__new"
+      [disabled]="busy() || sections() === null"
+      (click)="startNew()"
+    >
+      <span aria-hidden="true">+</span>
+      {{ i18n.t('categories.taxSections.new') }}
+    </button>
+    <button
+      type="button"
+      class="app-dialog__button app-dialog__button--primary"
+      [disabled]="busy()"
+      (click)="requestClose()"
+    >
+      {{ i18n.t('categories.taxSections.done') }}
+    </button>
+  }
+</footer>

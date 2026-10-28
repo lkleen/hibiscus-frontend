@@ -24,6 +24,8 @@ export interface ExportScope {
   readonly period: string;
   readonly accounts: string;
   readonly search: string | null;
+  /** The chosen tax sections; absent when the export is not limited to tax sections. */
+  readonly taxSections?: string;
 }
 
 /** A format-neutral export: built from a view, then written by one of the export writers. */
@@ -54,6 +56,11 @@ export interface ExportOptions {
   readonly format: ExportFormat;
   /** Ignored by the list view. */
   readonly depth: ExportDepth;
+  /**
+   * Limits the by-category report to the categories of these tax section codes; `null` = no
+   * filter. Ignored by the list view.
+   */
+  readonly taxSections: readonly string[] | null;
   /** Only read for `format: 'pdf'`. */
   readonly page: PdfPageSetup;
 }

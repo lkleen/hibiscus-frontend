@@ -86,6 +86,9 @@ describe('TransactionsComponent (shell)', () => {
     await TestBed.inject(Router).navigateByUrl('/en/transactions/categories');
     await settle();
     expect(root.querySelector('app-transactions-by-category')).not.toBeNull();
+    // Opening the tab loads the tax sections its export can be limited to.
+    httpMock.expectOne('/api/tax-tags').flush([]);
+    httpMock.expectOne('/api/tax-sections').flush([]);
     // By category: the tree's expand/collapse-all buttons join the View band, and the table
     // follows that view's density.
     expect(treeActions()).toEqual(['Expand all', 'Collapse all']);
@@ -109,6 +112,8 @@ describe('TransactionsComponent (shell)', () => {
     httpMock.expectOne('/api/settings/table-densities').flush({});
     httpMock.expectOne('/api/transactions').flush(transactionsResponse([transaction()]));
     httpMock.expectOne('/api/categories').flush([]);
+    httpMock.expectOne('/api/tax-tags').flush([]);
+    httpMock.expectOne('/api/tax-sections').flush([]);
     await settle();
 
     const root: HTMLElement = harness.routeNativeElement as HTMLElement;

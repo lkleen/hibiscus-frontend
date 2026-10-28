@@ -125,3 +125,40 @@ export function compareReportRows(a: CategoryReportRow, b: CategoryReportRow): n
     compareText(b.transaction.datum, a.transaction.datum) || b.transaction.id - a.transaction.id
   );
 }
+
+export interface TaxFilterParams {
+  readonly rows: readonly CategoryReportRow[];
+  /** Whether a category's transactions stay in the report. */
+  readonly keep: (category: CategoryRow) => boolean;
+}
+
+/**
+ * The report limited to the transactions of categories that pass `keep`, with their categories and
+ * all ancestors for the structure. An ancestor that does not pass itself keeps only what is
+ * below it; the unassigned node and everything else is dropped.
+ */
+export function filterReportByTaxSections(params: TaxFilterParams): CategoryReportRow[] {
+  const { rows, keep } = params;
+  const byId = new Map<string, CategoryReportRow>(
+    rows.map((row: CategoryReportRow): [string, CategoryReportRow] => [row.id, row]),
+  );
+  const keptIds = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== 'transaction' || row.parentId === UNASSIGNED_ID) continue;
+    const parent: CategoryReportRow | undefined = byId.get(row.parentId);
+    if (parent?.kind !== 'category' || parent.category === null) {
+      throw new Error(`transaction row ${row.id}: category row ${row.parentId} is missing`);
+    }
+    if (!keep(parent.category)) continue;
+    keptIds.add(row.id);
+    let current: CategoryReportRow = parent;
+    while (!keptIds.has(current.id)) {
+      keptIds.add(current.id);
+      if (current.parentId === null) break;
+      const next: CategoryReportRow | undefined = byId.get(current.parentId);
+      if (next === undefined) throw new Error(`category row ${current.id}: parent is missing`);
+      current = next;
+    }
+  }
+  return rows.filter((row: CategoryReportRow): boolean => keptIds.has(row.id));
+}

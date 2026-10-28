@@ -61,6 +61,7 @@
 
 // A fieldset carries a browser border, padding and min-inline-size; the field look replaces them.
 .export-dialog__page,
+.export-dialog__taxes,
 .export-dialog__fit {
   margin: 0;
   padding: 0;
@@ -139,6 +140,15 @@
   .app-dialog__hint {
     grid-column: 2;
   }
+}
+
+// Many sections scroll inside the field instead of pushing the page setup out of view.
+.export-dialog__tax-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-block-size: 10rem;
+  overflow-y: auto;
 }
 
 .export-dialog__warning {

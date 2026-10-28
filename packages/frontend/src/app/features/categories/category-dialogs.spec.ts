@@ -2,7 +2,10 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { EMPTY } from 'rxjs';
+import { TaxSectionsService } from '../../core/services/tax-sections.service';
+import { TaxTagsService } from '../../core/services/tax-tags.service';
 import { categoryRow } from '../../core/utils/testing/category-row-fixture';
 import { installMutationObserverMock } from '../../core/utils/testing/mutation-observer-mock';
 import { CategoryDialogs } from './category-dialogs';
@@ -27,7 +30,19 @@ describe('CategoryDialogs', () => {
 
   beforeEach(() => {
     installMutationObserverMock();
-    TestBed.configureTestingModule({ providers: [CategoryDialogs] });
+    TestBed.configureTestingModule({
+      providers: [
+        CategoryDialogs,
+        {
+          provide: TaxTagsService,
+          useValue: { tags: signal(new Map<number, TaxTagCode>()), load: () => EMPTY },
+        },
+        {
+          provide: TaxSectionsService,
+          useValue: { sections: signal([]), load: () => EMPTY },
+        },
+      ],
+    });
   });
 
   afterEach(() => TestBed.inject(Dialog).closeAll());

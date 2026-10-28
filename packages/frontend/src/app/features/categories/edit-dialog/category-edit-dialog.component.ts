@@ -4,20 +4,35 @@ import {
   Component,
   DestroyRef,
   computed,
+  effect,
   inject,
   signal,
   type Signal,
 } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   CategoryEditableFields,
   CategoryRow,
 } from '@hibiscus-frontend/shared/contracts/categories';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
+import type {
+  TaxSection,
+  TaxTagCode,
+  TaxTagUpdate,
+} from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { debounceTime } from 'rxjs';
+import { TaxSectionsService } from '../../../core/services/tax-sections.service';
+import { TaxTagsService } from '../../../core/services/tax-tags.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { accountLabel } from '../../../core/utils/account-label';
+import { TAX_EXCLUDED_CODE, effectiveTaxSection } from '../../../core/tax/tax-sections';
+import {
+  taxPlainDescription,
+  taxSectionDescription,
+  type TaxDescription,
+} from '../../../core/tax/tax-i18n';
+import { TaxDescriptionComponent } from '../../../core/tax/tax-description/tax-description.component';
 import { toHexColor, toStoredColor } from '../../../core/utils/category-color';
 import {
   assignCategories,
@@ -76,6 +91,9 @@ type Preview =
   | { readonly kind: 'ready'; readonly rows: readonly PreviewRow[] }
   | { readonly kind: 'invalid' }
   | { readonly kind: 'noPattern' };
+
+/** The `<select>` value of "as parent category" (no tag of its own). */
+const TAX_INHERIT = '';
 
 const NO_ROWS: readonly PreviewRow[] = [];
 
@@ -139,6 +157,7 @@ function descendantIds(categories: readonly CategoryRow[], rootId: number): Set<
     DataTableComponent,
     DataTableCellDirective,
     AmountCellComponent,
+    TaxDescriptionComponent,
   ],
 })
 export class CategoryEditDialogComponent {
@@ -148,6 +167,8 @@ export class CategoryEditDialogComponent {
   private readonly dialogRef: DialogRef<CategoryRow, CategoryEditDialogComponent> =
     inject<DialogRef<CategoryRow, CategoryEditDialogComponent>>(DialogRef);
   private readonly destroyed = signal<boolean>(false);
+  private readonly taxTags = inject(TaxTagsService);
+  private readonly taxSections = inject(TaxSectionsService);
   private readonly source: CategoryEditSource = this.data.source;
 
   protected readonly isEdit: boolean = this.data.mode === 'edit';
@@ -164,6 +185,10 @@ export class CategoryEditDialogComponent {
   protected readonly titleId: string = CATEGORY_EDIT_TITLE_ID;
   protected readonly nameId: string = CATEGORY_EDIT_NAME_ID;
   protected readonly patternErrorId: string = 'category-edit-pattern-error';
+  protected readonly taxId: string = 'category-edit-tax';
+  protected readonly taxDescriptionId: string = 'category-edit-tax-description';
+  protected readonly taxInherit: string = TAX_INHERIT;
+  protected readonly taxExcluded: string = TAX_EXCLUDED_CODE;
 
   protected readonly name = signal<string>(this.initial.name);
   protected readonly parentId = signal<number | null>(this.initial.parent_id);
@@ -179,6 +204,91 @@ export class CategoryEditDialogComponent {
   protected readonly skipReports = signal<boolean>(
     ((this.initial.flags ?? 0) & FLAG_SKIP_REPORTS) !== 0,
   );
+
+  /**
+   * The tag stored when the dialog opened, captured once as soon as the tags are known (`undefined`
+   * until then). The update's `expected`, so a change made meanwhile is a 409.
+   */
+  private readonly openedTag = signal<TaxTagCode | null | undefined>(undefined);
+  /** The user's pick (`''` = as parent); `null` = untouched, which shows the opened tag. */
+  private readonly taxPick = signal<string | null>(null);
+
+  /** The `<select>` value: `''` (as parent), `'St-0'` or a section code. */
+  protected readonly taxChoice = computed<string>(
+    () => this.taxPick() ?? this.openedTag() ?? TAX_INHERIT,
+  );
+  protected readonly taxLoading = computed<boolean>(
+    () => this.openedTag() === undefined || this.taxSections.sections() === null,
+  );
+  protected readonly taxSectionList = computed<readonly TaxSection[]>(
+    () => this.taxSections.sections() ?? [],
+  );
+
+  /** What the chosen parent resolves to; `null` section with `excluded` false = nothing applies. */
+  private readonly inherited = computed<{ section: TaxSection | null; excluded: boolean }>(() => {
+    const tags: ReadonlyMap<number, TaxTagCode> | null = this.taxTags.tags();
+    const sections: readonly TaxSection[] | null = this.taxSections.sections();
+    const parentId: number | null = this.parentId();
+    if (tags === null || sections === null || parentId === null) {
+      return { section: null, excluded: false };
+    }
+    const byId: ReadonlyMap<number, CategoryRow> = new Map<number, CategoryRow>(
+      this.source.categories().map((c: CategoryRow): [number, CategoryRow] => [c.id, c]),
+    );
+    const parent: CategoryRow | undefined = byId.get(parentId);
+    if (parent === undefined) throw new Error(`parent category ${parentId} is not loaded`);
+    const effective: ReturnType<typeof effectiveTaxSection> = effectiveTaxSection({
+      category: parent,
+      byId,
+      tags,
+      sections: new Map<string, TaxSection>(
+        sections.map((s: TaxSection): [string, TaxSection] => [s.code, s]),
+      ),
+    });
+    return {
+      section: effective.section,
+      excluded: effective.section === null && effective.sourceCategoryId !== null,
+    };
+  });
+
+  protected readonly taxInheritLabel = computed<string>(() => {
+    const inherited: { section: TaxSection | null; excluded: boolean } = this.inherited();
+    if (inherited.section !== null) {
+      return this.i18n.t('categories.edit.taxInherit', {
+        section: this.sectionLabel(inherited.section),
+      });
+    }
+    return this.i18n.t('categories.edit.taxInherit', {
+      section: this.i18n.t(inherited.excluded ? 'tax.section.excluded' : 'categories.edit.taxNone'),
+    });
+  });
+
+  protected readonly taxDescription = computed<TaxDescription>(() => {
+    const choice: string = this.taxChoice();
+    if (choice === TAX_EXCLUDED_CODE) {
+      return taxPlainDescription(this.i18n.t('categories.edit.taxExcludedHint'));
+    }
+    if (choice === TAX_INHERIT) {
+      const inherited: { section: TaxSection | null; excluded: boolean } = this.inherited();
+      if (inherited.section !== null) return taxSectionDescription(inherited.section);
+      return taxPlainDescription(
+        this.i18n.t(
+          inherited.excluded ? 'categories.edit.taxExcludedHint' : 'categories.edit.taxNoneHint',
+        ),
+      );
+    }
+    const section: TaxSection | undefined = this.taxSectionList().find(
+      (s: TaxSection): boolean => s.code === choice,
+    );
+    if (section === undefined) throw new Error(`unknown tax section "${choice}"`);
+    return taxSectionDescription(section);
+  });
+
+  /** The tag the form would save. */
+  private readonly nextTag = computed<TaxTagCode | null>(() => {
+    const choice: string = this.taxChoice();
+    return choice === TAX_INHERIT ? null : choice;
+  });
 
   protected readonly saving = signal<boolean>(false);
   protected readonly error = signal<CategorySaveError | null>(null);
@@ -241,7 +351,9 @@ export class CategoryEditDialogComponent {
     };
   });
 
-  protected readonly changed = computed<boolean>(() => !sameFields(this.draft(), this.baseline));
+  protected readonly changed = computed<boolean>(
+    () => !sameFields(this.draft(), this.baseline) || this.nextTag() !== this.openedTag(),
+  );
 
   protected readonly patternInvalid = computed<boolean>(
     () => 'invalid' in compileCategory(this.toRow(this.draft())),
@@ -254,6 +366,7 @@ export class CategoryEditDialogComponent {
       (!this.isEdit || this.changed()) &&
       !this.patternInvalid() &&
       !this.saving() &&
+      !this.taxLoading() &&
       this.error() !== 'conflict',
   );
 
@@ -341,7 +454,28 @@ export class CategoryEditDialogComponent {
   };
 
   constructor() {
-    inject(DestroyRef).onDestroy((): void => this.destroyed.set(true));
+    const destroyRef: DestroyRef = inject(DestroyRef);
+    destroyRef.onDestroy((): void => this.destroyed.set(true));
+    // The tag is saved with the category; the form needs the tags and the sections first.
+    if (this.taxTags.tags() === null) {
+      this.taxTags.load().pipe(takeUntilDestroyed(destroyRef)).subscribe();
+    }
+    if (this.taxSections.sections() === null) {
+      this.taxSections.load().pipe(takeUntilDestroyed(destroyRef)).subscribe();
+    }
+    effect((): void => {
+      const tags: ReadonlyMap<number, TaxTagCode> | null = this.taxTags.tags();
+      if (tags === null || this.openedTag() !== undefined) return;
+      this.openedTag.set(tags.get(this.editedId) ?? null);
+    });
+  }
+
+  protected sectionLabel(section: TaxSection): string {
+    return `${section.code} – ${section.name}`;
+  }
+
+  protected onTaxChange(event: Event): void {
+    this.taxPick.set(this.valueOf(event));
   }
 
   protected typeLabelKey(
@@ -425,10 +559,16 @@ export class CategoryEditDialogComponent {
     if (this.saving()) return;
     if (!this.canSave()) throw new Error('nothing to save');
     const fields: CategoryEditableFields = this.draft();
+    const next: TaxTagCode | null = this.nextTag();
     const save: CategorySave =
       this.data.mode === 'create'
-        ? { kind: 'create', fields }
-        : { kind: 'update', category: this.data.category, next: fields };
+        ? { kind: 'create', fields, taxTag: next }
+        : {
+            kind: 'update',
+            category: this.data.category,
+            next: fields,
+            taxTag: this.taxTagUpdate(next),
+          };
     this.saving.set(true);
     this.error.set(null);
     // Escape and the backdrop must not close the dialog while the request is in flight, and the
@@ -437,6 +577,8 @@ export class CategoryEditDialogComponent {
     this.dialogRef.disableClose = true;
     this.source.saveCategory(save).subscribe({
       next: (row: CategoryRow): void => {
+        // Confirmed by the server, so it holds even if the dialog went away meanwhile.
+        this.taxTags.applySaved(row.id, next);
         if (!this.destroyed()) this.dialogRef.close(row);
       },
       error: (cause: unknown): void => {
@@ -446,6 +588,13 @@ export class CategoryEditDialogComponent {
         this.error.set(toCategorySaveError(cause));
       },
     });
+  }
+
+  /** `expected` is the tag the dialog opened with, not the live one, so a concurrent change 409s. */
+  private taxTagUpdate(next: TaxTagCode | null): TaxTagUpdate {
+    const expected: TaxTagCode | null | undefined = this.openedTag();
+    if (expected === undefined) throw new Error('tax tags are not loaded');
+    return { expected, next };
   }
 
   private toRow(fields: CategoryEditableFields): CategoryRow {

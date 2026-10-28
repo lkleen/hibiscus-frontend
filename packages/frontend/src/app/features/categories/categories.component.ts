@@ -14,12 +14,11 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
-import type { TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import type { TaxSection, TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { accountLabel } from '../../core/utils/account-label';
 import { TaxCodeComponent } from '../../core/tax/tax-code/tax-code.component';
 import { effectiveTaxSection, type EffectiveTaxSection } from '../../core/tax/tax-sections';
-import { taxKey } from '../../core/tax/tax-i18n';
-import { TaxTagDialogs } from '../../core/tax/tax-tag-dialog/tax-tag-dialogs';
+import { TaxSectionsService } from '../../core/services/tax-sections.service';
 import { TaxTagsService } from '../../core/services/tax-tags.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { toCssColor } from '../../core/utils/category-color';
@@ -41,6 +40,7 @@ import {
 import { ColorCellComponent } from './cells/color-cell/color-cell.component';
 import { CategoryDialogs } from './category-dialogs';
 import { CategoriesStore } from './categories.store';
+import { TaxSectionDialogs } from './tax-section-dialog/tax-section-dialogs';
 
 /** Hibiscus `umsatztyp.flags` bit 1 (`FLAG_SKIP_REPORTS`). */
 const FLAG_SKIP_REPORTS = 1;
@@ -67,24 +67,35 @@ const DASH = '—';
     RibbonComponent,
     RibbonGroupComponent,
   ],
-  providers: [CategoriesStore, CategoryDialogs, TaxTagDialogs, RibbonHost, DataTableToolbarOutlet],
+  providers: [
+    CategoriesStore,
+    CategoryDialogs,
+    TaxSectionDialogs,
+    RibbonHost,
+    DataTableToolbarOutlet,
+  ],
 })
 export class CategoriesComponent {
   protected readonly i18n = inject(TranslationService);
   protected readonly store = inject(CategoriesStore);
   protected readonly densities = inject(TableDensityService);
+  protected readonly taxSectionDialogs = inject(TaxSectionDialogs);
   private readonly categoryDialogs = inject(CategoryDialogs);
-  private readonly taxTagDialogs = inject(TaxTagDialogs);
   private readonly taxTags = inject(TaxTagsService);
+  private readonly taxSections = inject(TaxSectionsService);
 
   /**
-   * Each category's effective tax section, recomputed when the categories or the tags change;
-   * `null` until the tags are loaded.
+   * Each category's effective tax section, recomputed when the categories, tags or sections
+   * change; `null` until the tags and sections are loaded.
    */
   private readonly taxByCategoryId: Signal<ReadonlyMap<number, EffectiveTaxSection> | null> =
     computed((): ReadonlyMap<number, EffectiveTaxSection> | null => {
       const tags: ReadonlyMap<number, TaxTagCode> | null = this.taxTags.tags();
-      if (tags === null) return null;
+      const sections: readonly TaxSection[] | null = this.taxSections.sections();
+      if (tags === null || sections === null) return null;
+      const sectionsByCode: ReadonlyMap<string, TaxSection> = new Map<string, TaxSection>(
+        sections.map((s: TaxSection): [string, TaxSection] => [s.code, s]),
+      );
       const categories: readonly CategoryRow[] = this.store.categories();
       const byId: ReadonlyMap<number, CategoryRow> = new Map<number, CategoryRow>(
         categories.map((c: CategoryRow): [number, CategoryRow] => [c.id, c]),
@@ -92,17 +103,18 @@ export class CategoriesComponent {
       return new Map<number, EffectiveTaxSection>(
         categories.map((c: CategoryRow): [number, EffectiveTaxSection] => [
           c.id,
-          effectiveTaxSection({ category: c, byId, tags }),
+          effectiveTaxSection({ category: c, byId, tags, sections: sectionsByCode }),
         ]),
       );
     });
 
-  /** The tax tags could not be loaded; the "Tax section" column stays empty. */
-  protected readonly taxTagsError: WritableSignal<boolean> = signal<boolean>(false);
+  /** The tax tags or sections could not be loaded; the "Tax section" column stays empty. */
+  protected readonly taxError: WritableSignal<boolean> = signal<boolean>(false);
 
-  /** The table shows its loading state until the tax tags are loaded too. */
-  protected readonly taxTagsPending: Signal<boolean> = computed(
-    (): boolean => this.taxTags.tags() === null && !this.taxTagsError(),
+  /** The table shows its loading state until the tax tags and sections are loaded too. */
+  protected readonly taxPending: Signal<boolean> = computed(
+    (): boolean =>
+      (this.taxTags.tags() === null || this.taxSections.sections() === null) && !this.taxError(),
   );
 
   protected readonly search: WritableSignal<string> = signal<string>('');
@@ -115,16 +127,16 @@ export class CategoriesComponent {
   constructor() {
     const tableToolbar: DataTableToolbarOutlet = inject(DataTableToolbarOutlet);
     effect((): void => tableToolbar.outlet.set(this.toolbarOutlet()));
+    const destroyRef: DestroyRef = inject(DestroyRef);
+    const onError = (cause: unknown): void => {
+      this.taxError.set(true);
+      throw cause;
+    };
     if (this.taxTags.tags() === null) {
-      this.taxTags
-        .load()
-        .pipe(takeUntilDestroyed(inject(DestroyRef)))
-        .subscribe({
-          error: (cause: unknown): void => {
-            this.taxTagsError.set(true);
-            throw cause;
-          },
-        });
+      this.taxTags.load().pipe(takeUntilDestroyed(destroyRef)).subscribe({ error: onError });
+    }
+    if (this.taxSections.sections() === null) {
+      this.taxSections.load().pipe(takeUntilDestroyed(destroyRef)).subscribe({ error: onError });
     }
   }
 
@@ -210,12 +222,6 @@ export class CategoriesComponent {
         nameKey: 'categories.menuEdit',
         action: (): void => this.categoryDialogs.openEdit(this.store, row),
       },
-      {
-        nameKey: 'categories.menuTaxSection',
-        action: (): void => {
-          this.taxTagDialogs.openSection(row).subscribe();
-        },
-      },
     ],
   };
 
@@ -230,7 +236,7 @@ export class CategoriesComponent {
 
   protected sectionName(tax: EffectiveTaxSection): string {
     if (!tax.section) throw new Error('no section to name');
-    return this.i18n.t(taxKey(tax.section.nameKey));
+    return tax.section.name;
   }
 
   // `DataTableCellContext.value` is `unknown`; the "color" renderer is only wired to the `color`

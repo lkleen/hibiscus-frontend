@@ -86,7 +86,7 @@ describe('CategoriesStore', () => {
 
   it('posts a create and appends the stored row', () => {
     load([], [categoryRow({ id: 1 })]);
-    const save: CategorySave = { kind: 'create', fields };
+    const save: CategorySave = { kind: 'create', fields, taxTag: null };
     let received: CategoryRow | undefined = undefined;
     store.saveCategory(save).subscribe((row: CategoryRow) => (received = row));
 
@@ -105,6 +105,7 @@ describe('CategoriesStore', () => {
       kind: 'update',
       category: original,
       next: { ...fields, name: 'New' },
+      taxTag: { expected: null, next: null },
     };
 
     store.saveCategory(save).subscribe();
@@ -114,6 +115,7 @@ describe('CategoriesStore', () => {
     expect(req.request.body).toEqual({
       expected: { ...fields, name: 'Old' },
       next: { ...fields, name: 'New' },
+      taxTag: { expected: null, next: null },
     });
     req.flush(null, { status: 204, statusText: 'No Content' });
 
@@ -131,7 +133,12 @@ describe('CategoriesStore', () => {
     let failure: unknown = null;
 
     store
-      .saveCategory({ kind: 'update', category: original, next: { ...fields, parent_id: 2 } })
+      .saveCategory({
+        kind: 'update',
+        category: original,
+        next: { ...fields, parent_id: 2 },
+        taxTag: { expected: null, next: null },
+      })
       .subscribe({ error: (error: unknown) => (failure = error) });
     httpMock
       .expectOne('/api/categories/2')

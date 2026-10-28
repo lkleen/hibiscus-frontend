@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { MockInstance } from 'vitest';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxSection, TaxTag } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { TableViewId } from '@hibiscus-frontend/shared/contracts/user-settings';
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
@@ -11,7 +12,8 @@ import { installMutationObserverMock } from '../../../core/utils/testing/mutatio
 import { RibbonHost } from '../../../shared/components/ribbon/ribbon-host';
 import { RibbonComponent } from '../../../shared/components/ribbon/ribbon.component';
 import { TransactionDialogs } from '../transaction-dialogs';
-import { TransactionsExport } from '../export/transactions-export';
+import type { ExportDocument, ExportOptions } from '../export/export.model';
+import { TransactionsExport, type ExportSource } from '../export/transactions-export';
 import { CategoryDialogs } from '../../categories/category-dialogs';
 import { account, transaction, transactionsResponse } from '../testing/transaction-fixture';
 import { TransactionsStore } from '../transactions.store';
@@ -23,8 +25,30 @@ function wait(ms: number): Promise<void> {
 
 const DENSITY_VIEW: TableViewId = 'transactions-by-category';
 
+const TAX_SECTIONS: TaxSection[] = [
+  {
+    code: 'St-A',
+    name: 'Work',
+    form: null,
+    belongs: null,
+    excludes: null,
+    receipts: null,
+    note: null,
+  },
+  {
+    code: 'St-B',
+    name: 'Health',
+    form: null,
+    belongs: null,
+    excludes: null,
+    receipts: null,
+    note: null,
+  },
+];
+
 interface Loaded {
   accounts?: AccountRow[];
+  taxTags?: TaxTag[];
   items?: TransactionRow[];
   categories?: CategoryRow[];
 }
@@ -34,9 +58,19 @@ describe('TransactionsByCategoryComponent', () => {
   let httpMock: HttpTestingController;
   let ribbon: ComponentFixture<RibbonComponent>;
   let root: HTMLElement;
+  let registered: ExportSource | null;
 
   beforeEach(() => {
     installMutationObserverMock();
+    registered = null;
+    const register = TransactionsExport.prototype.register;
+    vi.spyOn(TransactionsExport.prototype, 'register').mockImplementation(function (
+      this: TransactionsExport,
+      source: ExportSource,
+    ): () => void {
+      registered = source;
+      return register.call(this, source);
+    });
     TestBed.configureTestingModule({
       imports: [TransactionsByCategoryComponent],
       providers: [
@@ -58,6 +92,7 @@ describe('TransactionsByCategoryComponent', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     ribbon.destroy();
     fixture.destroy();
     httpMock.verify();
@@ -65,6 +100,7 @@ describe('TransactionsByCategoryComponent', () => {
 
   async function load({
     accounts = [account({ id: 1 })],
+    taxTags = [],
     items = [],
     categories = [],
   }: Loaded = {}): Promise<void> {
@@ -73,6 +109,8 @@ describe('TransactionsByCategoryComponent', () => {
     httpMock.expectOne('/api/settings/table-densities').flush({ [DENSITY_VIEW]: 'compact' });
     httpMock.expectOne('/api/transactions').flush(transactionsResponse(items));
     httpMock.expectOne('/api/categories').flush(categories);
+    httpMock.expectOne('/api/tax-tags').flush(taxTags);
+    httpMock.expectOne('/api/tax-sections').flush(TAX_SECTIONS);
     fixture.detectChanges();
     await fixture.whenStable();
     await wait(50);
@@ -237,6 +275,90 @@ describe('TransactionsByCategoryComponent', () => {
 
     expect(contextMenu(1)).toEqual([]);
     expect(openEdit).toHaveBeenCalledTimes(1);
+  });
+
+  describe('export', () => {
+    const OPTIONS: ExportOptions = {
+      format: 'csv',
+      depth: 'all',
+      taxSections: null,
+      page: { format: 'a4', orientation: 'portrait', fit: 'shrink' },
+    };
+
+    function source(): ExportSource {
+      if (registered === null) throw new Error('no export source registered');
+      return registered;
+    }
+
+    function names(doc: ExportDocument): unknown[] {
+      return doc.rows.filter((row) => row.kind !== 'total').map((row) => row.cells[0]);
+    }
+
+    async function loadTaxed(): Promise<void> {
+      await load({
+        categories: [
+          categoryRow({ id: 1, name: 'Work', pattern: 'work' }),
+          categoryRow({ id: 2, name: 'Health', pattern: 'doctor' }),
+          categoryRow({ id: 3, name: 'Sub', parent_id: 2, pattern: 'pharmacy' }),
+          categoryRow({ id: 4, name: 'Fun', pattern: 'cinema' }),
+        ],
+        taxTags: [
+          { category_id: 1, code: 'St-A' },
+          { category_id: 2, code: 'St-B' },
+        ],
+        items: [
+          transaction({ id: 1, empfaenger_name: 'tx-work', zweck: 'work', betrag: -10 }),
+          transaction({ id: 2, empfaenger_name: 'tx-doc', zweck: 'doctor', betrag: -20 }),
+          transaction({ id: 3, empfaenger_name: 'tx-pharm', zweck: 'pharmacy', betrag: -30 }),
+          transaction({ id: 4, empfaenger_name: 'tx-fun', zweck: 'cinema', betrag: -40 }),
+          transaction({ id: 5, empfaenger_name: 'tx-none', zweck: 'other', betrag: -50 }),
+        ],
+      });
+    }
+
+    it('offers the loaded sections', async () => {
+      await loadTaxed();
+      expect(source().taxSections?.()).toEqual(TAX_SECTIONS);
+    });
+
+    it('exports every category and the unassigned node without a filter', async () => {
+      await loadTaxed();
+      expect(names(source().build(OPTIONS))).toEqual([
+        'Fun',
+        'tx-fun',
+        'Health',
+        'Sub',
+        'tx-pharm',
+        'tx-doc',
+        'Work',
+        'tx-work',
+        'Unassigned',
+        'tx-none',
+      ]);
+      expect(source().build(OPTIONS).scope.taxSections).toBeUndefined();
+    });
+
+    it('limits the export to the categories of the chosen sections, inherited ones included', async () => {
+      await loadTaxed();
+      const doc: ExportDocument = source().build({ ...OPTIONS, taxSections: ['St-B'] });
+      expect(names(doc)).toEqual(['Health', 'Sub', 'tx-pharm', 'tx-doc']);
+      expect(doc.scope.taxSections).toBe('Tax sections: St-B');
+
+      const both: ExportDocument = source().build({ ...OPTIONS, taxSections: ['St-A', 'St-B'] });
+      expect(names(both)).toEqual(['Health', 'Sub', 'tx-pharm', 'tx-doc', 'Work', 'tx-work']);
+    });
+
+    it('throws for a filter before the tags and sections are loaded', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('/api/accounts').flush([account({ id: 1 })]);
+      httpMock.expectOne('/api/settings/table-densities').flush({});
+      httpMock.expectOne('/api/transactions').flush(transactionsResponse([]));
+      httpMock.expectOne('/api/categories').flush([]);
+      expect(source().taxSections?.()).toBeNull();
+      expect(() => source().build({ ...OPTIONS, taxSections: ['St-A'] })).toThrow(/not loaded/);
+      httpMock.expectOne('/api/tax-tags').flush([]);
+      httpMock.expectOne('/api/tax-sections').flush(TAX_SECTIONS);
+    });
   });
 
   it('shows no warning when every pattern is valid', async () => {

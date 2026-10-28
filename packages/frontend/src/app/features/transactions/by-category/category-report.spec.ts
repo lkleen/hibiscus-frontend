@@ -2,7 +2,12 @@ import type { CategoryRow } from '@hibiscus-frontend/shared/contracts/categories
 import type { TransactionRow } from '@hibiscus-frontend/shared/contracts/transactions';
 import { categoryRow } from '../../../core/utils/testing/category-row-fixture';
 import { transaction } from '../testing/transaction-fixture';
-import { buildCategoryReport, compareReportRows, type CategoryReportRow } from './category-report';
+import {
+  buildCategoryReport,
+  compareReportRows,
+  filterReportByTaxSections,
+  type CategoryReportRow,
+} from './category-report';
 
 function build(
   transactions: TransactionRow[],
@@ -100,5 +105,64 @@ describe('compareReportRows', () => {
       .sort(compareReportRows)
       .map((row: CategoryReportRow) => row.id);
     expect(sorted).toEqual(['t2', 't1']);
+  });
+});
+
+describe('filterReportByTaxSections', () => {
+  const categories: CategoryRow[] = [
+    categoryRow({ id: 1, name: 'Root' }),
+    categoryRow({ id: 2, name: 'Tax child', parent_id: 1 }),
+    categoryRow({ id: 3, name: 'Other child', parent_id: 1 }),
+    categoryRow({ id: 4, name: 'Elsewhere' }),
+  ];
+  const transactions: TransactionRow[] = [
+    transaction({ id: 10 }),
+    transaction({ id: 11 }),
+    transaction({ id: 12 }),
+    transaction({ id: 13 }),
+    transaction({ id: 14 }),
+  ];
+  const rows: CategoryReportRow[] = build(transactions, categories, {
+    10: 2,
+    11: 3,
+    12: 1,
+    13: 4,
+    14: null,
+  });
+  const keepIds =
+    (...kept: number[]) =>
+    (category: CategoryRow): boolean =>
+      kept.includes(category.id);
+
+  it('keeps the transactions of passing categories with all their ancestors', () => {
+    const filtered: CategoryReportRow[] = filterReportByTaxSections({ rows, keep: keepIds(2) });
+    expect(ids(filtered)).toEqual(['c1', 'c2', 't10']);
+  });
+
+  it('drops the own transactions of a kept ancestor that does not pass', () => {
+    const filtered: CategoryReportRow[] = filterReportByTaxSections({ rows, keep: keepIds(2, 4) });
+    expect(ids(filtered)).toEqual(['c1', 'c2', 'c4', 't10', 't13']);
+    expect(ids(filtered)).not.toContain('t12');
+  });
+
+  it('keeps the own transactions of an ancestor that passes', () => {
+    const filtered: CategoryReportRow[] = filterReportByTaxSections({ rows, keep: keepIds(1) });
+    expect(ids(filtered)).toEqual(['c1', 't12']);
+  });
+
+  it('drops the unassigned node and unassigned transactions', () => {
+    const filtered: CategoryReportRow[] = filterReportByTaxSections({ rows, keep: () => true });
+    expect(ids(filtered)).not.toContain('c-none');
+    expect(ids(filtered)).not.toContain('t14');
+    expect(ids(filtered)).toEqual(['c1', 'c2', 'c3', 'c4', 't10', 't11', 't12', 't13']);
+  });
+
+  it('is empty when no category passes', () => {
+    expect(filterReportByTaxSections({ rows, keep: () => false })).toEqual([]);
+  });
+
+  it('throws when a transaction points to a missing category row', () => {
+    const broken: CategoryReportRow[] = rows.filter((row) => row.id !== 'c4');
+    expect(() => filterReportByTaxSections({ rows: broken, keep: () => true })).toThrow(/c4/);
   });
 });

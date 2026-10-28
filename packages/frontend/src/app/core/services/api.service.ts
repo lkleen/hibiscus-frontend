@@ -5,9 +5,13 @@ import { Me } from '../models/me.model';
 import type {
   DatePresetList,
   TableDensities,
-  TaxProfile,
 } from '@hibiscus-frontend/shared/contracts/user-settings';
-import type { TaxTag, TaxTagsUpdateRequest } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import type {
+  TaxSection,
+  TaxSectionCode,
+  TaxSectionUpdateRequest,
+  TaxTag,
+} from '@hibiscus-frontend/shared/contracts/tax-tags';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   CategoryCreateRequest,
@@ -111,21 +115,27 @@ export class ApiService {
     return this.http.put<void>('/api/settings/table-densities', densities);
   }
 
-  getTaxProfile(): Observable<TaxProfile> {
-    return this.http.get<TaxProfile>('/api/settings/tax-profile');
-  }
-
-  /** The body is the whole profile; the backend answers `204 No Content`. */
-  saveTaxProfile(profile: TaxProfile): Observable<void> {
-    return this.http.put<void>('/api/settings/tax-profile', profile);
-  }
-
   getTaxTags(): Observable<TaxTag[]> {
     return this.http.get<TaxTag[]>('/api/tax-tags');
   }
 
-  /** Applied all or nothing; the backend answers `204 No Content`, or `409` with a TaxTagsConflict. */
-  saveTaxTags(request: TaxTagsUpdateRequest): Observable<void> {
-    return this.http.put<void>('/api/tax-tags', request);
+  /** The user's tax sections, ordered by code. */
+  getTaxSections(): Observable<TaxSection[]> {
+    return this.http.get<TaxSection[]>('/api/tax-sections');
+  }
+
+  /** Answers `201 Created` with the section as stored; `409` `{ error: 'duplicate' }` for a taken code. */
+  createTaxSection(section: TaxSection): Observable<TaxSection> {
+    return this.http.post<TaxSection>('/api/tax-sections', section);
+  }
+
+  /** `204` on success; `409` with a TaxSectionError when `expected` is stale or the new code is taken. */
+  updateTaxSection(code: TaxSectionCode, request: TaxSectionUpdateRequest): Observable<void> {
+    return this.http.put<void>(`/api/tax-sections/${encodeURIComponent(code)}`, request);
+  }
+
+  /** `204` on success; `409` `{ error: 'in-use' }` while a category is tagged with it. */
+  deleteTaxSection(code: TaxSectionCode): Observable<void> {
+    return this.http.delete<void>(`/api/tax-sections/${encodeURIComponent(code)}`);
   }
 }

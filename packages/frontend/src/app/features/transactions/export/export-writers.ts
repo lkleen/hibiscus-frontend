@@ -111,6 +111,7 @@ export function toJson(doc: ExportDocument, exportedAt: Date): Blob {
 function scopeLines(scope: ExportScope): string[] {
   const lines: string[] = [scope.period, scope.accounts];
   if (scope.search !== null) lines.push(scope.search);
+  if (scope.taxSections !== undefined) lines.push(scope.taxSections);
   return lines;
 }
 

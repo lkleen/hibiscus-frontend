@@ -23,6 +23,7 @@ function source(view: ExportSource['view'] = 'transactions-by-category'): Export
   return {
     view,
     maxDepth: view === 'transactions-list' ? null : signal<number>(2),
+    taxSections: view === 'transactions-list' ? null : signal([]),
     build: (): ExportDocument => DOC,
   };
 }

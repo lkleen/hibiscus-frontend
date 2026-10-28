@@ -11,6 +11,7 @@ import { createAccountsRouter } from './routes/accounts';
 import { createCategoriesRouter } from './routes/categories';
 import { createMeRouter } from './routes/me';
 import { createSettingsRouter } from './routes/settings';
+import { createTaxSectionsRouter } from './routes/tax-sections';
 import { createTaxTagsRouter } from './routes/tax-tags';
 import { createTransactionsRouter } from './routes/transactions';
 import { ensureTaxTagTables } from './repositories/tax-tag';
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
   api.use('/transactions', createTransactionsRouter());
   api.use('/categories', createCategoriesRouter());
   api.use('/settings', createSettingsRouter());
+  api.use('/tax-sections', createTaxSectionsRouter());
   api.use('/tax-tags', createTaxTagsRouter());
   app.use('/api', api);
 

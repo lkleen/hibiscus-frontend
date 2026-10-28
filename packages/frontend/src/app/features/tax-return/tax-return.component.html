@@ -1,7 +1,0 @@
-@if (store.error()) {
-  <p class="tax-status tax-status--error" role="alert">{{ i18n.t('tax.loadError') }}</p>
-} @else if (store.loading()) {
-  <p class="tax-status" role="status">{{ i18n.t('tax.loading') }}</p>
-} @else {
-  <router-outlet />
-}

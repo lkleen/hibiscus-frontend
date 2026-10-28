@@ -1,41 +1,17 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, Signal, inject, signal, type WritableSignal } from '@angular/core';
-import type {
-  TaxTag,
-  TaxTagChange,
-  TaxTagCode,
-  TaxTagsConflict,
-} from '@hibiscus-frontend/shared/contracts/tax-tags';
-import { Observable, catchError, defer, finalize, map, switchMap, tap, throwError } from 'rxjs';
+import type { TaxTag, TaxTagCode } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import { Observable, map, tap } from 'rxjs';
 import { ApiService } from './api.service';
-
-/** The server rejected a save: the tags of `conflictIds` changed meanwhile (or are gone). */
-export class TaxTagConflictError extends Error {
-  constructor(readonly conflictIds: readonly number[]) {
-    super(`tax tags of categories ${conflictIds.join(', ')} changed elsewhere`);
-    this.name = 'TaxTagConflictError';
-  }
-}
-
-function isConflict(body: unknown): body is TaxTagsConflict {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    (body as { error?: unknown }).error === 'conflict' &&
-    Array.isArray((body as { conflictIds?: unknown }).conflictIds)
-  );
-}
 
 /**
  * The tax-return tags of the categories (category id → tag), shared app-wide. Only the server's
- * answers change `tags`; at most one save runs at a time.
+ * answers change `tags`.
  */
 @Injectable({ providedIn: 'root' })
 export class TaxTagsService {
   private readonly api = inject(ApiService);
   private readonly state: WritableSignal<ReadonlyMap<number, TaxTagCode> | null> =
     signal<ReadonlyMap<number, TaxTagCode> | null>(null);
-  private saveInFlight = false;
 
   /** `null` until loaded. */
   readonly tags: Signal<ReadonlyMap<number, TaxTagCode> | null> = this.state.asReadonly();
@@ -55,46 +31,32 @@ export class TaxTagsService {
   }
 
   /**
-   * Saves `changes` all or nothing; on success they are applied to `tags`. A 409 reloads the tags
-   * and errors with {@link TaxTagConflictError}. Throws when `changes` is empty or another save is
-   * running; the save slot is held from subscription until the result finishes.
+   * Records a category's tag after the server saved it (with the category); `null` removes it.
+   * Throws when the tags are not loaded.
    */
-  save(changes: readonly TaxTagChange[]): Observable<void> {
-    if (changes.length === 0) throw new Error('save needs at least one change');
-    if (this.saveInFlight) throw new Error('another tax tag save is in flight');
-    return defer((): Observable<void> => {
-      // Checked again on subscribe: two saves created back to back must not both run.
-      if (this.saveInFlight) throw new Error('another tax tag save is in flight');
-      this.saveInFlight = true;
-      return this.api.saveTaxTags({ changes }).pipe(
-        tap((): void => this.apply(changes)),
-        catchError((cause: unknown): Observable<void> => {
-          if (cause instanceof HttpErrorResponse && cause.status === 409) {
-            const body: unknown = cause.error;
-            if (!isConflict(body)) throw new Error('409 without a TaxTagsConflict body');
-            return this.load().pipe(
-              switchMap((): Observable<void> =>
-                throwError(() => new TaxTagConflictError(body.conflictIds)),
-              ),
-            );
-          }
-          return throwError(() => cause);
-        }),
-        finalize((): void => {
-          this.saveInFlight = false;
-        }),
-      );
-    });
-  }
-
-  private apply(changes: readonly TaxTagChange[]): void {
+  applySaved(categoryId: number, code: TaxTagCode | null): void {
     const current: ReadonlyMap<number, TaxTagCode> | null = this.state();
     if (current === null) throw new Error('tax tags are not loaded');
     const next: Map<number, TaxTagCode> = new Map<number, TaxTagCode>(current);
-    for (const change of changes) {
-      if (change.next === null) next.delete(change.category_id);
-      else next.set(change.category_id, change.next);
-    }
+    if (code === null) next.delete(categoryId);
+    else next.set(categoryId, code);
     this.state.set(next);
+  }
+
+  /**
+   * Follows a renamed section: every tag with code `from` gets code `to`. Before the tags are
+   * loaded there is nothing to follow; the first load already carries the new code.
+   */
+  renameCode(from: TaxTagCode, to: TaxTagCode): void {
+    const current: ReadonlyMap<number, TaxTagCode> | null = this.state();
+    if (current === null) return;
+    this.state.set(
+      new Map<number, TaxTagCode>(
+        [...current].map(([id, code]: [number, TaxTagCode]): [number, TaxTagCode] => [
+          id,
+          code === from ? to : code,
+        ]),
+      ),
+    );
   }
 }

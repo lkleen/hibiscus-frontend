@@ -4,6 +4,8 @@ import type {
   CategoryEditableFields,
   CategoryUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/categories';
+import type { TaxTagUpdate } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import { TaxTagCodeSchema } from '../tax/tax-section-schema';
 
 /** `umsatztyp.name`, `konto_kategorie` are `VARCHAR(255)`. */
 const VARCHAR_255_MAX_LENGTH = 255;
@@ -37,8 +39,8 @@ const ColorSchema: z.ZodType<string | null> = z
 
 const OptionalIdSchema: z.ZodType<number | null> = z.number().int().positive().nullable();
 
-/** The writable `umsatztyp` columns (everything but `id`), each bounded by its column type. */
-export const CategoryEditableFieldsSchema: z.ZodType<CategoryEditableFields> = z
+/** The writable `umsatztyp` columns as an object schema, kept to `.extend` it for the create body. */
+const CategoryFieldsObjectSchema = z
   .object({
     name: z.string().trim().min(1).max(VARCHAR_255_MAX_LENGTH),
     nummer: z.string().max(NUMMER_MAX_LENGTH).nullable(),
@@ -55,14 +57,27 @@ export const CategoryEditableFieldsSchema: z.ZodType<CategoryEditableFields> = z
   })
   .strict();
 
-/** Body of `POST /api/categories`. */
-export const CategoryCreateSchema: z.ZodType<CategoryCreateRequest> = CategoryEditableFieldsSchema;
+/** The writable `umsatztyp` columns (everything but `id`), each bounded by its column type. */
+export const CategoryEditableFieldsSchema: z.ZodType<CategoryEditableFields> =
+  CategoryFieldsObjectSchema;
 
-/** Body of `PUT /api/categories/:id`: the editable fields, before and after. */
+/** Body of `POST /api/categories`. */
+export const CategoryCreateSchema: z.ZodType<CategoryCreateRequest> =
+  CategoryFieldsObjectSchema.extend({
+    taxTag: TaxTagCodeSchema.nullable(),
+  });
+
+/** A category's tax tag before and after the edit (`null` = untagged). */
+const TaxTagUpdateSchema: z.ZodType<TaxTagUpdate> = z
+  .object({ expected: TaxTagCodeSchema.nullable(), next: TaxTagCodeSchema.nullable() })
+  .strict();
+
+/** Body of `PUT /api/categories/:id`: the editable fields and the tax tag, before and after. */
 export const CategoryUpdateSchema: z.ZodType<CategoryUpdateRequest> = z
   .object({
     expected: CategoryEditableFieldsSchema,
     next: CategoryEditableFieldsSchema,
+    taxTag: TaxTagUpdateSchema,
   })
   .strict();
 

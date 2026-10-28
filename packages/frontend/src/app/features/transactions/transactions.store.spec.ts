@@ -362,11 +362,11 @@ describe('TransactionsStore', () => {
     let created: CategoryRow | null = null;
 
     store
-      .saveCategory({ kind: 'create', fields: editable })
+      .saveCategory({ kind: 'create', fields: editable, taxTag: null })
       .subscribe((row: CategoryRow) => (created = row));
     const req = httpMock.expectOne('/api/categories');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual(editable);
+    expect(req.request.body).toEqual({ ...editable, taxTag: null });
     req.flush(categoryRow({ id: 9, name: 'Food' }), { status: 201, statusText: 'Created' });
 
     expect(id).toBe(1);
@@ -380,10 +380,17 @@ describe('TransactionsStore', () => {
     const { id, ...expected }: CategoryRow = housing;
     const next: CategoryEditableFields = { ...expected, name: 'Rent', pattern: 'miete' };
 
-    store.saveCategory({ kind: 'update', category: housing, next }).subscribe();
+    store
+      .saveCategory({
+        kind: 'update',
+        category: housing,
+        next,
+        taxTag: { expected: null, next: null },
+      })
+      .subscribe();
     const req = httpMock.expectOne('/api/categories/7');
     expect(req.request.method).toBe('PUT');
-    expect(req.request.body).toEqual({ expected, next });
+    expect(req.request.body).toEqual({ expected, next, taxTag: { expected: null, next: null } });
     req.flush(null, { status: 204, statusText: 'No Content' });
 
     expect(id).toBe(7);
@@ -400,7 +407,12 @@ describe('TransactionsStore', () => {
     let failure: unknown = null;
 
     store
-      .saveCategory({ kind: 'update', category: housing, next: { ...expected, name: 'Rent' } })
+      .saveCategory({
+        kind: 'update',
+        category: housing,
+        next: { ...expected, name: 'Rent' },
+        taxTag: { expected: null, next: null },
+      })
       .subscribe({ error: (error: unknown) => (failure = error) });
     httpMock
       .expectOne('/api/categories/7')
