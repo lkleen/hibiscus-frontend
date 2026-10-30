@@ -1,19 +1,11 @@
 import { CdkMenu, CdkMenuItem, CdkMenuItemRadio, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, inject, type Signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ApiService } from '../../services/api.service';
 import { Locale, SUPPORTED_LOCALES } from '../../models/locale.model';
 import { SUPPORTED_THEMES, ThemeName } from '../../models/theme.model';
 import { LocaleService } from '../../services/locale.service';
+import { MeService } from '../../services/me.service';
 import { ThemeService } from '../../services/theme.service';
 import { TranslationService } from '../../services/translation.service';
 
@@ -31,14 +23,13 @@ import { TranslationService } from '../../services/translation.service';
   imports: [CdkMenu, CdkMenuItem, CdkMenuItemRadio, CdkMenuTrigger, RouterLink],
 })
 export class UserMenuComponent {
-  private readonly api = inject(ApiService);
+  private readonly meService = inject(MeService);
   private readonly themeService = inject(ThemeService);
   private readonly localeService = inject(LocaleService);
   protected readonly i18n = inject(TranslationService);
-  private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly user = signal<string | null>(null);
-  protected readonly loadError = signal(false);
+  protected readonly user: Signal<string | null> = this.meService.user;
+  protected readonly loadError: Signal<boolean> = this.meService.error;
 
   protected readonly theme = this.themeService.currentTheme;
 
@@ -74,13 +65,8 @@ export class UserMenuComponent {
   ];
 
   constructor() {
-    this.api
-      .getMe()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (me) => this.user.set(me.user),
-        error: () => this.loadError.set(true),
-      });
+    // The route guards load it first; this covers pages that do not pass a guard.
+    this.meService.load().subscribe({ error: () => undefined });
   }
 
   protected themeLabel(name: ThemeName): string {

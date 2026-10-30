@@ -18,6 +18,7 @@ import { accountLabel } from '../../core/utils/account-label';
 import { ApiService } from '../../core/services/api.service';
 import { LocaleService } from '../../core/services/locale.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { userErrorOf } from '../../core/utils/user-errors';
 import { syncErrorOf } from '../sync/sync-errors';
 import { SyncStatusStore, isActiveRun } from '../sync/sync-status.store';
 import { formatSyncTime } from '../sync/sync-time';
@@ -53,7 +54,7 @@ export class AccountsComponent {
   private readonly connections = signal<readonly BankConnection[]>([]);
   protected readonly startingId = signal<number | null>(null);
   protected readonly syncErrorKey = signal<
-    'accounts.sync.locked' | 'accounts.sync.startError' | null
+    'accounts.sync.locked' | 'accounts.sync.startError' | 'accounts.sync.keyNotConfigured' | null
   >(null);
 
   protected readonly syncs: Signal<readonly ConnectionSync[]> = computed(() =>
@@ -90,11 +91,15 @@ export class AccountsComponent {
     this.startingId.set(sync.id);
     this.syncErrorKey.set(null);
     this.store.syncNow(sync.id).subscribe({
-      next: (): void => this.startingId.set(null),
+      complete: (): void => this.startingId.set(null),
       error: (failure: unknown): void => {
         this.startingId.set(null);
         this.syncErrorKey.set(
-          syncErrorOf(failure) === 'locked' ? 'accounts.sync.locked' : 'accounts.sync.startError',
+          syncErrorOf(failure) === 'locked'
+            ? 'accounts.sync.locked'
+            : userErrorOf(failure) === 'key-not-configured'
+              ? 'accounts.sync.keyNotConfigured'
+              : 'accounts.sync.startError',
         );
       },
     });

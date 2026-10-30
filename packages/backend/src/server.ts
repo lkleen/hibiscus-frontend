@@ -5,8 +5,11 @@ import type { NextFunction, Request, Response } from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig } from './config/config';
-import { initPool } from './db/pool';
+import { initAppPool, testDatabaseConnection } from './db/pool';
+import { UserPools } from './db/user-pools';
 import { createAuthMiddleware } from './middleware/auth';
+import { createUserDbMiddleware } from './middleware/user-db';
+import { ensureAppUserTable } from './repositories/app-user';
 import { createAccountsRouter } from './routes/accounts';
 import { createBankConnectionsRouter } from './routes/bank-connections';
 import { createCategoriesRouter } from './routes/categories';
@@ -16,28 +19,31 @@ import { createSyncRouter } from './routes/sync';
 import { createTaxSectionsRouter } from './routes/tax-sections';
 import { createTaxTagsRouter } from './routes/tax-tags';
 import { createTransactionsRouter } from './routes/transactions';
-import { ensureTaxTagTables } from './repositories/tax-tag';
-import { ensureUserSettingTable } from './repositories/user-setting';
+import { createUserDatabaseRouter } from './routes/user-database';
+import { createUserKeyRouter } from './routes/user-key';
 import { CredentialCrypto } from './sync/credential-crypto';
 import { createLibFintsSessionFactory } from './sync/fints-session';
 import { PendingTanRegistry, TAN_TIMEOUT_MS } from './sync/pending-tan-registry';
 import { SCHEDULER_TICK_MS, SyncScheduler } from './sync/scheduler';
 import { SyncService } from './sync/sync-service';
-import { ensureSyncTables } from './sync/sync-tables';
+import { UserKeys, UserKeyStore } from './sync/user-keys';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  initPool(config);
-  await ensureUserSettingTable();
-  await ensureTaxTagTables();
-  await ensureSyncTables();
+  initAppPool(config);
+  // The app database holds only `hf_app_user`; each user's `hf_*` tables are created on their
+  // own database when its pool is first used (see `db/user-pools.ts`).
+  await ensureAppUserTable();
 
+  // The server key: encrypts the users' database passwords and, in `stored` mode, wraps their
+  // keys. The bank PINs are encrypted with each user's own key (`sync/user-keys.ts`).
   const crypto: CredentialCrypto = new CredentialCrypto(config.BANK_CREDENTIALS_KEY);
+  const pools: UserPools = new UserPools({ crypto, allowedHosts: config.ALLOWED_DB_HOSTS });
+  const keys: UserKeys = new UserKeys({ serverCrypto: crypto, store: new UserKeyStore() });
   const registry: PendingTanRegistry = new PendingTanRegistry(TAN_TIMEOUT_MS);
   const syncService: SyncService = new SyncService({
     sessions: createLibFintsSessionFactory(),
     registry,
-    crypto,
   });
 
   const app = express();
@@ -59,15 +65,27 @@ async function main(): Promise<void> {
   // unauthenticated route in this app.
   const api = express.Router();
   api.use(requireAuth);
-  api.use('/me', createMeRouter());
+  // Every route below runs in the user's context, on the user's own database.
+  api.use(createUserDbMiddleware(pools));
+  api.use('/me', createMeRouter(pools));
+  api.use(
+    '/user/database',
+    createUserDatabaseRouter({
+      pools,
+      crypto,
+      allowedHosts: config.ALLOWED_DB_HOSTS,
+      test: testDatabaseConnection,
+    }),
+  );
+  api.use('/user/key', createUserKeyRouter({ keys, pools }));
   api.use('/accounts', createAccountsRouter());
   api.use('/transactions', createTransactionsRouter());
   api.use('/categories', createCategoriesRouter());
   api.use('/settings', createSettingsRouter());
   api.use('/tax-sections', createTaxSectionsRouter());
   api.use('/tax-tags', createTaxTagsRouter());
-  api.use('/bank-connections', createBankConnectionsRouter({ service: syncService, crypto }));
-  api.use('/sync', createSyncRouter({ service: syncService, registry }));
+  api.use('/bank-connections', createBankConnectionsRouter({ service: syncService, keys }));
+  api.use('/sync', createSyncRouter({ service: syncService, registry, keys }));
   app.use('/api', api);
 
   // A path under /api that didn't match any route above is a real 404 — it must not fall
@@ -103,7 +121,10 @@ async function main(): Promise<void> {
     console.log(`[hibiscus-backend] Listening on port ${config.PORT}`);
   });
 
-  const scheduler: SyncScheduler = new SyncScheduler(syncService, SCHEDULER_TICK_MS);
+  const scheduler: SyncScheduler = new SyncScheduler(
+    { service: syncService, users: pools, keys },
+    SCHEDULER_TICK_MS,
+  );
   scheduler.start();
 
   // Graceful stop: no further scheduled runs, no new requests. A run still in progress is cut

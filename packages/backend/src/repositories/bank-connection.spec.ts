@@ -9,10 +9,12 @@ vi.mock('../db/pool', () => ({ getPool: vi.fn() }));
 
 import { getPool } from '../db/pool';
 import {
+  clearBankConnectionPins,
   createBankConnection,
   getBankConnectionRecord,
   listBankConnections,
   listDueBankConnectionIds,
+  reencryptBankConnectionPins,
   replaceBankConnectionAccounts,
   updateBankConnection,
 } from './bank-connection';
@@ -122,6 +124,14 @@ describe('getBankConnectionRecord', () => {
       tag: pinColumns.pin_tag,
     });
     expect(record?.bankingInformation).toBe('{"systemId":"s"}');
+  });
+
+  it('returns a null PIN after a key reset', async () => {
+    pool.query
+      .mockResolvedValueOnce([[{ ...row, pin_ciphertext: null, pin_iv: null, pin_tag: null }]])
+      .mockResolvedValueOnce([[]]);
+
+    expect((await getBankConnectionRecord(3))?.pin).toBeNull();
   });
 
   it('returns null for an unknown id', async () => {
@@ -235,9 +245,95 @@ describe('listDueBankConnectionIds', () => {
 
     expect(await listDueBankConnectionIds()).toEqual([1, 4]);
     const sql: string = pool.query.mock.calls[0]![0].replace(/\s+/g, ' ');
-    expect(sql).toContain('enabled = 1 AND paused_reason IS NULL');
+    expect(sql).toContain('enabled = 1 AND paused_reason IS NULL AND pin_ciphertext IS NOT NULL');
     expect(sql).toContain(
       'last_sync_at IS NULL OR last_sync_at + INTERVAL sync_interval_hours HOUR <= NOW()',
     );
+  });
+});
+
+describe('reencryptBankConnectionPins', () => {
+  const second = { ...pinColumns, id: 4, pin_ciphertext: Buffer.from('d') };
+
+  it('rewrites every PIN and runs beforeCommit inside one transaction', async () => {
+    connection.query.mockResolvedValueOnce([[{ ...pinColumns, id: 3 }, second]]);
+    connection.query.mockResolvedValue([{}]);
+    const order: string[] = [];
+    connection.commit.mockImplementation(async () => order.push('commit'));
+
+    const count: number = await reencryptBankConnectionPins({
+      reencrypt: () => encrypted,
+      beforeCommit: async () => {
+        order.push('beforeCommit');
+      },
+    });
+
+    expect(count).toBe(2);
+    expect(connection.beginTransaction).toHaveBeenCalledTimes(1);
+    expect(connection.query.mock.calls[0]![0]).toContain('FOR UPDATE');
+    expect(connection.query.mock.calls[1]![1]).toEqual([
+      encrypted.ciphertext,
+      encrypted.iv,
+      encrypted.tag,
+      3,
+    ]);
+    expect(connection.query.mock.calls[2]![1]).toEqual([
+      encrypted.ciphertext,
+      encrypted.iv,
+      encrypted.tag,
+      4,
+    ]);
+    expect(order).toEqual(['beforeCommit', 'commit']);
+    expect(connection.release).toHaveBeenCalled();
+  });
+
+  it('rolls every PIN back when one cannot be re-encrypted', async () => {
+    connection.query.mockResolvedValueOnce([[{ ...pinColumns, id: 3 }, second]]);
+    connection.query.mockResolvedValue([{}]);
+    const beforeCommit = vi.fn();
+    let calls = 0;
+
+    await expect(
+      reencryptBankConnectionPins({
+        reencrypt: () => {
+          calls += 1;
+          if (calls === 2) throw new Error('wrong key');
+          return encrypted;
+        },
+        beforeCommit,
+      }),
+    ).rejects.toThrow('wrong key');
+
+    expect(connection.rollback).toHaveBeenCalledTimes(1);
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(beforeCommit).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalled();
+  });
+
+  it('rolls back when beforeCommit fails', async () => {
+    connection.query.mockResolvedValueOnce([[{ ...pinColumns, id: 3 }]]);
+    connection.query.mockResolvedValue([{}]);
+
+    await expect(
+      reencryptBankConnectionPins({
+        reencrypt: () => encrypted,
+        beforeCommit: async () => {
+          throw new Error('app db down');
+        },
+      }),
+    ).rejects.toThrow('app db down');
+
+    expect(connection.rollback).toHaveBeenCalledTimes(1);
+    expect(connection.commit).not.toHaveBeenCalled();
+  });
+});
+
+describe('clearBankConnectionPins', () => {
+  it('nulls every PIN and disables the connections', async () => {
+    pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]);
+
+    expect(await clearBankConnectionPins()).toBe(2);
+    const sql: string = pool.query.mock.calls[0]![0].replace(/\s+/g, ' ');
+    expect(sql).toContain('pin_ciphertext = NULL, pin_iv = NULL, pin_tag = NULL, enabled = 0');
   });
 });

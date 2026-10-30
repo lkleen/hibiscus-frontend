@@ -1,5 +1,21 @@
-@if (challenges().length > 0 || paused().length > 0) {
+@if (challenges().length > 0 || paused().length > 0 || awaitingUnlock()) {
   <div class="sync-banner" role="region" [attr.aria-label]="i18n.t('sync.banner.label')">
+    @if (awaitingUnlock()) {
+      <p class="sync-banner__row">
+        <span class="sync-banner__text">
+          <strong>{{ i18n.t('sync.banner.keyLocked') }}</strong>
+          {{ i18n.t('sync.banner.keyLockedDetail') }}
+        </span>
+        <button
+          type="button"
+          class="sync-banner__button"
+          [disabled]="unlocking()"
+          (click)="unlock()"
+        >
+          {{ i18n.t('sync.banner.unlock') }}
+        </button>
+      </p>
+    }
     @for (pending of challenges(); track pending.connectionId) {
       <p class="sync-banner__row" role="status">
         <span class="sync-banner__text">

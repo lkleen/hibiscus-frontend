@@ -7,8 +7,12 @@ import type {
   DiscoverDone,
   DiscoverResponse,
   SyncError,
+  SyncStartRequest,
   SyncStartResponse,
+  WithUserKey,
 } from '@hibiscus-frontend/shared/contracts/sync';
+import { currentUser } from '../db/pool';
+import { whileUserBusy } from '../db/user-activity';
 import {
   createBankConnection,
   getBankConnection,
@@ -17,9 +21,12 @@ import {
   updateBankConnection,
 } from '../repositories/bank-connection';
 import type { BankConnectionWriteResult } from '../repositories/bank-connection';
-import type { CredentialCrypto } from '../sync/credential-crypto';
+import type { EncryptedSecret } from '../sync/credential-crypto';
 import { ConflictError, NotFoundError } from '../sync/sync-service';
 import type { StartedRun, SyncService } from '../sync/sync-service';
+import { encryptPin } from '../sync/user-keys';
+import type { UserKeys } from '../sync/user-keys';
+import { respondToUserKeyError, WithUserKeySchema } from './user-key';
 import { respondWithValidationError } from './zod-validation';
 
 const NO_REFERENCED_ROW_CODE = 'ER_NO_REFERENCED_ROW_2';
@@ -48,11 +55,14 @@ const SettingsSchema = z
 /** Never trimmed or echoed; a validation error names the field, never its value. */
 const PinSchema = z.string().min(1).max(64);
 
-const CreateSchema = SettingsSchema.extend({ pin: PinSchema }).strict();
+const CreateSchema = SettingsSchema.extend({ pin: PinSchema }).merge(WithUserKeySchema).strict();
 
 const UpdateSchema = z
   .object({ expected: SettingsSchema, next: SettingsSchema, pin: PinSchema.optional() })
+  .merge(WithUserKeySchema)
   .strict();
+
+const SyncStartSchema = WithUserKeySchema.strict();
 
 const AccountsSchema = z
   .object({
@@ -82,8 +92,12 @@ function sendError(res: Response, status: number, error: SyncError['error']): vo
   res.status(status).json(body);
 }
 
-/** Answers `ConflictError` with 409 `locked` and `NotFoundError` with 404; whether it did. */
+/**
+ * Answers `ConflictError` with 409 `locked`, `NotFoundError` with 404 and the key errors with
+ * their `UserError` code; whether it did.
+ */
 function respondToServiceError(error: unknown, res: Response): boolean {
+  if (respondToUserKeyError(error, res)) return true;
   if (error instanceof ConflictError) {
     sendError(res, 409, 'locked');
     return true;
@@ -105,14 +119,52 @@ function parseId(req: Request, res: Response): number | null {
   return result.data;
 }
 
-export interface BankConnectionsRouterDeps {
-  readonly service: SyncService;
-  readonly crypto: CredentialCrypto;
+/** Parses the `SyncStartRequest` body (none = `{}`), answering 400 when invalid. */
+function parseSyncStart(req: Request, res: Response): SyncStartRequest | null {
+  const result = SyncStartSchema.safeParse(req.body ?? {});
+  if (!result.success) {
+    respondWithValidationError(res, result.error);
+    return null;
+  }
+  return result.data;
 }
 
-/** `/api/bank-connections`. The PIN is write-only: no response ever contains it. */
+export interface BankConnectionsRouterDeps {
+  readonly service: Pick<
+    SyncService,
+    'deleteConnection' | 'discover' | 'describeDiscovery' | 'startSync'
+  >;
+  readonly keys: Pick<UserKeys, 'resolve'>;
+}
+
+/**
+ * `/api/bank-connections`. The PIN is write-only: no response ever contains it. It is encrypted
+ * with the user's key (see `WithUserKey`), so creating a connection or replacing its PIN needs
+ * the key, and so do a sync and a discovery.
+ */
 export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Router {
   const router = Router();
+
+  /**
+   * Encrypts the PIN with the user's key and writes it, as one run of the user: a key change
+   * cannot re-encrypt the PINs meanwhile (`409 busy` while it does).
+   */
+  function writeWithPin<T>(
+    input: WithUserKey & { readonly pin: string },
+    write: (pin: EncryptedSecret) => Promise<T>,
+  ): Promise<T> {
+    const user: string = currentUser().user;
+    return whileUserBusy(user, async (): Promise<T> => {
+      const key: Buffer = await deps.keys.resolve(user, input);
+      let encrypted: EncryptedSecret;
+      try {
+        encrypted = encryptPin(key, input.pin);
+      } finally {
+        key.fill(0);
+      }
+      return write(encrypted);
+    });
+  }
 
   /** GET /: every connection ordered by name, with its account mapping. */
   router.get('/', (_req: Request, res: Response, next: NextFunction): void => {
@@ -121,25 +173,35 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
       .catch(next);
   });
 
-  /** POST /: create a connection; 201 with it as stored, 400 invalid body. */
+  /**
+   * POST /: create a connection; 201 with it as stored, 400 invalid body, the key errors
+   * (`key-required`, `key-invalid`, 409 `key-not-configured`), 409 `busy`.
+   */
   router.post('/', (req: Request, res: Response, next: NextFunction): void => {
     const bodyResult = CreateSchema.safeParse(req.body);
     if (!bodyResult.success) {
       respondWithValidationError(res, bodyResult.error);
       return;
     }
-    const { pin, ...settings } = bodyResult.data;
+    const { pin, key, keepUnlocked, ...settings } = bodyResult.data;
     const typedSettings: BankConnectionSettings = settings;
-    createBankConnection({ settings: typedSettings, pin: deps.crypto.encrypt(pin) })
+    writeWithPin({ pin, key, keepUnlocked }, (encrypted: EncryptedSecret) =>
+      createBankConnection({ settings: typedSettings, pin: encrypted }),
+    )
       .then((id: number) => getBankConnection(id))
       .then((created: BankConnection | null) => {
         if (created === null) throw new Error('The created bank connection is gone');
         res.status(201).json(created);
       })
-      .catch(next);
+      .catch((error: unknown) => {
+        if (!respondToUserKeyError(error, res)) next(error);
+      });
   });
 
-  /** PUT /:id: change the settings (and the PIN when given). 204, 400, 404, 409 `conflict`. */
+  /**
+   * PUT /:id: change the settings (and the PIN when given, which needs the key). 204, 400, 404,
+   * 409 `conflict`, and with a PIN the key errors and 409 `busy`.
+   */
   router.put('/:id', (req: Request, res: Response, next: NextFunction): void => {
     const id: number | null = parseId(req, res);
     if (id === null) return;
@@ -148,13 +210,14 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
       respondWithValidationError(res, bodyResult.error);
       return;
     }
-    const { expected, next: nextSettings, pin } = bodyResult.data;
-    updateBankConnection({
-      id,
-      expected,
-      next: nextSettings,
-      ...(pin === undefined ? {} : { pin: deps.crypto.encrypt(pin) }),
-    })
+    const { expected, next: nextSettings, pin, key, keepUnlocked } = bodyResult.data;
+    const update: Promise<BankConnectionWriteResult> =
+      pin === undefined
+        ? updateBankConnection({ id, expected, next: nextSettings })
+        : writeWithPin({ pin, key, keepUnlocked }, (encrypted: EncryptedSecret) =>
+            updateBankConnection({ id, expected, next: nextSettings, pin: encrypted }),
+          );
+    update
       .then((result: BankConnectionWriteResult) => {
         if (result === 'updated') {
           res.status(204).send();
@@ -162,7 +225,9 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
         }
         sendError(res, result === 'conflict' ? 409 : 404, result);
       })
-      .catch(next);
+      .catch((error: unknown) => {
+        if (!respondToUserKeyError(error, res)) next(error);
+      });
   });
 
   /**
@@ -186,12 +251,18 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
       });
   });
 
-  /** POST /:id/discover: `DiscoverResponse`; 404, 409 `locked` while a run is in progress. */
+  /**
+   * POST /:id/discover, body `SyncStartRequest`: `DiscoverResponse`; 404, 409 `locked` while a run
+   * is in progress, the key errors, 409 `busy`.
+   */
   router.post('/:id/discover', (req: Request, res: Response, next: NextFunction): void => {
     const id: number | null = parseId(req, res);
     if (id === null) return;
+    const input: SyncStartRequest | null = parseSyncStart(req, res);
+    if (input === null) return;
+    const user: string = currentUser().user;
     deps.service
-      .discover(id)
+      .discover({ connectionId: id, key: () => deps.keys.resolve(user, input) })
       .then((response: DiscoverResponse) => res.json(response))
       .catch((error: unknown) => {
         if (!respondToServiceError(error, res)) next(error);
@@ -243,14 +314,22 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
   });
 
   /**
-   * POST /:id/sync: start a manual run (clears a pause). 202 `SyncStartResponse` once it holds the
-   * lock; the run goes on in the background. 404, 409 `locked`.
+   * POST /:id/sync, body `SyncStartRequest`: start a manual run (clears a pause). 202
+   * `SyncStartResponse` once it holds the lock; the run goes on in the background. 404, 409
+   * `locked`, the key errors (checked before any run starts), 409 `busy`.
    */
   router.post('/:id/sync', (req: Request, res: Response, next: NextFunction): void => {
     const id: number | null = parseId(req, res);
     if (id === null) return;
+    const input: SyncStartRequest | null = parseSyncStart(req, res);
+    if (input === null) return;
+    const user: string = currentUser().user;
     deps.service
-      .startSync(id, 'manual')
+      .startSync({
+        connectionId: id,
+        trigger: 'manual',
+        key: () => deps.keys.resolve(user, input),
+      })
       .then((started: StartedRun) => {
         // The top level of a manual run: it has recorded its failure, only log it here.
         started.done.catch((error: unknown) => {

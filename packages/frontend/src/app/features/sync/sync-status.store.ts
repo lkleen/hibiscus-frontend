@@ -4,9 +4,13 @@ import type {
   SyncConnectionStatus,
   SyncRun,
   SyncStartResponse,
+  SyncStatusResponse,
+  WithUserKey,
 } from '@hibiscus-frontend/shared/contracts/sync';
+import type { UserKeyStatus } from '@hibiscus-frontend/shared/contracts/user';
 import { Observable, filter, finalize, map, switchMap, take, tap, timer } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { KeyPrompts, type KeyEntry } from '../key/key-prompt/key-prompts';
 
 /** Poll interval while a run is `running` or `tan_required`. */
 export const SYNC_POLL_BUSY_MS = 5_000;
@@ -39,6 +43,23 @@ export function finishedRun(
 }
 
 /**
+ * Whether scheduled syncs are paused until the user unlocks the key: `memory` mode, locked, and at
+ * least one connection that would sync by itself.
+ */
+export function awaitsUnlock(
+  key: UserKeyStatus | null,
+  statuses: readonly SyncConnectionStatus[] | null,
+): boolean {
+  return (
+    key !== null &&
+    key.configured &&
+    key.mode === 'memory' &&
+    key.state === 'locked' &&
+    (statuses ?? []).some((status: SyncConnectionStatus) => status.enabled)
+  );
+}
+
+/**
  * The server-side bank sync state, shared app-wide: `GET /api/sync/status`, polled every 5 s while
  * a run is active and every 60 s otherwise, once somebody called `startPolling`. Only the
  * server's answers change the signals.
@@ -46,23 +67,32 @@ export function finishedRun(
 @Injectable({ providedIn: 'root' })
 export class SyncStatusStore {
   private readonly api = inject(ApiService);
-  private readonly state = signal<readonly SyncConnectionStatus[] | null>(null);
+  private readonly prompts = inject(KeyPrompts);
+  private readonly state = signal<SyncStatusResponse | null>(null);
   private polling = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private requestSeq = 0;
   private appliedSeq = 0;
 
   /** `null` until the first answer. */
-  readonly statuses: Signal<readonly SyncConnectionStatus[] | null> = this.state.asReadonly();
+  readonly statuses: Signal<readonly SyncConnectionStatus[] | null> = computed(
+    () => this.state()?.connections ?? null,
+  );
+  /** The user's key state; `null` until the first answer. */
+  readonly key: Signal<UserKeyStatus | null> = computed(() => this.state()?.key ?? null);
+  /** Scheduled syncs wait for the user to unlock the key. */
+  readonly awaitingUnlock: Signal<boolean> = computed(() =>
+    awaitsUnlock(this.key(), this.statuses()),
+  );
   /** The last poll failed; the statuses shown are from an earlier one. */
   readonly error = signal(false);
 
   readonly busy: Signal<boolean> = computed(() =>
-    (this.state() ?? []).some((status: SyncConnectionStatus) => isActiveRun(status.latestRun)),
+    (this.statuses() ?? []).some((status: SyncConnectionStatus) => isActiveRun(status.latestRun)),
   );
 
   readonly challenges: Signal<readonly PendingChallenge[]> = computed(() =>
-    (this.state() ?? []).flatMap((status: SyncConnectionStatus): PendingChallenge[] =>
+    (this.statuses() ?? []).flatMap((status: SyncConnectionStatus): PendingChallenge[] =>
       status.challenge
         ? [
             {
@@ -76,7 +106,7 @@ export class SyncStatusStore {
   );
 
   readonly pausedConnections: Signal<readonly SyncConnectionStatus[]> = computed(() =>
-    (this.state() ?? []).filter(
+    (this.statuses() ?? []).filter(
       (status: SyncConnectionStatus) => status.pausedReason === 'tan' && status.challenge === null,
     ),
   );
@@ -89,23 +119,34 @@ export class SyncStatusStore {
     const seq: number = ++this.requestSeq;
     return this.api.getSyncStatus().pipe(
       tap({
-        next: (statuses: SyncConnectionStatus[]): void => {
+        next: (response: SyncStatusResponse): void => {
           if (seq > this.appliedSeq) {
             this.appliedSeq = seq;
-            this.state.set(statuses);
+            this.state.set(response);
           }
           this.error.set(false);
         },
         error: (): void => this.error.set(true),
       }),
-      map((): readonly SyncConnectionStatus[] => this.state() ?? []),
+      map((): readonly SyncConnectionStatus[] => this.statuses() ?? []),
     );
   }
 
-  /** Starts a run; the caller sees it through the status. `409` `locked` propagates. */
+  /**
+   * Starts a run; the caller sees it through the status. Asks for the key first when the mode
+   * needs it. Completes without a value when the prompt is cancelled; `409` `locked` and other
+   * failures propagate.
+   */
   syncNow(connectionId: number): Observable<SyncStartResponse> {
-    return this.api
-      .syncBankConnection(connectionId)
+    return this.prompts
+      .run(this.key(), (body: WithUserKey) => this.api.syncBankConnection(connectionId, body))
+      .pipe(tap((): void => void this.refresh().subscribe({ error: () => undefined })));
+  }
+
+  /** Unlocks a `memory` key (from the banner); completes without a value when cancelled. */
+  unlock(): Observable<void> {
+    return this.prompts
+      .ask(false, (entry: KeyEntry) => this.api.unlockUserKey({ key: entry.key }))
       .pipe(tap((): void => void this.refresh().subscribe({ error: () => undefined })));
   }
 

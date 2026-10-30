@@ -1,6 +1,11 @@
 import express, { Express } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SyncConnectionStatus } from '@hibiscus-frontend/shared/contracts/sync';
+import type {
+  SyncConnectionStatus,
+  SyncStatusResponse,
+} from '@hibiscus-frontend/shared/contracts/sync';
+import type { UserKeyStatus } from '@hibiscus-frontend/shared/contracts/user';
+import { runWithUserContext } from '../db/pool';
 import { PendingTanRegistry } from '../sync/pending-tan-registry';
 import type { PendingChallenge } from '../sync/pending-tan-registry';
 import { createSyncRouter } from './sync';
@@ -21,6 +26,7 @@ const photoChallenge: PendingChallenge = {
 };
 
 const service = { status: vi.fn() };
+const keys = { status: vi.fn() };
 let registry: PendingTanRegistry;
 let server: ReturnType<Express['listen']>;
 let baseUrl: string;
@@ -46,7 +52,9 @@ beforeAll(
       app.use(express.json());
       // The router reads the registry through this indirection so each test gets a fresh one.
       app.use('/sync', (req: express.Request, res: express.Response, next: express.NextFunction) =>
-        createSyncRouter({ service, registry })(req, res, next),
+        runWithUserContext({ user: 'alice', database: null }, () =>
+          createSyncRouter({ service, registry, keys })(req, res, next),
+        ),
       );
       server = app.listen(0, () => {
         const address = server.address();
@@ -72,7 +80,7 @@ beforeEach(() => {
 });
 
 describe('sync router GET /status', () => {
-  it('returns the service status', async () => {
+  it('returns the key state and every connection’s state', async () => {
     const status: SyncConnectionStatus[] = [
       {
         id: 3,
@@ -86,12 +94,16 @@ describe('sync router GET /status', () => {
         challenge: null,
       },
     ];
+    const key: UserKeyStatus = { configured: true, mode: 'memory', state: 'locked' };
     service.status.mockResolvedValueOnce(status);
+    keys.status.mockResolvedValueOnce(key);
 
     const response: HttpResponse = await send('GET', '/sync/status');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual(status);
+    const body: SyncStatusResponse = { key, connections: status };
+    expect(response.body).toEqual(body);
+    expect(keys.status).toHaveBeenCalledWith('alice');
   });
 });
 

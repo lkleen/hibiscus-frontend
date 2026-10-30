@@ -1,0 +1,21 @@
+:host {
+  display: block;
+}
+
+.key-reveal__warning {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.key-reveal__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+// The key is the one thing on the page to read carefully: larger, with the whole value visible.
+.key-reveal__value {
+  flex: 1;
+  font-size: var(--text-md);
+  letter-spacing: 0.02em;
+}

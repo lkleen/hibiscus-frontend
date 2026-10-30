@@ -1,0 +1,53 @@
+<h1 class="setup__title">{{ i18n.t('setup.title') }}</h1>
+<p class="setup__intro">{{ i18n.t('setup.intro') }}</p>
+
+<ol class="setup__steps" [attr.aria-label]="i18n.t('setup.steps.label')">
+  @for (entry of steps; track entry.step; let index = $index) {
+    <li
+      class="setup__step"
+      [class.setup__step--current]="step() === entry.step"
+      [class.setup__step--done]="index < indexOf(step())"
+      [attr.aria-current]="step() === entry.step ? 'step' : null"
+    >
+      <span class="setup__marker" aria-hidden="true">{{ index + 1 }}</span>
+      <span class="setup__step-label">{{ i18n.t(entry.label) }}</span>
+    </li>
+  }
+</ol>
+
+<section class="setup__panel" [attr.aria-labelledby]="'setup-heading'">
+  @switch (step()) {
+    @case ('database') {
+      <h2 class="setup__heading" id="setup-heading">{{ i18n.t('setup.database.title') }}</h2>
+      <p class="setup__hint">{{ i18n.t('setup.database.hint') }}</p>
+      <app-database-form (saved)="go('mode')" />
+    }
+    @case ('mode') {
+      <h2 class="setup__heading" id="setup-heading">{{ i18n.t('setup.mode.title') }}</h2>
+      <p class="setup__hint">{{ i18n.t('setup.mode.hint') }}</p>
+      <app-key-mode-picker [(mode)]="mode" />
+      <div class="app-form__actions setup__actions">
+        <button type="button" class="app-form__button" (click)="go('database')">
+          {{ i18n.t('setup.back') }}
+        </button>
+        <button
+          type="button"
+          class="app-form__button app-form__button--primary"
+          (click)="go('key')"
+        >
+          {{ i18n.t('setup.next') }}
+        </button>
+      </div>
+    }
+    @case ('key') {
+      <h2 class="setup__heading" id="setup-heading">{{ i18n.t('setup.key.title') }}</h2>
+      <p class="setup__hint">{{ i18n.t('setup.key.hint') }}</p>
+      <app-key-create [mode]="mode()" (created)="finish()" />
+      <div class="app-form__actions setup__actions">
+        <button type="button" class="app-form__button" (click)="go('mode')">
+          {{ i18n.t('setup.back') }}
+        </button>
+      </div>
+    }
+  }
+</section>

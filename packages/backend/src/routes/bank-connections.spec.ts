@@ -26,9 +26,18 @@ import {
   updateBankConnection,
 } from '../repositories/bank-connection';
 import type { BankConnectionCreateParams } from '../repositories/bank-connection';
+import { runWithUserContext } from '../db/pool';
+import type { UserDatabaseHandle } from '../db/pool';
+import {
+  beginReconfiguring,
+  endReconfiguring,
+  isUserBusy,
+  UserBusyError,
+} from '../db/user-activity';
 import { CredentialCrypto } from '../sync/credential-crypto';
 import { ConflictError, NotFoundError } from '../sync/sync-service';
-import type { SyncService } from '../sync/sync-service';
+import type { DiscoverParams, SyncStartParams } from '../sync/sync-service';
+import { KeyInvalidError, KeyNotConfiguredError, KeyRequiredError } from '../sync/user-keys';
 
 interface HttpResponse {
   status: number;
@@ -37,6 +46,9 @@ interface HttpResponse {
 }
 
 const PIN = 'pin-5521-secret';
+const USER = 'alice';
+const userKey: Buffer = randomBytes(32);
+const KEY_TEXT: string = userKey.toString('base64');
 
 const settings: BankConnectionSettings = {
   name: 'comdirect',
@@ -66,7 +78,10 @@ const discoverDone: DiscoverDone = {
   accounts: [],
 };
 
-const crypto: CredentialCrypto = new CredentialCrypto(randomBytes(32));
+const crypto: CredentialCrypto = new CredentialCrypto(userKey);
+const keys = { resolve: vi.fn() };
+/** Every key buffer the router got, to check it zeroed them. */
+let resolvedKeys: Buffer[] = [];
 const service = {
   deleteConnection: vi.fn(),
   discover: vi.fn(),
@@ -95,10 +110,10 @@ beforeAll(
     new Promise<void>((resolve) => {
       const app: Express = express();
       app.use(express.json());
-      app.use(
-        '/bank-connections',
-        createBankConnectionsRouter({ service: service as unknown as SyncService, crypto }),
-      );
+      app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) => {
+        runWithUserContext({ user: USER, database: {} as UserDatabaseHandle }, next);
+      });
+      app.use('/bank-connections', createBankConnectionsRouter({ service, keys }));
       /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
       app.use(
         (
@@ -133,7 +148,17 @@ afterAll(
 beforeEach(() => {
   vi.resetAllMocks();
   loggedErrors.length = 0;
+  resolvedKeys = [];
+  keys.resolve.mockImplementation(async (): Promise<Buffer> => {
+    const key: Buffer = Buffer.from(userKey);
+    resolvedKeys.push(key);
+    return key;
+  });
 });
+
+function zeroed(key: Buffer | undefined): boolean {
+  return key !== undefined && key.every((byte: number) => byte === 0);
+}
 
 describe('bank-connections router GET /', () => {
   it('returns the connections', async () => {
@@ -265,7 +290,10 @@ describe('bank-connections router POST /:id/discover', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(discoverDone);
-    expect(service.discover).toHaveBeenCalledWith(3);
+    const discoverParams: DiscoverParams = service.discover.mock.calls[0]![0];
+    expect(discoverParams.connectionId).toBe(3);
+    await discoverParams.key();
+    expect(keys.resolve).toHaveBeenCalledWith(USER, {});
   });
 
   it('returns 409 locked and 404 not-found', async () => {
@@ -331,7 +359,8 @@ describe('bank-connections router POST /:id/sync', () => {
 
     expect(response.status).toBe(202);
     expect(response.body).toEqual({ runId: 41 });
-    expect(service.startSync).toHaveBeenCalledWith(3, 'manual');
+    const startParams: SyncStartParams = service.startSync.mock.calls[0]![0];
+    expect(startParams).toMatchObject({ connectionId: 3, trigger: 'manual' });
     consoleError.mockRestore();
   });
 
@@ -342,5 +371,126 @@ describe('bank-connections router POST /:id/sync', () => {
 
     expect(response.status).toBe(409);
     expect(response.body).toEqual({ error: 'locked' });
+  });
+});
+
+describe('bank-connections router and the user key', () => {
+  const createBody: BankConnectionCreateRequest = { ...settings, pin: PIN, key: KEY_TEXT };
+
+  it('encrypts a new PIN with the user key from the request and zeroes it', async () => {
+    vi.mocked(createBankConnection).mockResolvedValueOnce(3);
+    vi.mocked(getBankConnection).mockResolvedValueOnce(connection);
+
+    const response: HttpResponse = await send('POST', '/bank-connections', {
+      ...createBody,
+      keepUnlocked: true,
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.text).not.toContain(KEY_TEXT);
+    expect(keys.resolve).toHaveBeenCalledWith(USER, {
+      pin: PIN,
+      key: KEY_TEXT,
+      keepUnlocked: true,
+    });
+    const params: BankConnectionCreateParams = vi.mocked(createBankConnection).mock.calls[0]![0];
+    expect(crypto.decrypt(params.pin)).toBe(PIN);
+    expect(zeroed(resolvedKeys[0])).toBe(true);
+    expect(isUserBusy(USER)).toBe(false);
+  });
+
+  it.each([
+    [new KeyRequiredError(), 400, 'key-required'],
+    [new KeyInvalidError(), 400, 'key-invalid'],
+    [new KeyNotConfiguredError(), 409, 'key-not-configured'],
+  ])(
+    'answers %s without storing anything or echoing a secret',
+    async (error: Error, status: number, code: string) => {
+      keys.resolve.mockRejectedValueOnce(error);
+
+      const created: HttpResponse = await send('POST', '/bank-connections', createBody);
+      keys.resolve.mockRejectedValueOnce(error);
+      const updated: HttpResponse = await send('PUT', '/bank-connections/3', {
+        expected: settings,
+        next: settings,
+        pin: PIN,
+        key: KEY_TEXT,
+      });
+
+      for (const response of [created, updated]) {
+        expect(response).toMatchObject({ status, body: { error: code } });
+        expect(response.text).not.toContain(PIN);
+        expect(response.text).not.toContain(KEY_TEXT);
+      }
+      expect(createBankConnection).not.toHaveBeenCalled();
+      expect(updateBankConnection).not.toHaveBeenCalled();
+      expect(isUserBusy(USER)).toBe(false);
+    },
+  );
+
+  it('answers 409 busy while the key or database is being reconfigured', async () => {
+    beginReconfiguring(USER);
+    try {
+      const response: HttpResponse = await send('POST', '/bank-connections', createBody);
+      expect(response).toMatchObject({ status: 409, body: { error: 'busy' } });
+    } finally {
+      endReconfiguring(USER);
+    }
+    expect(keys.resolve).not.toHaveBeenCalled();
+    expect(createBankConnection).not.toHaveBeenCalled();
+  });
+
+  it('needs no key for an update without a PIN', async () => {
+    vi.mocked(updateBankConnection).mockResolvedValueOnce('updated');
+
+    const response: HttpResponse = await send('PUT', '/bank-connections/3', {
+      expected: settings,
+      next: settings,
+    });
+
+    expect(response.status).toBe(204);
+    expect(keys.resolve).not.toHaveBeenCalled();
+  });
+
+  it('hands the sync and discover bodies to the key source', async () => {
+    service.startSync.mockResolvedValueOnce({ runId: 41, done: Promise.resolve() });
+    service.discover.mockResolvedValueOnce(discoverDone);
+
+    await send('POST', '/bank-connections/3/sync', { key: KEY_TEXT, keepUnlocked: true });
+    await send('POST', '/bank-connections/3/discover', { key: KEY_TEXT });
+    await service.startSync.mock.calls[0]![0].key();
+    await service.discover.mock.calls[0]![0].key();
+
+    expect(keys.resolve.mock.calls).toEqual([
+      [USER, { key: KEY_TEXT, keepUnlocked: true }],
+      [USER, { key: KEY_TEXT }],
+    ]);
+  });
+
+  it.each([
+    [new KeyRequiredError(), 400, 'key-required'],
+    [new KeyInvalidError(), 400, 'key-invalid'],
+    [new UserBusyError(USER), 409, 'busy'],
+  ])('answers a refused sync start with %s', async (error: Error, status: number, code: string) => {
+    service.startSync.mockRejectedValueOnce(error);
+    service.discover.mockRejectedValueOnce(error);
+
+    const sync: HttpResponse = await send('POST', '/bank-connections/3/sync', { key: KEY_TEXT });
+    const discover: HttpResponse = await send('POST', '/bank-connections/3/discover', {});
+
+    expect(sync).toMatchObject({ status, body: { error: code } });
+    expect(discover).toMatchObject({ status, body: { error: code } });
+    expect(sync.text).not.toContain(KEY_TEXT);
+  });
+
+  it('rejects an invalid sync body without echoing the key', async () => {
+    const response: HttpResponse = await send('POST', '/bank-connections/3/sync', {
+      key: KEY_TEXT,
+      keepUnlocked: 'yes',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.text).not.toContain(KEY_TEXT);
+    expect(service.startSync).not.toHaveBeenCalled();
   });
 });

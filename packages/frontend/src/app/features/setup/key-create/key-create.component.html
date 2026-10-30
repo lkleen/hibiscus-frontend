@@ -1,0 +1,76 @@
+@if (revealed(); as key) {
+  <app-key-reveal [key]="key" (acknowledged)="acknowledged()" />
+} @else {
+  <form class="app-form key-create" novalidate (submit)="$event.preventDefault(); submit()">
+    <fieldset class="key-create__source">
+      <legend class="visually-hidden">{{ i18n.t('keyCreate.legend') }}</legend>
+      <label class="app-form__choice">
+        <input
+          type="radio"
+          name="key-source"
+          [checked]="source() === 'generate'"
+          (change)="pick('generate')"
+        />
+        <span class="key-create__text">
+          <strong>{{ i18n.t('keyCreate.generate.title') }}</strong>
+          <span class="app-form__hint">{{ i18n.t('keyCreate.generate.hint') }}</span>
+        </span>
+      </label>
+      <label class="app-form__choice">
+        <input
+          type="radio"
+          name="key-source"
+          [checked]="source() === 'own'"
+          (change)="pick('own')"
+        />
+        <span class="key-create__text">
+          <strong>{{ i18n.t('keyCreate.own.title') }}</strong>
+          <span class="app-form__hint">{{ i18n.t('keyCreate.own.hint') }}</span>
+        </span>
+      </label>
+    </fieldset>
+
+    @if (source() === 'own') {
+      <div class="app-form__field">
+        <label class="app-form__label" for="key-create-own">{{
+          i18n.t('keyCreate.own.label')
+        }}</label>
+        <input
+          id="key-create-own"
+          class="app-form__input app-form__input--mono"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="own()"
+          [attr.aria-invalid]="showProblem() && !ownValid() ? 'true' : null"
+          (input)="onOwn($event)"
+        />
+        @if (showProblem() && !ownValid()) {
+          <p class="app-form__hint key-create__problem">{{ i18n.t('keyCreate.own.invalid') }}</p>
+        }
+      </div>
+    }
+
+    @if (error(); as key) {
+      <p class="app-form__notice app-form__notice--danger" role="alert">{{ i18n.t(key) }}</p>
+    }
+
+    <div class="app-form__actions">
+      <button
+        type="submit"
+        class="app-form__button app-form__button--primary"
+        [disabled]="working()"
+      >
+        {{
+          i18n.t(
+            working()
+              ? 'keyCreate.working'
+              : source() === 'generate'
+                ? 'keyCreate.generate.button'
+                : 'keyCreate.own.button'
+          )
+        }}
+      </button>
+    </div>
+  </form>
+}

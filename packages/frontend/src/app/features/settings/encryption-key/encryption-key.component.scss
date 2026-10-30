@@ -1,0 +1,26 @@
+:host {
+  display: block;
+  max-inline-size: 40rem;
+}
+
+.key-tab__hint {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.key-tab__status {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+
+  dt {
+    color: var(--text-muted);
+  }
+
+  dd {
+    margin: 0;
+    font-weight: 600;
+  }
+}

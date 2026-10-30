@@ -1,0 +1,33 @@
+<section class="app-form app-form__section" aria-labelledby="key-reset-heading">
+  <h2 class="app-form__section-title" id="key-reset-heading">{{ i18n.t('keyReset.title') }}</h2>
+  <p class="app-form__hint">{{ i18n.t('keyReset.hint') }}</p>
+  @if (confirming()) {
+    <p class="app-form__notice app-form__notice--danger" role="alert">
+      {{ i18n.t('keyReset.confirm') }}
+    </p>
+    @if (failed()) {
+      <p class="app-form__notice app-form__notice--danger" role="alert">
+        {{ i18n.t('keyReset.failed') }}
+      </p>
+    }
+    <div class="app-form__actions">
+      <button
+        type="button"
+        class="app-form__button app-form__button--danger"
+        [disabled]="working()"
+        (click)="confirm()"
+      >
+        {{ i18n.t(working() ? 'keyReset.working' : 'keyReset.yes') }}
+      </button>
+      <button type="button" class="app-form__button" [disabled]="working()" (click)="cancel()">
+        {{ i18n.t('keyReset.cancel') }}
+      </button>
+    </div>
+  } @else {
+    <div class="app-form__actions">
+      <button type="button" class="app-form__button app-form__button--danger" (click)="ask()">
+        {{ i18n.t('keyReset.button') }}
+      </button>
+    </div>
+  }
+</section>

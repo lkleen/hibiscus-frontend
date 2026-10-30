@@ -17,18 +17,43 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
+      # The app database (holds hf_app_user); the backend creates its table at startup, so it
+      # must be reachable. The same server is the only allowed host for users' Hibiscus databases.
+      - DB_HOST=demo-db
+      - DB_PORT=3306
+      - DB_NAME=demo
+      - DB_USER=demo
+      - DB_PASSWORD=demo
+      - ALLOWED_DB_HOSTS=demo-db
       - PORT=3000
       - AUTH_HEADER_USER=X-Forwarded-User
       - ALLOWED_USERS=demo@example.com
       - INTERNAL_PROXY_SECRET=${INTERNAL_PROXY_SECRET}
+      - BANK_CREDENTIALS_KEY=${BANK_CREDENTIALS_KEY}
+    depends_on:
+      demo-db:
+        condition: service_healthy
     networks:
       - internal
     # No `ports:` — intentional, see the header comment above.
+
+  # Demo-only MariaDB, never published. Empty: after login the app opens its setup page, where the
+  # demo user can point it at this same server (host demo-db) once a Hibiscus schema is imported.
+  demo-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      - MARIADB_ROOT_PASSWORD=demo
+      - MARIADB_DATABASE=demo
+      - MARIADB_USER=demo
+      - MARIADB_PASSWORD=demo
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0

@@ -1,0 +1,79 @@
+<section class="app-form app-form__section" aria-labelledby="key-change-heading">
+  <h2 class="app-form__section-title" id="key-change-heading">
+    {{ i18n.t('keyChange.title') }}
+  </h2>
+  @if (revealed(); as key) {
+    <p class="app-form__hint">{{ i18n.t('keyChange.revealHint') }}</p>
+    <app-key-reveal [key]="key" (acknowledged)="acknowledged()" />
+  } @else {
+    <p class="app-form__hint">{{ i18n.t('keyChange.hint') }}</p>
+    <form class="app-form" novalidate (submit)="$event.preventDefault(); submit()">
+      <div class="app-form__field">
+        <label class="app-form__label" for="key-change-old">{{ i18n.t('keyChange.old') }}</label>
+        <input
+          id="key-change-old"
+          class="app-form__input app-form__input--mono"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="oldKey()"
+          [attr.aria-invalid]="showProblem() && oldKey().trim() === '' ? 'true' : null"
+          (input)="onOld($event)"
+        />
+      </div>
+
+      <label class="app-form__choice">
+        <input
+          type="radio"
+          name="key-change-source"
+          [checked]="generate()"
+          (change)="setGenerate(true)"
+        />
+        <span>{{ i18n.t('keyChange.generate') }}</span>
+      </label>
+      <label class="app-form__choice">
+        <input
+          type="radio"
+          name="key-change-source"
+          [checked]="!generate()"
+          (change)="setGenerate(false)"
+        />
+        <span>{{ i18n.t('keyChange.own') }}</span>
+      </label>
+      @if (!generate()) {
+        <div class="app-form__field">
+          <label class="app-form__label" for="key-change-new">{{ i18n.t('keyChange.new') }}</label>
+          <input
+            id="key-change-new"
+            class="app-form__input app-form__input--mono"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            [value]="newKey()"
+            [attr.aria-invalid]="showProblem() && !newKeyValid() ? 'true' : null"
+            (input)="onNew($event)"
+          />
+          @if (showProblem() && !newKeyValid()) {
+            <p class="app-form__hint">{{ i18n.t('keyCreate.own.invalid') }}</p>
+          }
+        </div>
+      }
+
+      @if (error(); as errorKey) {
+        <p class="app-form__notice app-form__notice--danger" role="alert">
+          {{ i18n.t(errorKey) }}
+        </p>
+      }
+      @if (done()) {
+        <p class="app-form__notice app-form__notice--ok" role="status">
+          {{ i18n.t('keyChange.done') }}
+        </p>
+      }
+      <div class="app-form__actions">
+        <button type="submit" class="app-form__button" [disabled]="working()">
+          {{ i18n.t(working() ? 'keyChange.working' : 'keyChange.submit') }}
+        </button>
+      </div>
+    </form>
+  }
+</section>

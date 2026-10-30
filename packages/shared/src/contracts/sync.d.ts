@@ -12,6 +12,8 @@
  * Declared here once and imported by both packages; never re-declare it on either side.
  */
 
+import type { UserKeyStatus } from './user';
+
 /** What started a run: the 60-second scheduler, "Sync now", or an account discovery. */
 export type SyncTrigger = 'scheduled' | 'manual' | 'discover';
 
@@ -68,8 +70,18 @@ export interface BankConnection extends BankConnectionSettings {
   readonly lastError: string | null;
 }
 
+/**
+ * The user's key, for actions that encrypt or decrypt a PIN: required (`key-required`) in `manual`
+ * mode and in `memory` mode while locked; ignored otherwise. `keepUnlocked` (`memory` only): keep
+ * the key in server memory afterwards, as `POST /api/user/key/unlock` would.
+ */
+export interface WithUserKey {
+  readonly key?: string;
+  readonly keepUnlocked?: boolean;
+}
+
 /** Body of `POST /api/bank-connections`. */
-export interface BankConnectionCreateRequest extends BankConnectionSettings {
+export interface BankConnectionCreateRequest extends BankConnectionSettings, WithUserKey {
   readonly pin: string;
 }
 
@@ -79,7 +91,7 @@ export interface BankConnectionCreateRequest extends BankConnectionSettings {
  * omitted keeps the stored one. `204` on success. Changing `blz`, `fintsUrl`, `loginName` or
  * `customerId` drops the stored bank parameter data, so the next discovery starts fresh.
  */
-export interface BankConnectionUpdateRequest {
+export interface BankConnectionUpdateRequest extends WithUserKey {
   readonly expected: BankConnectionSettings;
   readonly next: BankConnectionSettings;
   readonly pin?: string;
@@ -164,6 +176,9 @@ export interface TanChallenge {
   readonly hasImage: boolean;
 }
 
+/** Body of `POST /api/bank-connections/:id/sync` and `POST /api/bank-connections/:id/discover`. */
+export type SyncStartRequest = WithUserKey;
+
 /** `202` body of `POST /api/bank-connections/:id/sync`; the run continues in the background. */
 export interface SyncStartResponse {
   readonly runId: number;
@@ -188,7 +203,7 @@ export interface OpenTanChallenge extends TanChallenge {
   readonly runId: number;
 }
 
-/** One element of `GET /api/sync/status` (ordered by name). */
+/** One element of `SyncStatusResponse.connections` (ordered by name). */
 export interface SyncConnectionStatus {
   readonly id: number;
   readonly name: string;
@@ -200,6 +215,15 @@ export interface SyncConnectionStatus {
   /** The newest run of any trigger, `null` before the first. */
   readonly latestRun: SyncRun | null;
   readonly challenge: OpenTanChallenge | null;
+}
+
+/**
+ * `GET /api/sync/status`: the user's key state (scheduled syncs only run in `memory` mode while
+ * unlocked and in `stored` mode) and every connection's sync state.
+ */
+export interface SyncStatusResponse {
+  readonly key: UserKeyStatus;
+  readonly connections: readonly SyncConnectionStatus[];
 }
 
 /**

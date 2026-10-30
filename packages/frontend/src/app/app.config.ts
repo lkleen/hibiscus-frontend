@@ -1,4 +1,4 @@
-import { provideHttpClient, withFetch } from '@angular/common/http';
+import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { registerLocaleData } from '@angular/common';
 import localeDe from '@angular/common/locales/de';
 import { ApplicationConfig, effect, inject, provideAppInitializer } from '@angular/core';
@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import Aura from '@primeuix/themes/aura';
 import { PrimeNG, providePrimeNG } from 'primeng/config';
 import { routes } from './app.routes';
+import { databaseNotConfiguredInterceptor } from './core/interceptors/database-not-configured.interceptor';
 import { TableDensityService } from './core/services/table-density.service';
 import { TranslationService } from './core/services/translation.service';
 import { primengTranslation } from './core/utils/primeng-translation';
@@ -16,7 +17,7 @@ registerLocaleData(localeDe);
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
-    provideHttpClient(withFetch()),
+    provideHttpClient(withFetch(), withInterceptors([databaseNotConfiguredInterceptor])),
     providePrimeNG({
       // `.dark-mode` (not the default `'system'`, which reads prefers-color-scheme) keeps the
       // dark axis under ThemeService's control across all five theme identities; `cssLayer` lets

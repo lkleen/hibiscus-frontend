@@ -1,0 +1,77 @@
+:host {
+  display: block;
+  max-inline-size: 40rem;
+}
+
+.setup__title {
+  margin: 0 0 0.5rem;
+  font-size: var(--text-2xl);
+}
+
+.setup__intro,
+.setup__hint {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+}
+
+// The steps are a real sequence, so they are numbered; the current one carries the accent.
+.setup__steps {
+  --setup-marker-size: 1.75rem;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  list-style: none;
+}
+
+.setup__step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+
+  &--current {
+    color: var(--text-color);
+    font-weight: 600;
+  }
+}
+
+.setup__marker {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: var(--setup-marker-size);
+  block-size: var(--setup-marker-size);
+  border: 1px solid var(--surface-border);
+  border-radius: 50%;
+  font-size: var(--text-xs);
+
+  .setup__step--current & {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--text-on-accent);
+  }
+
+  .setup__step--done & {
+    background: var(--color-accent-subtle);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+}
+
+.setup__panel {
+  padding-block-start: 1.25rem;
+  border-block-start: 1px solid var(--surface-border);
+}
+
+.setup__heading {
+  margin: 0 0 0.25rem;
+  font-size: var(--text-lg);
+}
+
+.setup__actions {
+  margin-block-start: 1rem;
+}

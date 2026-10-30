@@ -18,6 +18,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     ALLOWED_USERS: [VALID_USER],
     INTERNAL_PROXY_SECRET: VALID_SECRET,
     BANK_CREDENTIALS_KEY: Buffer.alloc(32),
+    ALLOWED_DB_HOSTS: [{ host: 'localhost', port: null }],
     ...overrides,
   };
 }

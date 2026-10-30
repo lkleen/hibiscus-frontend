@@ -3,7 +3,7 @@ import type { Pool } from 'mysql2/promise';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiscoverResponse } from '@hibiscus-frontend/shared/contracts/sync';
 
-vi.mock('../db/pool', () => ({ getPool: vi.fn() }));
+vi.mock('../db/pool', () => ({ currentDatabase: vi.fn(), currentUser: vi.fn(), getPool: vi.fn() }));
 vi.mock('../repositories/bank-connection', () => ({
   deleteBankConnection: vi.fn(),
   getBankConnectionRecord: vi.fn(),
@@ -21,7 +21,14 @@ vi.mock('../repositories/sync-run', () => ({
 }));
 vi.mock('./umsatz-merge', () => ({ mergeStatement: vi.fn() }));
 
-import { getPool } from '../db/pool';
+import { currentDatabase, currentUser, getPool } from '../db/pool';
+import type { UserDatabaseHandle } from '../db/pool';
+import {
+  beginReconfiguring,
+  endReconfiguring,
+  isUserBusy,
+  UserBusyError,
+} from '../db/user-activity';
 import {
   deleteBankConnection,
   getBankConnectionRecord,
@@ -49,11 +56,35 @@ import type {
 import { PendingTanRegistry } from './pending-tan-registry';
 import type { PendingChallenge } from './pending-tan-registry';
 import { ConflictError, NotFoundError, SyncRunError, SyncService } from './sync-service';
+import type { SyncStartParams, UserKeySource } from './sync-service';
 import { mergeStatement } from './umsatz-merge';
 
 const PIN = 'pin-7391-secret';
+const USER = 'alice';
 
-const crypto: CredentialCrypto = new CredentialCrypto(randomBytes(32));
+/** The user's key; the PINs of these tests are encrypted with it. */
+const userKey: Buffer = randomBytes(32);
+const USER_KEY_TEXT: string = userKey.toString('base64');
+const crypto: CredentialCrypto = new CredentialCrypto(userKey);
+
+/** The key buffers handed to runs, to check they are zeroed. */
+let handedKeys: Buffer[];
+
+function keySource(): UserKeySource {
+  return async (): Promise<Buffer> => {
+    const key: Buffer = Buffer.from(userKey);
+    handedKeys.push(key);
+    return key;
+  };
+}
+
+function params(connectionId: number, trigger: SyncStartParams['trigger']): SyncStartParams {
+  return { connectionId, trigger, key: keySource() };
+}
+
+function zeroed(key: Buffer | undefined): boolean {
+  return key !== undefined && key.every((byte: number) => byte === 0);
+}
 
 const tanChallenge: PendingChallenge = {
   kind: 'tan',
@@ -140,7 +171,6 @@ function newService(timeoutMs: number): SyncService {
       return session as unknown as FintsSession;
     },
     registry,
-    crypto,
   });
 }
 
@@ -149,6 +179,8 @@ beforeEach(() => {
   lockAcquired = 1;
   latestBooked = '2026-10-20';
   sessionParams = undefined;
+  handedKeys = [];
+  vi.mocked(currentUser).mockReturnValue({ user: USER, database: null });
   lock = {
     query: vi.fn(async (sql: string) => {
       if (sql.includes('GET_LOCK')) return [[{ acquired: lockAcquired }]];
@@ -164,6 +196,9 @@ beforeEach(() => {
   vi.mocked(getPool).mockReturnValue({
     getConnection: vi.fn().mockResolvedValue(lock),
   } as unknown as Pool);
+  vi.mocked(currentDatabase).mockReturnValue({
+    settings: { host: 'hibiscus-db', port: 3306, name: 'alice', user: 'alice' },
+  } as unknown as UserDatabaseHandle);
   vi.mocked(getBankConnectionRecord).mockResolvedValue(record());
   vi.mocked(createSyncRun).mockResolvedValue(41);
   vi.mocked(mergeStatement).mockResolvedValue({ inserted: 2, deleted: 1 });
@@ -189,9 +224,9 @@ function lockCalls(fragment: string): unknown[][] {
 
 describe('SyncService.runSync', () => {
   it('fetches every enabled account, merges it in one transaction and records success', async () => {
-    await service.runSync(3, 'manual');
+    await service.runSync(params(3, 'manual'));
 
-    expect(lockCalls('GET_LOCK')[0]?.[1]).toEqual(['hf_sync_3']);
+    expect(lockCalls('GET_LOCK')[0]?.[1]).toEqual(['hf_sync_58ff5a7f06d50c6b_3']);
     expect(setBankConnectionPaused).toHaveBeenCalledWith(3, null);
     expect(createSyncRun).toHaveBeenCalledWith(3, 'manual');
     expect(sessionParams?.login.pin).toBe(PIN);
@@ -223,7 +258,7 @@ describe('SyncService.runSync', () => {
     latestBooked = null;
     const before: Date = new Date();
 
-    await service.runSync(3, 'scheduled');
+    await service.runSync(params(3, 'scheduled'));
 
     const request: StatementRequest = session.fetchStatements.mock.calls[0]?.[0];
     const days: number = Math.round((before.getTime() - request.from.getTime()) / 86_400_000);
@@ -233,7 +268,7 @@ describe('SyncService.runSync', () => {
   });
 
   it('persists the bank parameter data through the session callback', async () => {
-    await service.runSync(3, 'manual');
+    await service.runSync(params(3, 'manual'));
     await sessionParams?.saveBankingInformation('{"x":1}');
 
     expect(saveBankingInformation).toHaveBeenCalledWith(3, '{"x":1}');
@@ -242,7 +277,7 @@ describe('SyncService.runSync', () => {
   it('throws ConflictError without a run when the lock is taken', async () => {
     lockAcquired = 0;
 
-    await expect(service.runSync(3, 'manual')).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.runSync(params(3, 'manual'))).rejects.toBeInstanceOf(ConflictError);
     expect(createSyncRun).not.toHaveBeenCalled();
     expect(lock.release).toHaveBeenCalledTimes(1);
     expect(lockCalls('RELEASE_LOCK')).toHaveLength(0);
@@ -251,7 +286,7 @@ describe('SyncService.runSync', () => {
   it('throws NotFoundError and frees the lock for an unknown connection', async () => {
     vi.mocked(getBankConnectionRecord).mockResolvedValueOnce(null);
 
-    await expect(service.runSync(3, 'manual')).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.runSync(params(3, 'manual'))).rejects.toBeInstanceOf(NotFoundError);
     expect(lockCalls('RELEASE_LOCK')).toHaveLength(1);
     expect(lock.release).toHaveBeenCalledTimes(1);
   });
@@ -259,7 +294,7 @@ describe('SyncService.runSync', () => {
   it('rolls the merge back and records the error', async () => {
     vi.mocked(mergeStatement).mockRejectedValueOnce(new Error('merge broke'));
 
-    await expect(service.runSync(3, 'manual')).rejects.toBeInstanceOf(SyncRunError);
+    await expect(service.runSync(params(3, 'manual'))).rejects.toBeInstanceOf(SyncRunError);
     expect(lock.rollback).toHaveBeenCalledTimes(1);
     expect(finishSyncRun).toHaveBeenCalledWith(41, {
       status: 'error',
@@ -277,7 +312,7 @@ describe('SyncService.runSync', () => {
   it('masks the PIN in recorded and thrown errors', async () => {
     session.fetchStatements.mockRejectedValueOnce(new Error(`bank echoed PIN ${PIN} back`));
 
-    const error: unknown = await service.runSync(3, 'manual').catch((e: unknown) => e);
+    const error: unknown = await service.runSync(params(3, 'manual')).catch((e: unknown) => e);
 
     expect(String((error as Error).message)).not.toContain(PIN);
     expect(String((error as Error).stack)).not.toContain(PIN);
@@ -296,7 +331,7 @@ describe('SyncService TAN handling', () => {
       return [booking];
     });
 
-    const started = await service.startSync(3, 'manual');
+    const started = await service.startSync(params(3, 'manual'));
     await vi.waitFor(() => expect(registry.openChallenge(41)).not.toBeNull());
     await vi.waitFor(() => expect(setSyncRunWaiting).toHaveBeenCalledWith(41, true));
     expect(registry.answer(41, '123')).toBe('accepted');
@@ -314,7 +349,7 @@ describe('SyncService TAN handling', () => {
       return [];
     });
 
-    await expect(service.runSync(3, 'scheduled')).rejects.toBeInstanceOf(SyncRunError);
+    await expect(service.runSync(params(3, 'scheduled'))).rejects.toBeInstanceOf(SyncRunError);
 
     expect(finishSyncRun).toHaveBeenCalledWith(
       41,
@@ -335,7 +370,7 @@ describe('SyncService TAN handling', () => {
       return [];
     });
 
-    await expect(service.runSync(3, 'manual')).rejects.toBeInstanceOf(SyncRunError);
+    await expect(service.runSync(params(3, 'manual'))).rejects.toBeInstanceOf(SyncRunError);
 
     expect(setBankConnectionPaused).toHaveBeenCalledTimes(1);
     expect(setBankConnectionPaused).toHaveBeenCalledWith(3, null);
@@ -344,7 +379,10 @@ describe('SyncService TAN handling', () => {
 
 describe('SyncService.discover', () => {
   it('answers with the accounts matched to kontos by IBAN or account number', async () => {
-    const response: DiscoverResponse = await service.discover(3);
+    const response: DiscoverResponse = await service.discover({
+      connectionId: 3,
+      key: keySource(),
+    });
 
     expect(createSyncRun).toHaveBeenCalledWith(3, 'discover');
     expect(response).toEqual({
@@ -374,7 +412,10 @@ describe('SyncService.discover', () => {
       return discovery;
     });
 
-    const response: DiscoverResponse = await service.discover(3);
+    const response: DiscoverResponse = await service.discover({
+      connectionId: 3,
+      key: keySource(),
+    });
 
     expect(response).toEqual({
       status: 'tan_required',
@@ -391,7 +432,9 @@ describe('SyncService.discover', () => {
   it('throws ConflictError while a run holds the lock', async () => {
     lockAcquired = 0;
 
-    await expect(service.discover(3)).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.discover({ connectionId: 3, key: keySource() })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 });
 
@@ -400,7 +443,7 @@ describe('SyncService.deleteConnection', () => {
     vi.mocked(deleteBankConnection).mockResolvedValueOnce(true);
 
     expect(await service.deleteConnection(3)).toBe(true);
-    expect(lockCalls('GET_LOCK')[0]?.[1]).toEqual(['hf_sync_3']);
+    expect(lockCalls('GET_LOCK')[0]?.[1]).toEqual(['hf_sync_58ff5a7f06d50c6b_3']);
     expect(deleteBankConnection).toHaveBeenCalledWith(3);
     expect(lockCalls('RELEASE_LOCK')).toHaveLength(1);
     expect(lock.release).toHaveBeenCalledTimes(1);
@@ -454,5 +497,119 @@ describe('SyncService.status', () => {
       },
     ]);
     registry.release(41);
+  });
+});
+
+describe('SyncService user key and busy mark', () => {
+  it('marks the user busy for the whole run and zeroes the key when it ends', async () => {
+    let busyDuringRun = false;
+    session.fetchStatements.mockImplementationOnce(async () => {
+      busyDuringRun = isUserBusy(USER);
+      expect(zeroed(handedKeys[0])).toBe(false);
+      return [booking];
+    });
+
+    await service.runSync(params(3, 'manual'));
+
+    expect(busyDuringRun).toBe(true);
+    expect(isUserBusy(USER)).toBe(false);
+    expect(zeroed(handedKeys[0])).toBe(true);
+  });
+
+  it('keeps a manual run’s key through its TAN wait and drops it when the run ends', async () => {
+    session.fetchStatements.mockImplementationOnce(async () => {
+      await sessionParams?.prompt.request(tanChallenge);
+      await sessionParams?.prompt.settled();
+      return [booking];
+    });
+
+    const started = await service.startSync(params(3, 'manual'));
+    await vi.waitFor(() => expect(registry.openChallenge(41)).not.toBeNull());
+    expect(zeroed(handedKeys[0])).toBe(false);
+    expect(isUserBusy(USER)).toBe(true);
+    registry.answer(41, '123');
+    await started.done;
+
+    expect(zeroed(handedKeys[0])).toBe(true);
+    expect(isUserBusy(USER)).toBe(false);
+  });
+
+  it('refuses a run while the user is reconfiguring, before asking for the key', async () => {
+    const source: ReturnType<typeof vi.fn> = vi.fn(keySource());
+    beginReconfiguring(USER);
+    try {
+      await expect(
+        service.startSync({ connectionId: 3, trigger: 'manual', key: source as UserKeySource }),
+      ).rejects.toBeInstanceOf(UserBusyError);
+      await expect(
+        service.discover({ connectionId: 3, key: source as UserKeySource }),
+      ).rejects.toBeInstanceOf(UserBusyError);
+    } finally {
+      endReconfiguring(USER);
+    }
+
+    expect(source).not.toHaveBeenCalled();
+    expect(getPool).not.toHaveBeenCalled();
+    expect(createSyncRun).not.toHaveBeenCalled();
+  });
+
+  it('starts nothing when the key is refused, and clears the busy mark', async () => {
+    const refused: Error = new Error('key-invalid');
+
+    await expect(
+      service.startSync({ connectionId: 3, trigger: 'manual', key: () => Promise.reject(refused) }),
+    ).rejects.toBe(refused);
+
+    expect(getPool).not.toHaveBeenCalled();
+    expect(createSyncRun).not.toHaveBeenCalled();
+    expect(isUserBusy(USER)).toBe(false);
+  });
+
+  it('zeroes the key and clears the busy mark when the lock is taken', async () => {
+    lockAcquired = 0;
+
+    await expect(service.startSync(params(3, 'manual'))).rejects.toBeInstanceOf(ConflictError);
+
+    expect(zeroed(handedKeys[0])).toBe(true);
+    expect(isUserBusy(USER)).toBe(false);
+  });
+
+  it('records a run without a PIN as an error that asks for the PIN', async () => {
+    vi.mocked(getBankConnectionRecord).mockResolvedValueOnce({ ...record(), pin: null });
+
+    await expect(service.runSync(params(3, 'manual'))).rejects.toBeInstanceOf(SyncRunError);
+
+    expect(sessionParams).toBeUndefined();
+    expect(vi.mocked(finishSyncRun).mock.calls[0]?.[1].error).toContain('enter the PIN again');
+    expect(isUserBusy(USER)).toBe(false);
+  });
+
+  it('records a PIN the key cannot decrypt without opening a session', async () => {
+    vi.mocked(getBankConnectionRecord).mockResolvedValueOnce({
+      ...record(),
+      pin: new CredentialCrypto(randomBytes(32)).encrypt(PIN),
+    });
+
+    await expect(service.runSync(params(3, 'manual'))).rejects.toBeInstanceOf(SyncRunError);
+
+    expect(sessionParams).toBeUndefined();
+    expect(vi.mocked(finishSyncRun).mock.calls[0]?.[1].error).toContain('cannot be decrypted');
+  });
+
+  it('masks the key in recorded and thrown errors', async () => {
+    session.fetchStatements.mockRejectedValueOnce(new Error(`echo ${USER_KEY_TEXT} and ${PIN}`));
+
+    const error: unknown = await service.runSync(params(3, 'manual')).catch((e: unknown) => e);
+
+    const recorded: string = JSON.stringify([
+      vi.mocked(finishSyncRun).mock.calls,
+      vi.mocked(recordBankConnectionOutcome).mock.calls,
+    ]);
+    for (const secret of [USER_KEY_TEXT, PIN]) {
+      expect(String((error as Error).message)).not.toContain(secret);
+      expect(String((error as Error).stack)).not.toContain(secret);
+      expect(recorded).not.toContain(secret);
+    }
+    expect(vi.mocked(finishSyncRun).mock.calls[0]?.[1].error).toBe('echo *** and ***');
   });
 });

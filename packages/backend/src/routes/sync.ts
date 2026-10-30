@@ -1,13 +1,20 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import type { SyncConnectionStatus, SyncError } from '@hibiscus-frontend/shared/contracts/sync';
+import type {
+  SyncConnectionStatus,
+  SyncError,
+  SyncStatusResponse,
+} from '@hibiscus-frontend/shared/contracts/sync';
+import type { UserKeyStatus } from '@hibiscus-frontend/shared/contracts/user';
+import { currentUser } from '../db/pool';
 import type {
   ChallengeImage,
   PendingTanRegistry,
   TanAnswerResult,
 } from '../sync/pending-tan-registry';
 import type { SyncService } from '../sync/sync-service';
+import type { UserKeys } from '../sync/user-keys';
 import { respondWithValidationError } from './zod-validation';
 
 const RunIdSchema = z.coerce.number().int().positive();
@@ -18,17 +25,20 @@ const TanAnswerSchema = z.object({ tan: z.string().min(1).max(64).optional() }).
 export interface SyncRouterDeps {
   readonly service: Pick<SyncService, 'status'>;
   readonly registry: PendingTanRegistry;
+  readonly keys: Pick<UserKeys, 'status'>;
 }
 
 /** `/api/sync`: the sync state and the answers to TAN challenges. */
 export function createSyncRouter(deps: SyncRouterDeps): Router {
   const router = Router();
 
-  /** GET /status: every connection's sync state, ordered by name. */
+  /** GET /status: `SyncStatusResponse` — the user's key state and every connection's state. */
   router.get('/status', (_req: Request, res: Response, next: NextFunction): void => {
-    deps.service
-      .status()
-      .then((status: SyncConnectionStatus[]) => res.json(status))
+    Promise.all([deps.keys.status(currentUser().user), deps.service.status()])
+      .then(([key, connections]: [UserKeyStatus, SyncConnectionStatus[]]) => {
+        const body: SyncStatusResponse = { key, connections };
+        res.json(body);
+      })
       .catch(next);
   });
 

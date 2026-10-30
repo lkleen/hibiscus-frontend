@@ -1,5 +1,32 @@
 import { z } from 'zod';
 
+/** One `ALLOWED_DB_HOSTS` entry. `port: null` allows every port of the host. */
+export interface AllowedDbHost {
+  /** Lower-cased; matched case-insensitively. */
+  readonly host: string;
+  readonly port: number | null;
+}
+
+/** The host and port a database connection goes to. */
+export interface DbHostTarget {
+  readonly host: string;
+  readonly port: number;
+}
+
+const AllowedDbHostSchema = z
+  .string()
+  .regex(/^[^:\s]+(:\d{1,5})?$/, 'ALLOWED_DB_HOSTS entries must be `host` or `host:port`')
+  .transform((entry: string): AllowedDbHost => {
+    const [host, port] = entry.split(':');
+    if (host === undefined) throw new Error(`Unparsable ALLOWED_DB_HOSTS entry: ${entry}`);
+    return { host: host.toLowerCase(), port: port === undefined ? null : Number(port) };
+  })
+  .refine(
+    (entry: AllowedDbHost): boolean =>
+      entry.port === null || (entry.port >= 1 && entry.port <= 65535),
+    'ALLOWED_DB_HOSTS ports must be between 1 and 65535',
+  );
+
 /**
  * All runtime configuration and secrets for this app. Built once, in this module, from
  * `process.env` — no other module reads `process.env` directly. Every field here is required:
@@ -11,6 +38,7 @@ import { z } from 'zod';
  * name (`AUTH_HEADER_USER`) is configurable, per docs/architecture.md#authentication.
  */
 const ConfigSchema = z.object({
+  /** `DB_*`: the app database. It holds only `hf_app_user`; each user's data is elsewhere. */
   DB_HOST: z.string().min(1, 'DB_HOST is required'),
   DB_PORT: z.coerce.number().int().positive(),
   DB_NAME: z.string().min(1, 'DB_NAME is required'),
@@ -33,7 +61,21 @@ const ConfigSchema = z.object({
     ),
   INTERNAL_PROXY_SECRET: z.string().min(1, 'INTERNAL_PROXY_SECRET is required'),
   /**
-   * The AES-256-GCM key that encrypts the bank PINs at rest: base64 of exactly 32 bytes
+   * The database hosts users may point their Hibiscus database at: comma-separated `host` or
+   * `host:port`. Checked when the settings are saved and again before every pool is created.
+   */
+  ALLOWED_DB_HOSTS: z
+    .string()
+    .min(1, 'ALLOWED_DB_HOSTS is required')
+    .transform((value: string): string[] =>
+      value
+        .split(',')
+        .map((entry: string): string => entry.trim())
+        .filter((entry: string): boolean => entry.length > 0),
+    )
+    .pipe(z.array(AllowedDbHostSchema).min(1, 'ALLOWED_DB_HOSTS must contain at least one host')),
+  /**
+   * The server key (AES-256-GCM) that encrypts the bank PINs at rest: base64 of exactly 32 bytes
    * (`openssl rand -base64 32`). Losing it means re-entering every PIN.
    */
   BANK_CREDENTIALS_KEY: z
@@ -47,6 +89,20 @@ const ConfigSchema = z.object({
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+/** Exact match on the host (case-insensitive), and on the port when the entry names one. */
+export function isDbHostAllowed(allowed: readonly AllowedDbHost[], target: DbHostTarget): boolean {
+  const host: string = target.host.toLowerCase();
+  return allowed.some(
+    (entry: AllowedDbHost): boolean =>
+      entry.host === host && (entry.port === null || entry.port === target.port),
+  );
+}
+
+/** An entry as the operator wrote it (lower-cased): `host` or `host:port`. */
+export function formatAllowedDbHost(entry: AllowedDbHost): string {
+  return entry.port === null ? entry.host : `${entry.host}:${entry.port}`;
+}
 
 /**
  * Parses and validates `process.env` into a typed `Config`. Throws on the first missing or

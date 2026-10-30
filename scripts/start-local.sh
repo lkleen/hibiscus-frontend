@@ -53,6 +53,14 @@ if ! grep -q '^BANK_CREDENTIALS_KEY=' "$ENV_FILE"; then
   set_bank_sync_values
 fi
 
+# An env file generated before multi-user support lacks the database host allowlist: allow the
+# local dev database (DB_HOST) once.
+if ! grep -q '^ALLOWED_DB_HOSTS=' "$ENV_FILE"; then
+  DEV_DB_HOST="$(grep '^DB_HOST=' "$ENV_FILE" | cut -d= -f2)"
+  echo "Adding ALLOWED_DB_HOSTS=$DEV_DB_HOST to $ENV_FILE."
+  printf '\nALLOWED_DB_HOSTS=%s\n' "$DEV_DB_HOST" >>"$ENV_FILE"
+fi
+
 export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 echo "Starting local database..."

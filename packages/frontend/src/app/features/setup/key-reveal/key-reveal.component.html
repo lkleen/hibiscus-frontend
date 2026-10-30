@@ -1,0 +1,48 @@
+<div class="app-form key-reveal">
+  <p class="app-form__notice app-form__notice--danger key-reveal__warning" role="alert">
+    <strong>{{ i18n.t('keyReveal.warningTitle') }}</strong>
+    {{ i18n.t('keyReveal.warning') }}
+  </p>
+
+  <div class="app-form__field">
+    <label class="app-form__label" for="key-reveal-value">{{ i18n.t('keyReveal.label') }}</label>
+    <div class="key-reveal__row">
+      <input
+        id="key-reveal-value"
+        class="app-form__input app-form__input--mono key-reveal__value"
+        type="text"
+        readonly
+        spellcheck="false"
+        autocomplete="off"
+        [value]="key()"
+        (focus)="selectAll($event)"
+      />
+      <button type="button" class="app-form__button" (click)="copy()">
+        {{ i18n.t('keyReveal.copy') }}
+      </button>
+    </div>
+    <p class="app-form__hint" role="status">
+      @if (copied()) {
+        {{ i18n.t('keyReveal.copied') }}
+      } @else if (copyFailed()) {
+        {{ i18n.t('keyReveal.copyFailed') }}
+      }
+    </p>
+  </div>
+
+  <label class="app-form__choice">
+    <input type="checkbox" [checked]="saved()" (change)="onSaved($event)" />
+    <span>{{ i18n.t('keyReveal.saved') }}</span>
+  </label>
+
+  <div class="app-form__actions">
+    <button
+      type="button"
+      class="app-form__button app-form__button--primary"
+      [disabled]="!saved()"
+      (click)="done()"
+    >
+      {{ i18n.t('keyReveal.continue') }}
+    </button>
+  </div>
+</div>

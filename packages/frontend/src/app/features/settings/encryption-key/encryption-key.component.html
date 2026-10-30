@@ -1,0 +1,90 @@
+<p class="key-tab__hint">{{ i18n.t('encryptionKey.hint') }}</p>
+
+@if (loadError()) {
+  <p class="app-form__notice app-form__notice--danger" role="alert">
+    {{ i18n.t('encryptionKey.loadError') }}
+  </p>
+} @else if (status(); as current) {
+  @if (!current.configured || current.mode === null) {
+    <section class="app-form" aria-labelledby="key-setup-heading">
+      <h2 class="app-form__section-title" id="key-setup-heading">
+        {{ i18n.t('encryptionKey.setup.title') }}
+      </h2>
+      <p class="app-form__notice">{{ i18n.t('encryptionKey.setup.none') }}</p>
+      <app-key-mode-picker [(mode)]="newMode" />
+      <app-key-create [mode]="newMode()" (created)="reload()" />
+    </section>
+  } @else {
+    <section class="app-form" aria-labelledby="key-status-heading">
+      <h2 class="app-form__section-title" id="key-status-heading">
+        {{ i18n.t('encryptionKey.status.title') }}
+      </h2>
+      <dl class="key-tab__status">
+        <dt>{{ i18n.t('encryptionKey.status.mode') }}</dt>
+        <dd>{{ i18n.t(modeTitle(current.mode)) }}</dd>
+        @if (current.mode === 'memory') {
+          <dt>{{ i18n.t('encryptionKey.status.state') }}</dt>
+          <dd>
+            {{
+              i18n.t(
+                current.state === 'unlocked'
+                  ? 'encryptionKey.state.unlocked'
+                  : 'encryptionKey.state.locked'
+              )
+            }}
+          </dd>
+        }
+      </dl>
+
+      @if (current.mode === 'memory') {
+        @if (current.state === 'locked') {
+          <form class="app-form" novalidate (submit)="$event.preventDefault(); unlock()">
+            <div class="app-form__field">
+              <label class="app-form__label" for="key-unlock">{{
+                i18n.t('keyState.unlockLabel')
+              }}</label>
+              <input
+                id="key-unlock"
+                class="app-form__input app-form__input--mono"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                [value]="unlockKey()"
+                [attr.aria-invalid]="unlockError() === 'keyPrompt.invalid' ? 'true' : null"
+                (input)="onUnlockKey($event)"
+              />
+              <p class="app-form__hint">{{ i18n.t('keyState.unlockHint') }}</p>
+            </div>
+            <div class="app-form__actions">
+              <button
+                type="submit"
+                class="app-form__button app-form__button--primary"
+                [disabled]="unlocking() || unlockKey().trim() === ''"
+              >
+                {{ i18n.t(unlocking() ? 'keyState.unlocking' : 'keyState.unlock') }}
+              </button>
+            </div>
+          </form>
+        } @else {
+          <p class="app-form__hint">{{ i18n.t('keyState.lockHint') }}</p>
+          <div class="app-form__actions">
+            <button type="button" class="app-form__button" [disabled]="lockBusy()" (click)="lock()">
+              {{ i18n.t('keyState.lock') }}
+            </button>
+          </div>
+        }
+        @if (unlockError(); as errorKey) {
+          <p class="app-form__notice app-form__notice--danger" role="alert">
+            {{ i18n.t(errorKey) }}
+          </p>
+        }
+      }
+    </section>
+
+    <app-key-mode-section [status]="current" (changed)="reload()" />
+    <app-key-change-section (changed)="reload()" />
+    <app-key-reset-section (changed)="reload()" />
+  }
+} @else {
+  <p class="app-form__hint">{{ i18n.t('encryptionKey.loading') }}</p>
+}

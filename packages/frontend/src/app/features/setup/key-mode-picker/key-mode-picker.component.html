@@ -1,0 +1,19 @@
+<fieldset class="key-mode" [disabled]="disabled()">
+  <legend class="visually-hidden">{{ i18n.t('keyMode.legend') }}</legend>
+  @for (option of options; track option.mode) {
+    <label class="app-form__choice key-mode__choice">
+      <input
+        type="radio"
+        name="key-mode"
+        [value]="option.mode"
+        [checked]="mode() === option.mode"
+        (change)="onPick(option.mode)"
+      />
+      <span class="key-mode__text">
+        <strong class="key-mode__title">{{ i18n.t(option.title) }}</strong>
+        <span>{{ i18n.t(option.summary) }}</span>
+        <span class="key-mode__risk">{{ i18n.t(option.risk) }}</span>
+      </span>
+    </label>
+  }
+</fieldset>

@@ -16,9 +16,9 @@ interface ConnectionRow extends RowDataPacket {
   fints_url: string;
   login_name: string;
   customer_id: string | null;
-  pin_ciphertext: Buffer;
-  pin_iv: Buffer;
-  pin_tag: Buffer;
+  pin_ciphertext: Buffer | null;
+  pin_iv: Buffer | null;
+  pin_tag: Buffer | null;
   tan_method: number | null;
   tan_media: string | null;
   banking_information: string | null;
@@ -41,20 +41,38 @@ interface IdRow extends RowDataPacket {
   id: number;
 }
 
+interface PinRow extends RowDataPacket {
+  id: number;
+  pin_ciphertext: Buffer;
+  pin_iv: Buffer;
+  pin_tag: Buffer;
+}
+
 interface KontoKeyRow extends RowDataPacket {
   id: number;
   iban: string | null;
   kontonummer: string;
 }
 
-/** A connection as the sync service needs it: settings, encrypted PIN, bank parameter data. */
+/**
+ * A connection as the sync service needs it: settings, the PIN encrypted with the user's key, and
+ * the bank parameter data. `pin` is `null` after a key reset, until the user enters it again.
+ */
 export interface BankConnectionRecord {
   readonly id: number;
   readonly settings: BankConnectionSettings;
-  readonly pin: EncryptedSecret;
+  readonly pin: EncryptedSecret | null;
   /** lib-fints `BankingInformation` as JSON; `null` before the first dialog. */
   readonly bankingInformation: string | null;
   readonly accounts: readonly BankConnectionAccount[];
+}
+
+/** Parameters of `reencryptBankConnectionPins`. */
+export interface PinReencryption {
+  /** Decrypts a PIN with the old key and encrypts it with the new one; throws on a wrong key. */
+  readonly reencrypt: (pin: EncryptedSecret) => EncryptedSecret;
+  /** Runs after every PIN is written and before the commit; a throw rolls the PINs back. */
+  readonly beforeCommit: () => Promise<void>;
 }
 
 /** Parameters of `createBankConnection`. */
@@ -208,10 +226,14 @@ export async function getBankConnectionRecord(id: number): Promise<BankConnectio
   const row: ConnectionRow | undefined = rows[0];
   if (row === undefined) return null;
   const accounts: AccountRow[] = await listAccountRows(id);
+  const pin: EncryptedSecret | null =
+    row.pin_ciphertext === null || row.pin_iv === null || row.pin_tag === null
+      ? null
+      : { ciphertext: row.pin_ciphertext, iv: row.pin_iv, tag: row.pin_tag };
   return {
     id: row.id,
     settings: toSettings(row),
-    pin: { ciphertext: row.pin_ciphertext, iv: row.pin_iv, tag: row.pin_tag },
+    pin,
     bankingInformation: row.banking_information,
     accounts: accounts.map(toAccount),
   };
@@ -360,18 +382,66 @@ export async function setBankConnectionPaused(
 }
 
 /**
- * Ids of the connections the scheduler runs now, ordered by id: enabled, not paused, and never
- * synced or last synced at least `sync_interval_hours` ago.
+ * Ids of the connections the scheduler runs now, ordered by id: enabled, not paused, with a PIN,
+ * and never synced or last synced at least `sync_interval_hours` ago.
  */
 export async function listDueBankConnectionIds(): Promise<number[]> {
   const [rows] = await getPool().query<IdRow[]>(
     `SELECT id FROM hf_bank_connection
-     WHERE enabled = 1 AND paused_reason IS NULL
+     WHERE enabled = 1 AND paused_reason IS NULL AND pin_ciphertext IS NOT NULL
        AND (last_sync_at IS NULL
             OR last_sync_at + INTERVAL sync_interval_hours HOUR <= NOW())
      ORDER BY id`,
   );
   return rows.map((row: IdRow) => row.id);
+}
+
+/**
+ * Re-encrypts every stored PIN under a new key in one transaction: the PINs are read `FOR UPDATE`,
+ * each is passed through `reencrypt` and written back, then `beforeCommit` runs. Any throw rolls
+ * all of them back, so the PINs are either all under the old key or all under the new one.
+ * Returns how many PINs were re-encrypted.
+ */
+export async function reencryptBankConnectionPins(params: PinReencryption): Promise<number> {
+  const connection: PoolConnection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query<PinRow[]>(
+      `SELECT id, pin_ciphertext, pin_iv, pin_tag FROM hf_bank_connection
+       WHERE pin_ciphertext IS NOT NULL ORDER BY id FOR UPDATE`,
+    );
+    for (const row of rows) {
+      const next: EncryptedSecret = params.reencrypt({
+        ciphertext: row.pin_ciphertext,
+        iv: row.pin_iv,
+        tag: row.pin_tag,
+      });
+      await connection.query(
+        'UPDATE hf_bank_connection SET pin_ciphertext = ?, pin_iv = ?, pin_tag = ? WHERE id = ?',
+        [next.ciphertext, next.iv, next.tag, row.id],
+      );
+    }
+    await params.beforeCommit();
+    await connection.commit();
+    return rows.length;
+  } catch (error: unknown) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Deletes every stored PIN and disables the connections (after a key reset): a connection without
+ * a PIN cannot sync until the user enters it again. Returns how many connections were affected.
+ */
+export async function clearBankConnectionPins(): Promise<number> {
+  const [result] = await getPool().query<ResultSetHeader>(
+    `UPDATE hf_bank_connection SET pin_ciphertext = NULL, pin_iv = NULL, pin_tag = NULL,
+       enabled = 0`,
+  );
+  return result.affectedRows;
 }
 
 /** Every konto's id, IBAN and account number, for matching discovered accounts. */

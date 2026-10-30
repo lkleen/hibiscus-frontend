@@ -1,0 +1,40 @@
+<section class="app-form app-form__section" aria-labelledby="key-mode-heading">
+  <h2 class="app-form__section-title" id="key-mode-heading">{{ i18n.t('keyMode.title') }}</h2>
+  <p class="app-form__hint">{{ i18n.t('keyMode.hint') }}</p>
+  <app-key-mode-picker [(mode)]="selected" [disabled]="working()" />
+
+  @if (needsKey()) {
+    <div class="app-form__field">
+      <label class="app-form__label" for="key-mode-key">{{ i18n.t('keyMode.keyLabel') }}</label>
+      <input
+        id="key-mode-key"
+        class="app-form__input app-form__input--mono"
+        type="password"
+        autocomplete="off"
+        spellcheck="false"
+        [value]="key()"
+        (input)="onKey($event)"
+      />
+      <p class="app-form__hint">{{ i18n.t('keyMode.storedNeedsKey') }}</p>
+    </div>
+  } @else if (status().mode === 'stored' && selected() !== 'stored') {
+    <p class="app-form__notice">{{ i18n.t('keyMode.storedDeleted') }}</p>
+  }
+
+  @if (error(); as errorKey) {
+    <p class="app-form__notice app-form__notice--danger" role="alert">{{ i18n.t(errorKey) }}</p>
+  }
+  @if (saved()) {
+    <p class="app-form__notice app-form__notice--ok" role="status">{{ i18n.t('keyMode.saved') }}</p>
+  }
+  <div class="app-form__actions">
+    <button
+      type="button"
+      class="app-form__button app-form__button--primary"
+      [disabled]="working() || unchanged()"
+      (click)="save()"
+    >
+      {{ i18n.t(working() ? 'keyMode.saving' : 'keyMode.save') }}
+    </button>
+  </div>
+</section>

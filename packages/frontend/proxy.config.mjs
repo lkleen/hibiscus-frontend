@@ -24,6 +24,10 @@ if (!INTERNAL_PROXY_SECRET) {
   );
 }
 
+// Optional: sign in as another user to try the multi-user setup (README: "Testing with a second
+// user"). The user must also be in ALLOWED_USERS. Without it, the fixed dev identity is used.
+const DEV_USER = process.env['DEV_AUTH_USER'] ?? 'local-dev@example.com';
+
 export default {
   '/api': {
     target: 'http://localhost:3000',
@@ -31,7 +35,7 @@ export default {
     changeOrigin: true,
     configure: (proxy) => {
       proxy.on('proxyReq', (proxyReq) => {
-        proxyReq.setHeader('X-Forwarded-User', 'local-dev@example.com');
+        proxyReq.setHeader('X-Forwarded-User', DEV_USER);
         proxyReq.setHeader('X-Internal-Auth-Secret', INTERNAL_PROXY_SECRET);
       });
     },

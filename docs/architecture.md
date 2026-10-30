@@ -38,26 +38,30 @@
 
 ## Data model
 
-Backed by a MariaDB database matching the schema Hibiscus (the desktop Jameica/Hibiscus
-home-banking client) creates via its own `mysql-create.sql`. This repo never owns or migrates
-that schema — it only reads/writes against tables that already exist, with these exceptions: the
-app-owned `hf_` tables (`hf_user_setting` for per-user settings, `hf_tax_section` and
-`hf_category_tax_tag` for the user's tax sections and category tax tags, `hf_bank_connection`,
-`hf_bank_connection_account` and `hf_sync_run` for the bank sync; see below), created at startup.
+Every user works on **their own Hibiscus database**: a MariaDB database matching the schema Hibiscus
+(the desktop Jameica/Hibiscus home-banking client) creates via its own `mysql-create.sql`, which the
+user configures in the web UI (see [Multi-user](#multi-user)). This repo never owns or migrates that
+schema — it only reads/writes against tables that already exist, with these exceptions: the
+app-owned `hf_` tables, created in the user's database on first connect (`hf_user_setting` for
+per-user settings, `hf_tax_section` and `hf_category_tax_tag` for the user's tax sections and
+category tax tags, `hf_bank_connection`, `hf_bank_connection_account` and `hf_sync_run` for the
+bank sync; see below), and `hf_app_user` in the **app database** (`DB_*`), which holds one row per
+username.
 
 Tables this app uses:
 
-| Table                        | Purpose                                                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `konto`                      | Bank accounts — name, IBAN/BIC, currency, current balance                                        |
-| `umsatz`                     | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
-| `umsatztyp`                  | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
-| `hf_user_setting`            | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
-| `hf_tax_section`             | User-maintained tax sections (code, name, form, guidance); default sections seeded once          |
-| `hf_category_tax_tag`        | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`              |
-| `hf_bank_connection`         | FinTS bank connections: BLZ, endpoint, login, encrypted PIN, TAN method, interval, pause state   |
-| `hf_bank_connection_account` | Maps a bank account (IBAN or number) of a connection to a `konto.id`, with an enabled flag       |
-| `hf_sync_run`                | One row per sync or discovery run: trigger, status, error, rows inserted and deleted             |
+| Table                        | Purpose                                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `konto`                      | Bank accounts — name, IBAN/BIC, currency, current balance                                             |
+| `umsatz`                     | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp`      |
+| `umsatztyp`                  | Categories — self-referencing tree via `parent_id`, has a `color` column                              |
+| `hf_app_user`                | App database only: one row per username — the user's database settings and key state (see Multi-user) |
+| `hf_user_setting`            | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created on first connect  |
+| `hf_tax_section`             | User-maintained tax sections (code, name, form, guidance); default sections seeded once               |
+| `hf_category_tax_tag`        | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`                   |
+| `hf_bank_connection`         | FinTS bank connections: BLZ, endpoint, login, encrypted PIN, TAN method, interval, pause state        |
+| `hf_bank_connection_account` | Maps a bank account (IBAN or number) of a connection to a `konto.id`, with an enabled flag            |
+| `hf_sync_run`                | One row per sync or discovery run: trigger, status, error, rows inserted and deleted                  |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
@@ -82,12 +86,23 @@ app's data to change.
 
 ## API (v1)
 
-All routes are under `/api` and require authentication (see below) except `/api/me`, which
-itself requires authentication too — there is no unauthenticated route in this app at all.
+All routes are under `/api` and require authentication (see below) — there is no unauthenticated
+route in this app at all. `/api/me` and `/api/user/*` work for a user without a database; every
+other route answers `409` `{ error: 'database-not-configured' }` until the user has set one up
+(request/response types in `packages/shared/src/contracts/user.d.ts`).
 
 | Method & path                             | Purpose                                                                                                                                                                                                                                                                                                                                           |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/me`                             | Echoes the authenticated identity                                                                                                                                                                                                                                                                                                                 |
+| `GET /api/me`                             | The authenticated identity, `database: 'configured' \| 'unconfigured'` and `key: 'configured' \| 'unconfigured'` (`Me`)                                                                                                                                                                                                                           |
+| `GET /api/user/database`                  | The user's database settings (`UserDatabase`, password never returned) and the operator's `allowedHosts` (`UserDatabaseResponse`)                                                                                                                                                                                                                 |
+| `PUT /api/user/database`                  | Save host, port, name, user and optionally the password (`UserDatabaseUpdateRequest`); the connection is tested first; `204`; `400` `host-not-allowed` or a failed test; `409` `busy` while a sync of the user runs; `409` `database-in-use` when another user has the database                                                                   |
+| `POST /api/user/database/test`            | Test a connection without saving (`UserDatabaseTestResponse`: `ok`, `hibiscusSchema`, `error`); the allowlist applies                                                                                                                                                                                                                             |
+| `GET /api/user/key`                       | Key status: `configured`, `mode`, `state` (`UserKeyStatus`)                                                                                                                                                                                                                                                                                       |
+| `POST /api/user/key`                      | First key: generated (`key` omitted) or given, with its `mode`; `201` with the generated key, shown once; `409` `key-configured`                                                                                                                                                                                                                  |
+| `PUT /api/user/key/mode`                  | Switch the mode (`UserKeyModeRequest`); `key` is required for `stored`; `204`                                                                                                                                                                                                                                                                     |
+| `POST /api/user/key/unlock`, `…/lock`     | Put the key into / remove it from server memory (`memory` mode); `204`; `400` `key-invalid`                                                                                                                                                                                                                                                       |
+| `POST /api/user/key/change`               | Re-encrypt every PIN under a new key (`UserKeyChangeRequest`); `200` with the new key if generated; `400` `key-invalid`                                                                                                                                                                                                                           |
+| `POST /api/user/key/reset`                | Delete the key and every stored PIN; `204`                                                                                                                                                                                                                                                                                                        |
 | `GET /api/accounts`                       | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                                                                                                                                                       |
 | `GET /api/transactions`                   | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                                                                                                                                                         |
 | `PATCH /api/transactions/:id`             | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                       |
@@ -106,14 +121,14 @@ itself requires authentication too — there is no unauthenticated route in this
 | `PUT /api/tax-sections/:code`             | Change a section (`TaxSectionUpdateRequest`: `expected`, `next`; a new code carries its tags along); `204`; `400` invalid body or `:code` ≠ `expected.code`; `409` `conflict` (changed or gone) or `duplicate`                                                                                                                                    |
 | `DELETE /api/tax-sections/:code`          | Delete a section; `204`; `404` no such section; `409` `{ error: 'in-use' }` while a category is tagged with it                                                                                                                                                                                                                                    |
 | `GET /api/bank-connections`               | Every bank connection (`BankConnection[]`, ordered by name) with its account mappings and last run outcome; never the PIN                                                                                                                                                                                                                         |
-| `POST /api/bank-connections`              | Create a connection (`BankConnectionCreateRequest`: settings plus `pin`); `201` with the stored `BankConnection`                                                                                                                                                                                                                                  |
-| `PUT /api/bank-connections/:id`           | Change the settings (`BankConnectionUpdateRequest`: `expected`, `next`, optional `pin`); `204`; `409` `conflict` or `locked`                                                                                                                                                                                                                      |
+| `POST /api/bank-connections`              | Create a connection (`BankConnectionCreateRequest`: settings, `pin`, and the key when the mode needs it); `201` with the stored `BankConnection`                                                                                                                                                                                                  |
+| `PUT /api/bank-connections/:id`           | Change the settings (`BankConnectionUpdateRequest`: `expected`, `next`, optional `pin`, key for a PIN change); `204`; `409` `conflict` or `locked`                                                                                                                                                                                                |
 | `DELETE /api/bank-connections/:id`        | Delete a connection; `204`; `409` `locked` while a run is active                                                                                                                                                                                                                                                                                  |
-| `POST /api/bank-connections/:id/discover` | Log in at the bank and list its TAN methods and accounts (`DiscoverResponse`); `tan_required` when a TAN is needed; `409` `locked`                                                                                                                                                                                                                |
+| `POST /api/bank-connections/:id/discover` | Log in at the bank and list its TAN methods and accounts (`DiscoverResponse`; takes the same `SyncStartRequest` key body); `tan_required` when a TAN is needed; `409` `locked`                                                                                                                                                                    |
 | `GET /api/bank-connections/:id/discovery` | The `DiscoverDone` result of a TAN-gated discovery once its run succeeded                                                                                                                                                                                                                                                                         |
 | `PUT /api/bank-connections/:id/accounts`  | Replace the account mapping (`BankConnectionAccountsRequest`); `204`                                                                                                                                                                                                                                                                              |
-| `POST /api/bank-connections/:id/sync`     | "Sync now": start a run in the background; `202` `{ runId }`; `409` `locked`; clears a TAN pause                                                                                                                                                                                                                                                  |
-| `GET /api/sync/status`                    | Per connection: last run, pause reason and the open TAN challenge (`SyncConnectionStatus[]`)                                                                                                                                                                                                                                                      |
+| `POST /api/bank-connections/:id/sync`     | "Sync now": start a run in the background; `202` `{ runId }`; `SyncStartRequest` body with the key in `manual` mode and in `memory` mode while locked; `400` `key-required` / `key-invalid`; `409` `locked`; clears a TAN pause                                                                                                                   |
+| `GET /api/sync/status`                    | The user's key status plus, per connection, the last run, pause reason and open TAN challenge (`SyncStatusResponse`: `key`, `connections`)                                                                                                                                                                                                        |
 | `POST /api/sync/runs/:id/tan`             | Answer the open challenge (`TanAnswerRequest`, `tan` omitted for decoupled ones); `204`; `409` `no-challenge`                                                                                                                                                                                                                                     |
 | `GET /api/sync/runs/:id/challenge-image`  | The photo-TAN image of an open challenge; `404` if none                                                                                                                                                                                                                                                                                           |
 
@@ -343,23 +358,23 @@ is no longer needed for that. Everything is declared once in `packages/shared/sr
   (1–168 h) and an enabled flag. "Discover" logs in once to read the bank's TAN methods and
   accounts; each account is mapped to an existing `konto` (preselected by IBAN) and can be
   switched off. Only mapped accounts are synced.
-- **Scheduler.** A 60-second tick starts a run for every enabled connection whose interval has
-  elapsed. One run or discovery per connection at a time (`409` `locked` otherwise).
+- **Scheduler.** A 60-second tick goes through the users whose key mode allows it (`memory` while
+  unlocked, `stored`) and starts a run for every enabled connection of theirs whose interval has
+  elapsed, on that user's database; a failing user database does not stop the others. One run or discovery per connection at a time (`409` `locked` otherwise).
 - **TANs.** A run that needs a TAN is `tan_required` for up to 15 minutes. The frontend polls
   `GET /api/sync/status` (every 5 s while a run is active, otherwise every 60 s) and shows a
   banner and a TAN dialog (typed TAN, photo-TAN image, or "approve in your banking app" for
   decoupled methods). When a **scheduled** run's TAN expires (`tan_expired`) the connection is
   paused (`pausedReason: 'tan'`): the scheduler stops sending TAN requests until someone presses
   "Sync now", which clears the pause.
-- **Credentials.** The PIN is write-only. It is stored AES-256-GCM encrypted with
-  `BANK_CREDENTIALS_KEY` (base64 of 32 bytes) and never returned by any route; the edit form never
-  prefills it. Losing the key means re-entering every PIN.
-- **Product registration.** FinTS banks only accept registered software. The DK registration
-  number is the constant `FINTS_PRODUCT_ID` in `sync/fints-session.ts`, committed like in other
-  banking software: it names the product, not an installation, and every bank sees it anyway.
-  While it is `null` (registration pending), every bank dialog fails with a clear error. A fork
-  shipping under its own name registers its own. `BANK_CREDENTIALS_KEY` is validated at startup;
-  the backend does not start without it.
+- **Credentials.** The PIN is write-only. It is stored AES-256-GCM encrypted with the **user's
+  own key** (see [Multi-user](#multi-user)) and never returned by any route; the edit form never
+  prefills it. Losing the key means re-entering every PIN ("Reset key").
+- **Product registration.** FinTS banks only accept registered software. As a frontend for
+  Hibiscus, the app sends Hibiscus's official DK registration (`FINTS_PRODUCT_ID` in
+  `sync/fints-session.ts`, from Hibiscus's `HBCI.java` `client.product.name`) with its own version
+  `FINTS_PRODUCT_VERSION` (major.minor, at most 5 characters). The ID is public, like every
+  distributed client's. A fork that ships as a different application registers its own.
 - **Frontend.** `features/sync` holds the polled status store, the global banner (in the app
   shell) and the TAN dialog; `features/bank-connections` the settings tab and its dialog; the
   Accounts page shows each connection's last sync with a "Sync now" button.
@@ -377,6 +392,125 @@ hidden, so band content keeps its state.
 Three modes: full, tabs only (clicking the active tab collapses to tabs), and hidden (one slim line with
 the bands' state chips and a "Show toolbar" button). The active tab and mode are kept per ribbon in
 memory for the session (`RibbonStateStore`) and reset on reload.
+
+## Multi-user
+
+Several people can use one deployment. The only identity is the username the authenticating proxy
+asserts (`AUTH_HEADER_USER`, filtered by `ALLOWED_USERS`); nothing from the IdP is duplicated.
+
+- **Per-user database.** Each user configures their own Hibiscus database in the web UI (host,
+  port, name, user, password). The settings live in `hf_app_user`, one row per username, in the
+  **app database** (`DB_*`, created at startup). A request's user is
+  resolved to their connection pool and the rest of the request runs inside an `AsyncLocalStorage`
+  context, so `getPool()` returns the current user's pool and the repositories stay unchanged. It
+  throws without a context. A user without a database gets `409` `database-not-configured` on
+  every data route. Pools are created lazily and cached per user; saving new settings swaps the
+  pool and is refused with `409` `busy` while a sync of that user runs. The `hf_*` tables are
+  ensured once per pool. Sync locks (`GET_LOCK`) include a hash of the database, so two users on
+  the same MariaDB server with the same connection id do not block each other.
+- **One user per Hibiscus database.** Two users on one database would share its `hf_bank_connection`
+  rows, whose PINs are encrypted under different keys. `PUT /api/user/database` therefore answers
+  `409` `database-in-use` when another username already has the same host (compared
+  case-insensitively), port and database name. A friendly pre-check does the lookup; the decision
+  is made by a `UNIQUE KEY` on (`db_host`, `db_port`, `db_name`) of `hf_app_user` (`NULL`s of users
+  without a database do not collide), whose `ER_DUP_ENTRY` error is mapped to the same `409`, so
+  two simultaneous saves cannot both win. The key is added by `ensureAppUserTable` to an existing
+  table when missing (checked in `information_schema.STATISTICS`); the startup fails if two users
+  already share a database. The settings are saved with `INSERT IGNORE` of the row and an
+  `UPDATE` rather than `ON DUPLICATE KEY UPDATE`, which would overwrite the other user's row on a
+  clash.
+- **Host allowlist.** The operator sets `ALLOWED_DB_HOSTS` (comma-separated `host` or
+  `host:port`). It is checked when the settings are saved and tested, and again before every pool
+  is created, so users cannot point the server at arbitrary hosts. An entry without a port allows
+  every port of that host.
+- **Database user.** The MariaDB user of each Hibiscus database needs only that database. The
+  app's own `DB_*` user needs its app database (`hf_app_user`).
+- **Two secrets, two jobs.**
+
+  | Secret                              | Held by                     | Encrypts                                           | Lost means                                     |
+  | ----------------------------------- | --------------------------- | -------------------------------------------------- | ---------------------------------------------- |
+  | Server key (`BANK_CREDENTIALS_KEY`) | the operator, as an env var | users' database passwords; `stored`-mode user keys | users re-enter their database password and key |
+  | User key                            | the user (password manager) | the user's bank PINs                               | the user enters their PINs again ("Reset key") |
+
+  The app must be able to read a user's data without their key, so the database password can only
+  be protected with the server key. Bank PINs are different: they are encrypted with the user key
+  alone (`CredentialCrypto` per key). The key is 32 random bytes, generated by the app and shown
+  once as base64, or pasted by the user. A check value, `HMAC-SHA256(key, "hibiscus-frontend key
+check")`, verifies an entered key without touching a PIN; a wrong key answers `400`
+  `key-invalid`.
+
+- **Key modes**, chosen per user, with the risk explained in the UI:
+
+  | Mode     | Key kept                                                                      | Scheduled sync      | Sync now                  |
+  | -------- | ----------------------------------------------------------------------------- | ------------------- | ------------------------- |
+  | `manual` | never; entered per action, dropped when the run (including its TAN wait) ends | no                  | key prompt                |
+  | `memory` | server RAM after "Unlock", until "Lock", a restart or a deploy                | yes, while unlocked | yes (prompt while locked) |
+  | `stored` | app database, wrapped with the server key                                     | always              | yes                       |
+
+  Switching to `stored` asks for the key once; switching away deletes the wrapped copy. "Change
+  key" takes the old and the new key and re-encrypts all PINs in one transaction. "Reset key"
+  (for a forgotten key) deletes the key and nulls all stored PINs.
+
+- **PIN columns are nullable.** `pin_ciphertext`, `pin_iv` and `pin_tag` of `hf_bank_connection`
+  are `NULL` after a reset. Tables created before that were `NOT NULL`; `ensureSyncTables` alters
+  them only when `information_schema.COLUMNS` reports `IS_NULLABLE = 'NO'`, so an up-to-date table
+  is never rebuilt. A reset also disables the connections (they cannot sync without a PIN); the
+  user enters the PINs again under the new key.
+- **Change key spans two databases.** The PINs live in the user's Hibiscus database, the key record
+  (`key_check`, wrapped copy) in the app database, so one transaction cannot cover both. The PINs
+  are re-encrypted in a transaction on the user's database; the new key record is written
+  in its `beforeCommit` hook, right before the commit, guarded by the expected old check value. If
+  the commit then fails, the old key record is restored (a failed restore raises an
+  `AggregateError`), so the check value always matches the key the PINs are under. Whichever way
+  it fails, the PINs and the check value stay consistent.
+- **Busy and reconfiguring registry** (`db/user-activity.ts`). Per user, runs that must not overlap
+  with a reconfiguration are counted (**busy**: sync, discovery, writing a newly encrypted PIN)
+  and a reconfiguration (saving the database, change or reset key) is exclusive. A busy user cannot
+  start reconfiguring and a reconfiguring user cannot be marked busy; each check and its mark happen
+  in one synchronous turn, so two requests cannot both pass. The conflict is `409` `busy`. **The
+  registry lives in process memory, so only a single backend process is supported: running more
+  than one replica is not supported** (they would not see each other's runs; the same holds for
+  the in-memory `memory`-mode key store).
+- **Key source after the busy mark.** Actions that need the key (`manual` entry, `memory` store,
+  `stored` unwrap) resolve it only after the user was marked busy, so a change or reset cannot run
+  between reading the key and using it.
+
+- **Threat model per mode.** What an attacker gains with each kind of access:
+
+  | Attacker has                                                   | `manual`                                      | `memory`                         | `stored`                                                   |
+  | -------------------------------------------------------------- | --------------------------------------------- | -------------------------------- | ---------------------------------------------------------- |
+  | A database dump or the backups only                            | nothing (PINs and DB passwords are encrypted) | nothing                          | nothing                                                    |
+  | Backups and the server key                                     | database passwords, not the PINs              | database passwords, not the PINs | database passwords and, through the wrapped keys, all PINs |
+  | Control of the running server (root, memory, a debugger)       | the key only while a run is in progress       | the key while unlocked           | the key at any time                                        |
+  | Control of the server after a restart, before the user unlocks | nothing                                       | nothing (locked)                 | the key (unwrapped with the server key)                    |
+
+  `manual` is the only mode where a compromised server cannot decrypt PINs at rest; it cannot sync
+  on its own. `stored` is the most convenient and gives whoever controls the server, or has the
+  backups together with the server key, access to the PINs.
+
+- **Key prompts.** Actions that encrypt or decrypt a PIN (Sync now, Discover, creating a
+  connection, changing a PIN) take an optional `key` (and `keepUnlocked` in `memory` mode) in
+  their body. It is required (`400` `key-required`) in `manual` mode and in `memory` mode while
+  locked. A key travels only in the request body over the proxy's TLS and is never logged or
+  returned.
+
+### Frontend
+
+- `MeService` loads `/api/me` into a signal. The `:locale` routes have a `canMatch` guard
+  (`databaseConfiguredGuard`) that redirects to `/:locale/setup` while `database` **or** `key` (both
+  from `Me`; `key` is `configured` once a key mode is stored) is `unconfigured`; the setup route
+  has the inverse guard and opens at the first unfinished step (database done: key mode). After the
+  key was created or reset, `MeService` is refreshed. An HTTP interceptor sends the user to
+  setup on any `409` `database-not-configured`.
+- **Setup** (`features/setup`): a three-step flow — database (host from the allowlist, port, name,
+  user, password, "Test connection"), key mode, then the key (generate, shown once with a
+  required "I saved it" confirmation, or paste your own).
+- **Settings** gains the tabs **Database** (the same form; an empty password keeps the stored
+  one) and **Encryption key** (status, mode switch, unlock/lock, change key, reset key).
+- **Key prompt** (`features/key/key-prompt`): a CDK dialog, opened through `KeyPrompts`, that runs
+  the action itself so a wrong key keeps it open. `SyncStatusStore` exposes the key status from
+  `GET /api/sync/status`; when the mode is `memory`, locked, and a connection is enabled, the
+  global banner shows "Automatic sync paused" with an Unlock button.
 
 ## Authentication
 
@@ -469,8 +603,9 @@ locale data in `app.config.ts`, and add a `locale.<code>` label to every diction
 Per-user settings are accessed via a route-based tab interface at `/:locale/settings/<tab>`,
 with all tabs defined in a single source (`SETTINGS_TABS` in `settings-tabs.ts`). The route
 structure is: root shell component loads the active tab child route lazily. The first tab is
-the default. Settings are reachable from the user menu. Currently implemented: two tabs. **Bank
-connections** manages the bank sync (see Bank sync). **Date
+the default. Settings are reachable from the user menu. Currently implemented: four tabs. **Bank
+connections** manages the bank sync (see Bank sync). **Database** and **Encryption key** manage
+the user's own database and key (see Multi-user). **Date
 range presets** shows a preset picker on the left; picking one saves it immediately. (The former
 Table density tab and its demo table were removed; density is chosen in each page's ribbon.)
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type {
   BankConnection,
@@ -12,7 +13,9 @@ import type {
   SyncTrigger,
   TanChallenge,
 } from '@hibiscus-frontend/shared/contracts/sync';
-import { getPool } from '../db/pool';
+import type { UserDatabaseSettings } from '@hibiscus-frontend/shared/contracts/user';
+import { currentDatabase, currentUser, getPool } from '../db/pool';
+import { markUserBusy, unmarkUserBusy } from '../db/user-activity';
 import {
   deleteBankConnection,
   getBankConnectionRecord,
@@ -29,13 +32,13 @@ import {
   listLatestSyncRuns,
   setSyncRunWaiting,
 } from '../repositories/sync-run';
-import type { CredentialCrypto } from './credential-crypto';
 import type { FetchedBooking, MergeResult, StatementBalance } from './fetched-booking';
 import { describeStoredBankingInformation } from './fints-session';
 import type { FintsDiscovery, FintsSession, FintsSessionFactory } from './fints-session';
 import { TanTimeoutError } from './pending-tan-registry';
 import type { PendingChallenge, PendingTanRegistry, TanPrompt } from './pending-tan-registry';
 import { mergeStatement } from './umsatz-merge';
+import { decryptPin, encodeUserKey } from './user-keys';
 
 /** A run or discovery of the connection is already in progress (`GET_LOCK` not acquired). */
 export class ConflictError extends Error {
@@ -53,7 +56,17 @@ export class NotFoundError extends Error {
   }
 }
 
-/** A failed run, its message and stack with the PIN masked. */
+/** The connection has no PIN (after a key reset); the user has to enter it again. */
+export class PinMissingError extends Error {
+  constructor(connectionId: number) {
+    super(
+      `Bank connection ${connectionId} has no PIN since the key was reset; enter the PIN again`,
+    );
+    this.name = 'PinMissingError';
+  }
+}
+
+/** A failed run, its message and stack with the PIN and the key masked. */
 export class SyncRunError extends Error {
   constructor(runId: number, message: string) {
     super(`Run ${runId} failed: ${message}`);
@@ -64,7 +77,26 @@ export class SyncRunError extends Error {
 export interface SyncServiceDeps {
   readonly sessions: FintsSessionFactory;
   readonly registry: PendingTanRegistry;
-  readonly crypto: CredentialCrypto;
+}
+
+/**
+ * Produces the user's key for one run (see `UserKeys.resolve`). It is called once the user is
+ * marked busy, so no key change can slip in between; the run owns the returned buffer and zeroes
+ * it when it ends — a TAN wait included.
+ */
+export type UserKeySource = () => Promise<Buffer>;
+
+/** Parameters of `startSync` / `runSync`. */
+export interface SyncStartParams {
+  readonly connectionId: number;
+  readonly trigger: RunTrigger;
+  readonly key: UserKeySource;
+}
+
+/** Parameters of `discover`. */
+export interface DiscoverParams {
+  readonly connectionId: number;
+  readonly key: UserKeySource;
 }
 
 /** A run that holds its connection's lock; `done` settles when the run has finished. */
@@ -83,13 +115,26 @@ interface LatestDateRow extends RowDataPacket {
   latest: string | null;
 }
 
-/** What a run works with while it holds the lock. */
-interface RunContext {
+/** The decrypted PIN, once the run has it; kept only to mask it in errors. */
+interface RunSecrets {
+  pin: string | null;
+}
+
+/** A run that holds the lock, its run row, the user's busy mark and the key. */
+interface BegunRun {
+  readonly user: string;
   readonly runId: number;
-  readonly trigger: SyncTrigger;
   readonly record: BankConnectionRecord;
   /** The pooled connection that holds `GET_LOCK` for the whole run; merges run on it too. */
   readonly lock: PoolConnection;
+  /** The user's key, zeroed when the run ends. */
+  readonly key: Buffer;
+}
+
+/** What a run works with while it holds the lock. */
+interface RunContext extends BegunRun {
+  readonly trigger: SyncTrigger;
+  readonly secrets: RunSecrets;
   /** Discovery only: told about the first TAN challenge. */
   readonly onChallenge?: (challenge: PendingChallenge) => void;
 }
@@ -99,17 +144,31 @@ const OVERLAP_DAYS = 10;
 /** Days fetched for an account without any booked row yet. */
 const INITIAL_DAYS = 90;
 
+/**
+ * `GET_LOCK` names are server-wide, so the name carries the current user's database: two users on
+ * the same MariaDB with connection id 1 must not block each other. `hf_sync_` + 16 hex + `_` + id
+ * stays well under MariaDB's 64-character limit.
+ */
 function lockName(connectionId: number): string {
-  return `hf_sync_${connectionId}`;
+  const settings: UserDatabaseSettings = currentDatabase().settings;
+  const database: string = createHash('sha1')
+    .update(`${settings.host}:${settings.port}/${settings.name}`)
+    .digest('hex')
+    .slice(0, 16);
+  return `hf_sync_${database}_${connectionId}`;
 }
 
 function localDay(date: Date, offsetDays: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offsetDays);
 }
 
-/** Masks every occurrence of the PIN. */
-function redact(text: string, pin: string): string {
-  return pin === '' ? text : text.split(pin).join('***');
+/** Masks every occurrence of each secret (the PIN, the key as base64). */
+function redact(text: string, secrets: readonly (string | null)[]): string {
+  return secrets.reduce(
+    (masked: string, secret: string | null): string =>
+      secret === null || secret === '' ? masked : masked.split(secret).join('***'),
+    text,
+  );
 }
 
 function messageOf(error: unknown): string {
@@ -150,27 +209,32 @@ function matchKonto(
 
 /**
  * Runs bank syncs and discoveries. One at a time per connection: each holds the MariaDB lock
- * `hf_sync_<id>` on a dedicated pooled connection for its whole duration, a second attempt gets a
- * `ConflictError` at once.
+ * (`lockName`) on a dedicated pooled connection for its whole duration, a second attempt gets a
+ * `ConflictError` at once. Each run marks its user busy for its whole duration (`UserBusyError`
+ * while the user's database or key is being reconfigured) and decrypts the PIN with the user's
+ * key, which it zeroes when it ends.
  */
 export class SyncService {
   constructor(private readonly deps: SyncServiceDeps) {}
 
   /**
    * Starts a sync and returns once it holds the lock and has its run row; the run itself goes on
-   * in `done`. A manual run clears the connection's pause. Throws `ConflictError` / `NotFoundError`.
+   * in `done`. A manual run clears the connection's pause. Throws `UserBusyError`, what the key
+   * source throws, `ConflictError` / `NotFoundError` — all before a run row exists.
    */
-  async startSync(connectionId: number, trigger: RunTrigger): Promise<StartedRun> {
-    const { lock, record, runId } = await this.begin(connectionId, trigger);
-    const done: Promise<void> = this.executeSync({ runId, trigger, record, lock }).finally(() =>
-      this.unlock(lock, connectionId),
-    );
-    return { runId, done };
+  async startSync(params: SyncStartParams): Promise<StartedRun> {
+    const begun: BegunRun = await this.begin(params.connectionId, params.trigger, params.key);
+    const done: Promise<void> = this.executeSync({
+      ...begun,
+      trigger: params.trigger,
+      secrets: { pin: null },
+    }).finally(() => this.end(begun));
+    return { runId: begun.runId, done };
   }
 
   /** Starts a sync and waits for it to finish; throws what the run threw. */
-  async runSync(connectionId: number, trigger: RunTrigger): Promise<void> {
-    const started: StartedRun = await this.startSync(connectionId, trigger);
+  async runSync(params: SyncStartParams): Promise<void> {
+    const started: StartedRun = await this.startSync(params);
     await started.done;
   }
 
@@ -179,8 +243,9 @@ export class SyncService {
    * TAN with the challenge; the discovery then goes on in the background and its result is read
    * later with `describeDiscovery`.
    */
-  async discover(connectionId: number): Promise<DiscoverResponse> {
-    const { lock, record, runId } = await this.begin(connectionId, 'discover');
+  async discover(params: DiscoverParams): Promise<DiscoverResponse> {
+    const begun: BegunRun = await this.begin(params.connectionId, 'discover', params.key);
+    const { runId } = begun;
     let announce: (response: DiscoverTanRequired) => void = (): void => {
       throw new Error('The challenge listener is not set up yet');
     };
@@ -192,12 +257,11 @@ export class SyncService {
     const onChallenge = (challenge: PendingChallenge): void =>
       announce({ status: 'tan_required', runId, challenge: toPublicChallenge(challenge) });
     const done: Promise<DiscoverDone> = this.executeDiscover({
-      runId,
+      ...begun,
       trigger: 'discover',
-      record,
-      lock,
+      secrets: { pin: null },
       onChallenge,
-    }).finally(() => this.unlock(lock, connectionId));
+    }).finally(() => this.end(begun));
     const first: DiscoverResponse = await Promise.race([done, challenged]);
     if (first.status === 'tan_required') {
       done.catch((error: unknown) => {
@@ -250,21 +314,45 @@ export class SyncService {
     }
   }
 
-  /** Takes the lock, reads the connection and inserts the run row; releases the lock on failure. */
+  /**
+   * Marks the user busy, gets the key, takes the lock, reads the connection and inserts the run
+   * row; undoes what it did (key zeroed, lock released, busy mark cleared) on failure.
+   */
   private async begin(
     connectionId: number,
     trigger: SyncTrigger,
-  ): Promise<{ lock: PoolConnection; record: BankConnectionRecord; runId: number }> {
-    const lock: PoolConnection = await this.lock(connectionId);
+    source: UserKeySource,
+  ): Promise<BegunRun> {
+    const user: string = currentUser().user;
+    markUserBusy(user);
+    let key: Buffer | null = null;
     try {
-      const record: BankConnectionRecord | null = await getBankConnectionRecord(connectionId);
-      if (record === null) throw new NotFoundError(`Bank connection ${connectionId}`);
-      if (trigger === 'manual') await setBankConnectionPaused(connectionId, null);
-      const runId: number = await createSyncRun(connectionId, trigger);
-      return { lock, record, runId };
+      key = await source();
+      const lock: PoolConnection = await this.lock(connectionId);
+      try {
+        const record: BankConnectionRecord | null = await getBankConnectionRecord(connectionId);
+        if (record === null) throw new NotFoundError(`Bank connection ${connectionId}`);
+        if (trigger === 'manual') await setBankConnectionPaused(connectionId, null);
+        const runId: number = await createSyncRun(connectionId, trigger);
+        return { user, runId, record, lock, key };
+      } catch (error: unknown) {
+        await this.unlock(lock, connectionId);
+        throw error;
+      }
     } catch (error: unknown) {
-      await this.unlock(lock, connectionId);
+      key?.fill(0);
+      unmarkUserBusy(user);
       throw error;
+    }
+  }
+
+  /** Ends a begun run: zeroes the key, releases the lock, clears the busy mark. */
+  private async end(run: BegunRun): Promise<void> {
+    run.key.fill(0);
+    try {
+      await this.unlock(run.lock, run.record.id);
+    } finally {
+      unmarkUserBusy(run.user);
     }
   }
 
@@ -325,7 +413,7 @@ export class SyncService {
   /**
    * Runs `work`; when it throws, records the run as `error` (or `tan_expired`), a sync's outcome on
    * the connection, pauses the connection when a scheduled run's TAN expired, and throws a
-   * `SyncRunError` with the PIN masked.
+   * `SyncRunError` with the PIN and the key masked.
    */
   private async recordFailures<T>(
     context: RunContext,
@@ -335,9 +423,9 @@ export class SyncService {
     try {
       return await work();
     } catch (error: unknown) {
-      const pin: string = this.deps.crypto.decrypt(context.record.pin);
+      const secrets: (string | null)[] = [context.secrets.pin, encodeUserKey(context.key)];
       const status: SyncRunStatus = error instanceof TanTimeoutError ? 'tan_expired' : 'error';
-      const message: string = redact(messageOf(error), pin);
+      const message: string = redact(messageOf(error), secrets);
       try {
         await finishSyncRun(context.runId, { status, error: message, ...totals });
         if (context.trigger !== 'discover') {
@@ -349,7 +437,10 @@ export class SyncService {
       } catch (recordError: unknown) {
         throw new SyncRunError(
           context.runId,
-          redact(`${message}; recording the failure failed too: ${messageOf(recordError)}`, pin),
+          redact(
+            `${message}; recording the failure failed too: ${messageOf(recordError)}`,
+            secrets,
+          ),
         );
       }
       throw new SyncRunError(context.runId, message);
@@ -358,15 +449,24 @@ export class SyncService {
     }
   }
 
+  /** Decrypts the PIN with the user's key; a connection without one fails the run. */
+  private decryptPin(context: RunContext): string {
+    if (context.record.pin === null) throw new PinMissingError(context.record.id);
+    const pin: string = decryptPin(context.key, context.record.pin);
+    context.secrets.pin = pin;
+    return pin;
+  }
+
   private async openSession(context: RunContext): Promise<FintsSession> {
     const { record } = context;
+    const pin: string = this.decryptPin(context);
     return this.deps.sessions({
       login: {
         blz: record.settings.blz,
         fintsUrl: record.settings.fintsUrl,
         loginName: record.settings.loginName,
         customerId: record.settings.customerId,
-        pin: this.deps.crypto.decrypt(record.pin),
+        pin,
         tanMethod: record.settings.tanMethod,
         tanMedia: record.settings.tanMedia,
         bankingInformation: record.bankingInformation,

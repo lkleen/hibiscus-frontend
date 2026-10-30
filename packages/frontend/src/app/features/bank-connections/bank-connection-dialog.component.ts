@@ -17,13 +17,16 @@ import type {
   DiscoverResponse,
   SyncRun,
   TanMethodOption,
+  WithUserKey,
 } from '@hibiscus-frontend/shared/contracts/sync';
-import { Observable, switchMap, of } from 'rxjs';
+import { Observable, switchMap, of, tap } from 'rxjs';
 import type { TranslationKey } from '../../core/models/translation.model';
 import { ApiService } from '../../core/services/api.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { accountLabel } from '../../core/utils/account-label';
+import { userErrorOf } from '../../core/utils/user-errors';
 import { APP_DIALOG_CLASS } from '../../shared/dialog/dialog-classes';
+import { KeyPrompts } from '../key/key-prompt/key-prompts';
 import { syncErrorOf } from '../sync/sync-errors';
 import { SyncStatusStore } from '../sync/sync-status.store';
 import { TanDialogs } from '../sync/tan-dialog/tan-dialogs';
@@ -48,7 +51,7 @@ import {
 /** The `ariaLabelledBy` target of the dialog. */
 export const BANK_CONNECTION_DIALOG_TITLE_ID = 'bank-connection-dialog-title';
 
-type SaveError = 'conflict' | 'locked' | 'failed';
+type SaveError = 'conflict' | 'locked' | 'key-not-configured' | 'failed';
 
 /**
  * Creates or edits one bank connection and, once it is stored, discovers the bank's accounts and
@@ -69,6 +72,7 @@ export class BankConnectionDialogComponent {
   private readonly api = inject(ApiService);
   private readonly store = inject(SyncStatusStore);
   private readonly tanDialogs = inject(TanDialogs);
+  private readonly prompts = inject(KeyPrompts);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly i18n = inject(TranslationService);
 
@@ -156,38 +160,56 @@ export class BankConnectionDialogComponent {
     );
     this.saving.set(true);
     this.saveError.set(null);
-    if (saved === null) {
-      this.api.createBankConnection({ ...settings, pin: draft.pin }).subscribe({
-        next: (created: BankConnection): void => {
-          this.saving.set(false);
-          this.saved.set(created);
-          this.draft.update((current: BankConnectionDraft) => ({ ...current, pin: '' }));
-        },
-        error: (failure: unknown): void => this.onSaveFailed(failure),
-      });
-      return;
-    }
-    this.api
-      .updateBankConnection(saved.id, {
+    const saving$: Observable<unknown> =
+      saved === null
+        ? this.prompts
+            .run(this.store.key(), (body: WithUserKey) =>
+              this.api.createBankConnection({ ...settings, pin: draft.pin, ...body }),
+            )
+            .pipe(
+              tap((created: BankConnection): void => {
+                this.saved.set(created);
+                this.draft.update((current: BankConnectionDraft) => ({ ...current, pin: '' }));
+              }),
+            )
+        : this.updateConnection(saved, settings, draft.pin);
+    saving$.subscribe({
+      complete: (): void => {
+        this.saving.set(false);
+        this.refreshStatus();
+      },
+      error: (failure: unknown): void => this.onSaveFailed(failure),
+    });
+  }
+
+  /** A PIN change needs the key; every other change does not. */
+  private updateConnection(
+    saved: BankConnection,
+    settings: BankConnectionSettings,
+    pin: string,
+  ): Observable<unknown> {
+    const update = (body: WithUserKey): Observable<void> =>
+      this.api.updateBankConnection(saved.id, {
         expected: settingsOfConnection(saved),
         next: settings,
-        ...(draft.pin === '' ? {} : { pin: draft.pin }),
-      })
-      .subscribe({
-        next: (): void => {
-          this.saving.set(false);
-          const identityChanged: boolean =
-            settings.blz !== saved.blz ||
-            settings.fintsUrl !== saved.fintsUrl ||
-            settings.loginName !== saved.loginName ||
-            settings.customerId !== saved.customerId;
-          this.saved.set({ ...saved, ...settings });
-          this.draft.update((current: BankConnectionDraft) => ({ ...current, pin: '' }));
-          // The bank parameter data is gone; what was discovered no longer applies.
-          if (identityChanged) this.discovery.set(null);
-        },
-        error: (failure: unknown): void => this.onSaveFailed(failure),
+        ...(pin === '' ? {} : { pin }),
+        ...body,
       });
+    const request$: Observable<void> =
+      pin === '' ? update({}) : this.prompts.run(this.store.key(), update);
+    return request$.pipe(
+      tap((): void => {
+        const identityChanged: boolean =
+          settings.blz !== saved.blz ||
+          settings.fintsUrl !== saved.fintsUrl ||
+          settings.loginName !== saved.loginName ||
+          settings.customerId !== saved.customerId;
+        this.saved.set({ ...saved, ...settings });
+        this.draft.update((current: BankConnectionDraft) => ({ ...current, pin: '' }));
+        // The bank parameter data is gone; what was discovered no longer applies.
+        if (identityChanged) this.discovery.set(null);
+      }),
+    );
   }
 
   protected discover(): void {
@@ -196,26 +218,36 @@ export class BankConnectionDialogComponent {
     if (this.discovering()) return;
     this.discovering.set(true);
     this.discoverError.set(null);
-    this.api.discoverBankConnection(saved.id).subscribe({
-      next: (response: DiscoverResponse): void => {
-        if (response.status === 'done') {
+    let answered = false;
+    this.prompts
+      .run(this.store.key(), (body: WithUserKey) => this.api.discoverBankConnection(saved.id, body))
+      .subscribe({
+        complete: (): void => {
+          // Cancelled prompt: nothing was started.
+          if (!answered) this.discovering.set(false);
+        },
+        next: (response: DiscoverResponse): void => {
+          answered = true;
+          if (response.status === 'done') {
+            this.discovering.set(false);
+            this.applyDiscovery(response);
+            return;
+          }
+          this.waitForTan(saved.id, response.runId);
+        },
+        error: (failure: unknown): void => {
           this.discovering.set(false);
-          this.applyDiscovery(response);
-          return;
-        }
-        this.waitForTan(saved.id, response.runId);
-      },
-      error: (failure: unknown): void => {
-        this.discovering.set(false);
-        this.discoverError.set(
-          this.i18n.t(
-            syncErrorOf(failure) === 'locked'
-              ? 'bankConnections.discover.locked'
-              : 'bankConnections.discover.failed',
-          ),
-        );
-      },
-    });
+          this.discoverError.set(
+            this.i18n.t(
+              syncErrorOf(failure) === 'locked'
+                ? 'bankConnections.discover.locked'
+                : userErrorOf(failure) === 'key-not-configured'
+                  ? 'bankConnections.discover.keyNotConfigured'
+                  : 'bankConnections.discover.failed',
+            ),
+          );
+        },
+      });
   }
 
   protected reopenTan(): void {
@@ -296,17 +328,34 @@ export class BankConnectionDialogComponent {
   }
 
   protected errorKey(error: SaveError): TranslationKey {
-    return error === 'conflict'
-      ? 'bankConnections.error.conflict'
-      : error === 'locked'
-        ? 'bankConnections.error.locked'
-        : 'bankConnections.error.failed';
+    switch (error) {
+      case 'conflict':
+        return 'bankConnections.error.conflict';
+      case 'locked':
+        return 'bankConnections.error.locked';
+      case 'key-not-configured':
+        return 'bankConnections.error.keyNotConfigured';
+      case 'failed':
+        return 'bankConnections.error.failed';
+    }
   }
 
   private onSaveFailed(failure: unknown): void {
     this.saving.set(false);
     const code: string | null = syncErrorOf(failure);
-    this.saveError.set(code === 'conflict' ? 'conflict' : code === 'locked' ? 'locked' : 'failed');
+    this.saveError.set(
+      code === 'conflict'
+        ? 'conflict'
+        : code === 'locked'
+          ? 'locked'
+          : userErrorOf(failure) === 'key-not-configured'
+            ? 'key-not-configured'
+            : 'failed',
+    );
+  }
+
+  private refreshStatus(): void {
+    this.store.refresh().subscribe({ error: () => undefined });
   }
 
   private updateRow(identifier: string, change: Partial<AccountMappingRow>): void {

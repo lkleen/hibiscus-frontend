@@ -22,4 +22,16 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
         (m) => m.BankConnectionsComponent,
       ),
   },
+  {
+    path: 'database',
+    labelKey: 'settings.tab.database',
+    loadComponent: () =>
+      import('./database/database-tab.component').then((m) => m.DatabaseTabComponent),
+  },
+  {
+    path: 'encryption-key',
+    labelKey: 'settings.tab.encryptionKey',
+    loadComponent: () =>
+      import('./encryption-key/encryption-key.component').then((m) => m.EncryptionKeyComponent),
+  },
 ];

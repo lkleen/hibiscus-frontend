@@ -1,0 +1,142 @@
+@if (loadError()) {
+  <p class="app-form__notice app-form__notice--danger" role="alert">
+    {{ i18n.t('database.loadError') }}
+  </p>
+} @else if (loaded() === null) {
+  <p class="app-form__hint">{{ i18n.t('database.loading') }}</p>
+} @else {
+  <form class="app-form database-form" novalidate (submit)="$event.preventDefault(); save()">
+    <div class="app-form__row">
+      <div class="app-form__field">
+        <label class="app-form__label" for="db-host">{{ i18n.t('database.field.host') }}</label>
+        <input
+          id="db-host"
+          class="app-form__input app-form__input--mono"
+          type="text"
+          list="db-host-options"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="draft().host"
+          [attr.aria-invalid]="problem('host') ? 'true' : null"
+          (input)="onText('host', $event)"
+        />
+        <datalist id="db-host-options">
+          @for (entry of allowedHosts(); track entry) {
+            <option [value]="entry"></option>
+          }
+        </datalist>
+        <p class="app-form__hint">
+          @if (allowedHosts().length > 0) {
+            {{ i18n.t('database.hint.hosts', { hosts: allowedHosts().join(', ') }) }}
+          } @else {
+            {{ i18n.t('database.hint.noHosts') }}
+          }
+        </p>
+      </div>
+      <div class="app-form__field app-form__field--narrow">
+        <label class="app-form__label" for="db-port">{{ i18n.t('database.field.port') }}</label>
+        <input
+          id="db-port"
+          class="app-form__input app-form__input--mono"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          [value]="draft().port"
+          [attr.aria-invalid]="problem('port') ? 'true' : null"
+          (input)="onText('port', $event)"
+        />
+      </div>
+    </div>
+
+    <div class="app-form__row">
+      <div class="app-form__field">
+        <label class="app-form__label" for="db-name">{{ i18n.t('database.field.name') }}</label>
+        <input
+          id="db-name"
+          class="app-form__input app-form__input--mono"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="draft().name"
+          [attr.aria-invalid]="problem('name') ? 'true' : null"
+          (input)="onText('name', $event)"
+        />
+      </div>
+      <div class="app-form__field">
+        <label class="app-form__label" for="db-user">{{ i18n.t('database.field.user') }}</label>
+        <input
+          id="db-user"
+          class="app-form__input app-form__input--mono"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="draft().user"
+          [attr.aria-invalid]="problem('user') ? 'true' : null"
+          (input)="onText('user', $event)"
+        />
+      </div>
+    </div>
+
+    <div class="app-form__field">
+      <label class="app-form__label" for="db-password">{{
+        i18n.t('database.field.password')
+      }}</label>
+      <input
+        id="db-password"
+        class="app-form__input app-form__input--mono"
+        type="password"
+        autocomplete="new-password"
+        [value]="draft().password"
+        [attr.placeholder]="passwordSet() ? '••••••••' : null"
+        [attr.aria-invalid]="problem('password') ? 'true' : null"
+        (input)="onText('password', $event)"
+      />
+      <p class="app-form__hint">
+        {{ i18n.t(passwordSet() ? 'database.hint.passwordKeep' : 'database.hint.password') }}
+      </p>
+    </div>
+
+    @if (showProblems() && problems().length > 0) {
+      <p class="app-form__notice app-form__notice--danger" role="alert">
+        {{ i18n.t('database.problem.summary') }}
+      </p>
+    }
+
+    @if (testResult(); as result) {
+      <div role="status">
+        @if (result.ok && result.hibiscusSchema) {
+          <p class="app-form__notice app-form__notice--ok">{{ i18n.t('database.test.ok') }}</p>
+        } @else if (result.ok) {
+          <p class="app-form__notice app-form__notice--danger">
+            {{ i18n.t('database.test.noSchema') }}
+          </p>
+        } @else {
+          <p class="app-form__notice app-form__notice--danger">
+            {{ i18n.t('database.test.failed', { error: result.error ?? '–' }) }}
+          </p>
+        }
+      </div>
+    }
+    @if (saveError(); as key) {
+      <p class="app-form__notice app-form__notice--danger" role="alert">{{ i18n.t(key) }}</p>
+    }
+    @if (savedNotice()) {
+      <p class="app-form__notice app-form__notice--ok" role="status">
+        {{ i18n.t('database.saved') }}
+      </p>
+    }
+
+    <div class="app-form__actions">
+      <button type="button" class="app-form__button" [disabled]="testing()" (click)="test()">
+        {{ i18n.t(testing() ? 'database.testing' : 'database.test.button') }}
+      </button>
+      <button
+        type="submit"
+        class="app-form__button app-form__button--primary"
+        [disabled]="saving()"
+      >
+        {{ i18n.t(saving() ? 'database.saving' : 'database.save') }}
+      </button>
+    </div>
+  </form>
+}

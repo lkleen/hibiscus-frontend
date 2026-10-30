@@ -1,7 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
-import { Me } from '../models/me.model';
 import type {
   DatePresetList,
   TableDensities,
@@ -19,10 +18,24 @@ import type {
   BankConnectionUpdateRequest,
   DiscoverDone,
   DiscoverResponse,
-  SyncConnectionStatus,
+  SyncStartRequest,
   SyncStartResponse,
+  SyncStatusResponse,
   TanAnswerRequest,
 } from '@hibiscus-frontend/shared/contracts/sync';
+import type {
+  Me,
+  UserDatabaseResponse,
+  UserDatabaseTestRequest,
+  UserDatabaseTestResponse,
+  UserDatabaseUpdateRequest,
+  UserKeyChangeRequest,
+  UserKeyCreateRequest,
+  UserKeyCreateResponse,
+  UserKeyModeRequest,
+  UserKeyStatus,
+  UserKeyUnlockRequest,
+} from '@hibiscus-frontend/shared/contracts/user';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   CategoryCreateRequest,
@@ -170,8 +183,8 @@ export class ApiService {
   }
 
   /** Logs in at the bank; answers the accounts and TAN methods, or a TAN request. `409` `locked` while busy. */
-  discoverBankConnection(id: number): Observable<DiscoverResponse> {
-    return this.http.post<DiscoverResponse>(`/api/bank-connections/${id}/discover`, {});
+  discoverBankConnection(id: number, body: SyncStartRequest = {}): Observable<DiscoverResponse> {
+    return this.http.post<DiscoverResponse>(`/api/bank-connections/${id}/discover`, body);
   }
 
   /** The result of a TAN-gated discovery once its run succeeded. */
@@ -184,13 +197,63 @@ export class ApiService {
     return this.http.put<void>(`/api/bank-connections/${id}/accounts`, request);
   }
 
-  /** Starts a run in the background: `202`; `409` `locked` while a run is active. */
-  syncBankConnection(id: number): Observable<SyncStartResponse> {
-    return this.http.post<SyncStartResponse>(`/api/bank-connections/${id}/sync`, {});
+  /**
+   * Starts a run in the background: `202`; `409` `locked` while a run is active; `400`
+   * `key-required` / `key-invalid` when the key is missing or wrong.
+   */
+  syncBankConnection(id: number, body: SyncStartRequest = {}): Observable<SyncStartResponse> {
+    return this.http.post<SyncStartResponse>(`/api/bank-connections/${id}/sync`, body);
   }
 
-  getSyncStatus(): Observable<SyncConnectionStatus[]> {
-    return this.http.get<SyncConnectionStatus[]>('/api/sync/status');
+  getSyncStatus(): Observable<SyncStatusResponse> {
+    return this.http.get<SyncStatusResponse>('/api/sync/status');
+  }
+
+  /** The user's Hibiscus database settings (no password) and the operator's host allowlist. */
+  getUserDatabase(): Observable<UserDatabaseResponse> {
+    return this.http.get<UserDatabaseResponse>('/api/user/database');
+  }
+
+  /** `204`; `400` `host-not-allowed` or a `UserDatabaseTestResponse`; `409` `busy`. */
+  saveUserDatabase(request: UserDatabaseUpdateRequest): Observable<void> {
+    return this.http.put<void>('/api/user/database', request);
+  }
+
+  testUserDatabase(request: UserDatabaseTestRequest): Observable<UserDatabaseTestResponse> {
+    return this.http.post<UserDatabaseTestResponse>('/api/user/database/test', request);
+  }
+
+  getUserKey(): Observable<UserKeyStatus> {
+    return this.http.get<UserKeyStatus>('/api/user/key');
+  }
+
+  /** `201` with the key, shown once; `409` `key-configured`. */
+  createUserKey(request: UserKeyCreateRequest): Observable<UserKeyCreateResponse> {
+    return this.http.post<UserKeyCreateResponse>('/api/user/key', request);
+  }
+
+  /** `204`; `key` is required when switching to `stored`. */
+  setUserKeyMode(request: UserKeyModeRequest): Observable<void> {
+    return this.http.put<void>('/api/user/key/mode', request);
+  }
+
+  /** `204`; `400` `key-invalid`. */
+  unlockUserKey(request: UserKeyUnlockRequest): Observable<void> {
+    return this.http.post<void>('/api/user/key/unlock', request);
+  }
+
+  lockUserKey(): Observable<void> {
+    return this.http.post<void>('/api/user/key/lock', {});
+  }
+
+  /** Re-encrypts all PINs; answers the new key once. `400` `key-invalid` for a wrong old key. */
+  changeUserKey(request: UserKeyChangeRequest): Observable<UserKeyCreateResponse> {
+    return this.http.post<UserKeyCreateResponse>('/api/user/key/change', request);
+  }
+
+  /** Deletes the key and every stored PIN; `204`. */
+  resetUserKey(): Observable<void> {
+    return this.http.post<void>('/api/user/key/reset', {});
   }
 
   /** `204`; `409` `no-challenge` when the run is not waiting. */

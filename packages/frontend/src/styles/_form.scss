@@ -1,0 +1,205 @@
+// Plain forms on a page (setup, settings tabs): labelled fields, notices, choice cards and
+// buttons. Global classes because several features share them; `--app-form-*` tokens are set on
+// `.app-form` so a feature can retune one block without touching the rest. Dialogs have their own
+// look in `_dialog.scss`.
+//
+//   .app-form             a column of fields
+//     .app-form__field    label + control + hint
+//     .app-form__row      fields side by side (wraps when narrow)
+//     .app-form__actions  buttons
+//   .app-form__notice     a boxed message: --ok, --danger (default is neutral)
+//   .app-form__choice     a radio or checkbox in a bordered card
+
+.app-form {
+  --app-form-control-bg: var(--surface-card);
+  --app-form-control-border-color: var(--surface-border);
+  --app-form-control-radius: var(--radius-base);
+
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-inline-size: 0;
+}
+
+.app-form__field {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 10rem;
+  gap: 0.25rem;
+  min-inline-size: 0;
+}
+
+.app-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.app-form__row .app-form__field--narrow {
+  flex: 0 1 8rem;
+}
+
+.app-form__label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.app-form__input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: 0.5rem 0.65rem;
+  background: var(--app-form-control-bg);
+  color: var(--text-color);
+  border: 1px solid var(--app-form-control-border-color);
+  border-radius: var(--app-form-control-radius);
+  font-family: inherit;
+  font-size: var(--text-base);
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+
+  &--mono {
+    font-family: var(--font-mono);
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+}
+
+.app-form__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.app-form__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.app-form__button {
+  --app-form-button-bg: var(--surface-card);
+  --app-form-button-color: var(--text-color);
+  --app-form-button-border-color: var(--surface-border);
+
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem;
+  background: var(--app-form-button-bg);
+  color: var(--app-form-button-color);
+  border: 1px solid var(--app-form-button-border-color);
+  border-radius: var(--radius-base);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+
+  &--primary {
+    --app-form-button-bg: var(--color-accent);
+    --app-form-button-color: var(--text-on-accent);
+    --app-form-button-border-color: var(--color-accent);
+
+    &:hover:not(:disabled) {
+      background: var(--color-accent-hover);
+    }
+  }
+
+  &--danger {
+    --app-form-button-color: var(--color-danger);
+    --app-form-button-border-color: var(--color-danger);
+  }
+}
+
+.app-form__notice {
+  --app-form-notice-bg: var(--surface-subtle);
+  --app-form-notice-accent: var(--surface-border);
+
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  background: var(--app-form-notice-bg);
+  border-inline-start: 3px solid var(--app-form-notice-accent);
+  border-radius: var(--radius-base);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+
+  &--ok {
+    --app-form-notice-bg: var(--color-accent-subtle);
+    --app-form-notice-accent: var(--color-accent);
+  }
+
+  &--danger {
+    --app-form-notice-bg: var(--color-danger-subtle);
+    --app-form-notice-accent: var(--color-danger);
+  }
+}
+
+.app-form__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--app-form-control-bg);
+  border: 1px solid var(--app-form-control-border-color);
+  border-radius: var(--app-form-control-radius);
+  cursor: pointer;
+
+  &:has(input:checked) {
+    background: var(--color-accent-subtle);
+    border-color: var(--color-accent);
+  }
+
+  &:has(input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  input {
+    flex: none;
+    margin-block-start: 0.2rem;
+    accent-color: var(--color-accent);
+  }
+}
+
+.app-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-block-start: 1.25rem;
+  margin-block-start: 1.5rem;
+  border-block-start: 1px solid var(--surface-border);
+}
+
+.app-form__section-title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
