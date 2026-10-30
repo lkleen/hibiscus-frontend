@@ -8,20 +8,37 @@ import { loadConfig } from './config/config';
 import { initPool } from './db/pool';
 import { createAuthMiddleware } from './middleware/auth';
 import { createAccountsRouter } from './routes/accounts';
+import { createBankConnectionsRouter } from './routes/bank-connections';
 import { createCategoriesRouter } from './routes/categories';
 import { createMeRouter } from './routes/me';
 import { createSettingsRouter } from './routes/settings';
+import { createSyncRouter } from './routes/sync';
 import { createTaxSectionsRouter } from './routes/tax-sections';
 import { createTaxTagsRouter } from './routes/tax-tags';
 import { createTransactionsRouter } from './routes/transactions';
 import { ensureTaxTagTables } from './repositories/tax-tag';
 import { ensureUserSettingTable } from './repositories/user-setting';
+import { CredentialCrypto } from './sync/credential-crypto';
+import { createLibFintsSessionFactory } from './sync/fints-session';
+import { PendingTanRegistry, TAN_TIMEOUT_MS } from './sync/pending-tan-registry';
+import { SCHEDULER_TICK_MS, SyncScheduler } from './sync/scheduler';
+import { SyncService } from './sync/sync-service';
+import { ensureSyncTables } from './sync/sync-tables';
 
 async function main(): Promise<void> {
   const config = loadConfig();
   initPool(config);
   await ensureUserSettingTable();
   await ensureTaxTagTables();
+  await ensureSyncTables();
+
+  const crypto: CredentialCrypto = new CredentialCrypto(config.BANK_CREDENTIALS_KEY);
+  const registry: PendingTanRegistry = new PendingTanRegistry(TAN_TIMEOUT_MS);
+  const syncService: SyncService = new SyncService({
+    sessions: createLibFintsSessionFactory(),
+    registry,
+    crypto,
+  });
 
   const app = express();
 
@@ -49,6 +66,8 @@ async function main(): Promise<void> {
   api.use('/settings', createSettingsRouter());
   api.use('/tax-sections', createTaxSectionsRouter());
   api.use('/tax-tags', createTaxTagsRouter());
+  api.use('/bank-connections', createBankConnectionsRouter({ service: syncService, crypto }));
+  api.use('/sync', createSyncRouter({ service: syncService, registry }));
   app.use('/api', api);
 
   // A path under /api that didn't match any route above is a real 404 — it must not fall
@@ -80,9 +99,24 @@ async function main(): Promise<void> {
     res.status(500).json({ error: 'Internal Server Error' });
   });
 
-  app.listen(config.PORT, () => {
+  const server = app.listen(config.PORT, () => {
     console.log(`[hibiscus-backend] Listening on port ${config.PORT}`);
   });
+
+  const scheduler: SyncScheduler = new SyncScheduler(syncService, SCHEDULER_TICK_MS);
+  scheduler.start();
+
+  // Graceful stop: no further scheduled runs, no new requests. A run still in progress is cut
+  // off with the process; its row stays `running`/`tan_required` and the MariaDB lock is freed
+  // with the connection.
+  const shutdown = (signal: NodeJS.Signals): void => {
+    console.log(`[hibiscus-backend] ${signal} received, shutting down`);
+    scheduler.stop();
+    server.close(() => process.exit(0));
+    server.closeAllConnections();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }
 
 main().catch((err: unknown) => {

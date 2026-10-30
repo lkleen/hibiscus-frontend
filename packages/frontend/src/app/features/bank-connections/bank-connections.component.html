@@ -1,0 +1,90 @@
+<p class="connections__hint">{{ i18n.t('bankConnections.hint') }}</p>
+
+@if (loadError()) {
+  <p class="connections__status connections__status--error" role="alert">
+    {{ i18n.t('bankConnections.loadError') }}
+  </p>
+} @else if (connections() === null) {
+  <p class="connections__status">{{ i18n.t('bankConnections.loading') }}</p>
+} @else {
+  @if (actionError(); as key) {
+    <p class="connections__status connections__status--error" role="alert">{{ i18n.t(key) }}</p>
+  }
+  @if (rows().length === 0) {
+    <p class="connections__status">{{ i18n.t('bankConnections.empty') }}</p>
+  }
+
+  <ul class="connections__list" [attr.aria-label]="i18n.t('bankConnections.listLabel')">
+    @for (row of rows(); track row.connection.id) {
+      <li class="connections__item">
+        <div class="connections__main">
+          <span class="connections__name">
+            {{ row.connection.name }}
+            @if (!row.connection.enabled) {
+              <span class="connections__badge">{{ i18n.t('bankConnections.disabled') }}</span>
+            }
+            @if (row.paused) {
+              <span class="connections__badge connections__badge--warn">{{
+                i18n.t('bankConnections.paused')
+              }}</span>
+            }
+          </span>
+          <span class="connections__meta">
+            <span class="connections__mono">{{ row.connection.blz }}</span>
+            <span>{{
+              i18n.t('bankConnections.every', { hours: row.connection.syncIntervalHours })
+            }}</span>
+          </span>
+          <span class="connections__last" [class.connections__last--error]="row.failed">
+            @if (row.lastSync !== null && row.statusKey !== null) {
+              {{ i18n.t('bankConnections.lastSync', { time: row.lastSync }) }}
+              · {{ i18n.t(row.statusKey) }}
+            } @else {
+              {{ i18n.t('bankConnections.neverSynced') }}
+            }
+          </span>
+          @if (row.error) {
+            <span class="connections__error">{{ row.error }}</span>
+          }
+        </div>
+
+        <div class="connections__actions">
+          @if (confirmingId() === row.connection.id) {
+            <span class="connections__confirm">{{
+              i18n.t('bankConnections.deletePrompt', { name: row.connection.name })
+            }}</span>
+            <button
+              type="button"
+              class="connections__btn connections__btn--danger"
+              [disabled]="busyId() !== null"
+              (click)="confirmDelete(row.connection)"
+            >
+              {{ i18n.t('bankConnections.delete') }}
+            </button>
+            <button type="button" class="connections__btn" (click)="cancelDelete()">
+              {{ i18n.t('bankConnections.cancel') }}
+            </button>
+          } @else {
+            <button type="button" class="connections__btn" (click)="edit(row.connection)">
+              {{ i18n.t('bankConnections.edit') }}
+            </button>
+            <button
+              type="button"
+              class="connections__btn"
+              [attr.aria-label]="
+                i18n.t('bankConnections.deleteAria', { name: row.connection.name })
+              "
+              (click)="askDelete(row.connection)"
+            >
+              {{ i18n.t('bankConnections.delete') }}
+            </button>
+          }
+        </div>
+      </li>
+    }
+  </ul>
+
+  <button type="button" class="connections__btn connections__btn--primary" (click)="add()">
+    {{ i18n.t('bankConnections.add') }}
+  </button>
+}

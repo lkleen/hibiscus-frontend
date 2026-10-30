@@ -12,6 +12,17 @@ import type {
   TaxSectionUpdateRequest,
   TaxTag,
 } from '@hibiscus-frontend/shared/contracts/tax-tags';
+import type {
+  BankConnection,
+  BankConnectionAccountsRequest,
+  BankConnectionCreateRequest,
+  BankConnectionUpdateRequest,
+  DiscoverDone,
+  DiscoverResponse,
+  SyncConnectionStatus,
+  SyncStartResponse,
+  TanAnswerRequest,
+} from '@hibiscus-frontend/shared/contracts/sync';
 import type { AccountRow } from '@hibiscus-frontend/shared/contracts/accounts';
 import type {
   CategoryCreateRequest,
@@ -137,5 +148,53 @@ export class ApiService {
   /** `204` on success; `409` `{ error: 'in-use' }` while a category is tagged with it. */
   deleteTaxSection(code: TaxSectionCode): Observable<void> {
     return this.http.delete<void>(`/api/tax-sections/${encodeURIComponent(code)}`);
+  }
+
+  getBankConnections(): Observable<BankConnection[]> {
+    return this.http.get<BankConnection[]>('/api/bank-connections');
+  }
+
+  /** Answers `201` with the connection as stored. */
+  createBankConnection(request: BankConnectionCreateRequest): Observable<BankConnection> {
+    return this.http.post<BankConnection>('/api/bank-connections', request);
+  }
+
+  /** `204` on success; `409` `conflict` when `expected` is stale, `locked` while a run is active. */
+  updateBankConnection(id: number, request: BankConnectionUpdateRequest): Observable<void> {
+    return this.http.put<void>(`/api/bank-connections/${id}`, request);
+  }
+
+  /** `204` on success; `409` `locked` while a run is active. */
+  deleteBankConnection(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/bank-connections/${id}`);
+  }
+
+  /** Logs in at the bank; answers the accounts and TAN methods, or a TAN request. `409` `locked` while busy. */
+  discoverBankConnection(id: number): Observable<DiscoverResponse> {
+    return this.http.post<DiscoverResponse>(`/api/bank-connections/${id}/discover`, {});
+  }
+
+  /** The result of a TAN-gated discovery once its run succeeded. */
+  getBankConnectionDiscovery(id: number): Observable<DiscoverDone> {
+    return this.http.get<DiscoverDone>(`/api/bank-connections/${id}/discovery`);
+  }
+
+  /** Replaces the whole account mapping; `204`. */
+  saveBankConnectionAccounts(id: number, request: BankConnectionAccountsRequest): Observable<void> {
+    return this.http.put<void>(`/api/bank-connections/${id}/accounts`, request);
+  }
+
+  /** Starts a run in the background: `202`; `409` `locked` while a run is active. */
+  syncBankConnection(id: number): Observable<SyncStartResponse> {
+    return this.http.post<SyncStartResponse>(`/api/bank-connections/${id}/sync`, {});
+  }
+
+  getSyncStatus(): Observable<SyncConnectionStatus[]> {
+    return this.http.get<SyncConnectionStatus[]>('/api/sync/status');
+  }
+
+  /** `204`; `409` `no-challenge` when the run is not waiting. */
+  answerTan(runId: number, request: TanAnswerRequest): Observable<void> {
+    return this.http.post<void>(`/api/sync/runs/${runId}/tan`, request);
   }
 }

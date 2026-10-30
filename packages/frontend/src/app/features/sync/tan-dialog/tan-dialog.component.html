@@ -1,0 +1,82 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">{{ i18n.t('sync.tan.title') }}</h2>
+</header>
+
+<div class="app-dialog__body tan">
+  @switch (view().kind) {
+    @case ('challenge') {
+      @let current = view();
+      @if (current.kind === 'challenge') {
+        <p class="app-dialog__hint">{{ current.connectionName }}</p>
+        <p class="tan__message">{{ current.challenge.message }}</p>
+
+        @if (current.challenge.kind === 'decoupled') {
+          <p class="tan__waiting" role="status">
+            <span class="tan__spinner" aria-hidden="true"></span>
+            {{ i18n.t('sync.tan.waitingForApp') }}
+          </p>
+        } @else {
+          @if (current.challenge.kind === 'phototan' && current.challenge.hasImage) {
+            <img class="tan__image" [src]="imageUrl" [alt]="i18n.t('sync.tan.imageAlt')" />
+          }
+          <form
+            class="tan__form"
+            (submit)="$event.preventDefault(); submit(current.challenge.kind)"
+          >
+            <label class="app-dialog__sublabel" [for]="inputId">{{
+              i18n.t('sync.tan.label')
+            }}</label>
+            <input
+              class="app-dialog__select tan__input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              spellcheck="false"
+              [id]="inputId"
+              [value]="tan()"
+              [disabled]="busy()"
+              (input)="onInput($event)"
+            />
+          </form>
+        }
+
+        @if (failed()) {
+          <p class="app-dialog__error" role="alert">{{ i18n.t('sync.tan.sendError') }}</p>
+        }
+      }
+    }
+    @case ('failed') {
+      @let current = view();
+      @if (current.kind === 'failed') {
+        <p class="app-dialog__hint">{{ current.connectionName }}</p>
+        <p class="app-dialog__error" role="alert">
+          {{
+            current.run.status === 'tan_expired'
+              ? i18n.t('sync.tan.expired')
+              : i18n.t('sync.tan.runFailed', { error: current.run.error ?? '–' })
+          }}
+        </p>
+      }
+    }
+    @default {
+      <p class="app-dialog__hint">{{ i18n.t('sync.tan.loading') }}</p>
+    }
+  }
+</div>
+
+<footer class="app-dialog__footer">
+  <button type="button" class="app-dialog__button" (click)="close()">
+    {{ i18n.t(view().kind === 'failed' ? 'sync.tan.close' : 'sync.tan.later') }}
+  </button>
+  @let current = view();
+  @if (current.kind === 'challenge') {
+    <button
+      type="button"
+      class="app-dialog__button app-dialog__button--primary"
+      [disabled]="!canSubmit(current.challenge.kind)"
+      (click)="submit(current.challenge.kind)"
+    >
+      {{ i18n.t(current.challenge.kind === 'decoupled' ? 'sync.tan.confirmed' : 'sync.tan.send') }}
+    </button>
+  }
+</footer>

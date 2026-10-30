@@ -42,18 +42,22 @@ Backed by a MariaDB database matching the schema Hibiscus (the desktop Jameica/H
 home-banking client) creates via its own `mysql-create.sql`. This repo never owns or migrates
 that schema — it only reads/writes against tables that already exist, with these exceptions: the
 app-owned `hf_` tables (`hf_user_setting` for per-user settings, `hf_tax_section` and
-`hf_category_tax_tag` for the user's tax sections and category tax tags; see below), created at startup.
+`hf_category_tax_tag` for the user's tax sections and category tax tags, `hf_bank_connection`,
+`hf_bank_connection_account` and `hf_sync_run` for the bank sync; see below), created at startup.
 
 Tables this app uses:
 
-| Table                 | Purpose                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------ |
-| `konto`               | Bank accounts — name, IBAN/BIC, currency, current balance                                        |
-| `umsatz`              | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
-| `umsatztyp`           | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
-| `hf_user_setting`     | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
-| `hf_tax_section`      | User-maintained tax sections (code, name, form, guidance); default sections seeded once          |
-| `hf_category_tax_tag` | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`              |
+| Table                        | Purpose                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `konto`                      | Bank accounts — name, IBAN/BIC, currency, current balance                                        |
+| `umsatz`                     | Transactions/bookings — amount, purpose text, counterparty, date, FKs to `konto` and `umsatztyp` |
+| `umsatztyp`                  | Categories — self-referencing tree via `parent_id`, has a `color` column                         |
+| `hf_user_setting`            | Per-user app settings; keyed by `(user_name, setting_key)` with JSON value; created at startup   |
+| `hf_tax_section`             | User-maintained tax sections (code, name, form, guidance); default sections seeded once          |
+| `hf_category_tax_tag`        | One tax tag per category; FKs to `umsatztyp.id` (cascade) and `hf_tax_section.code`              |
+| `hf_bank_connection`         | FinTS bank connections: BLZ, endpoint, login, encrypted PIN, TAN method, interval, pause state   |
+| `hf_bank_connection_account` | Maps a bank account (IBAN or number) of a connection to a `konto.id`, with an enabled flag       |
+| `hf_sync_run`                | One row per sync or discovery run: trigger, status, error, rows inserted and deleted             |
 
 Not used by v1 (future work): `dauerauftrag`/`sepadauerauftrag` (standing orders),
 `lastschrift`/`sepalastschrift` (direct debits), `kontoauszug` (statements), `protokoll`,
@@ -81,26 +85,37 @@ app's data to change.
 All routes are under `/api` and require authentication (see below) except `/api/me`, which
 itself requires authentication too — there is no unauthenticated route in this app at all.
 
-| Method & path                            | Purpose                                                                                                                                                                                                                                                                                                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/me`                            | Echoes the authenticated identity                                                                                                                                                                                                                                                                                                                 |
-| `GET /api/accounts`                      | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                                                                                                                                                       |
-| `GET /api/transactions`                  | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                                                                                                                                                         |
-| `PATCH /api/transactions/:id`            | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                       |
-| `POST /api/transactions/assign-category` | Set `umsatztyp_id` on 1–10,000 selected rows (`TransactionAssignRequest`: `items` of `{ id, expected: { kommentar, umsatztyp_id } }`, `umsatztyp_id`); one DB transaction, all-or-nothing; `204`; `400` invalid body or unknown category; `409` `{ error: 'conflict', conflictIds }` if any row no longer holds its `expected`, nothing saved     |
-| `GET /api/categories`                    | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                                                                                                                                                                  |
-| `POST /api/categories`                   | Create a `umsatztyp` row (`CategoryCreateRequest`: every column but `id` plus `taxTag`, zod-validated); answers `201` with the created `CategoryRow` as stored; `400` invalid body, unknown parent/account or unknown tax section                                                                                                                 |
-| `PUT /api/categories/:id`                | Change every editable column (`CategoryUpdateRequest`: `expected`, `next`, `taxTag`); one DB transaction with the tag; `204`; `400` invalid body, unknown parent/account, or `{ error: 'cycle' }` when the new parent is the category itself or one of its descendants; `404` no such row; `409` if the row or its tag no longer holds `expected` |
-| `GET /api/settings/date-presets`         | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                       |
-| `PUT /api/settings/date-presets`         | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                             |
-| `DELETE /api/settings/date-presets`      | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                                   |
-| `GET /api/settings/table-densities`      | User's stored density map (`TableDensities`, view → density); `{}` if not stored                                                                                                                                                                                                                                                                  |
-| `PUT /api/settings/table-densities`      | Save the whole map (zod-validated); answers `204`                                                                                                                                                                                                                                                                                                 |
-| `GET /api/tax-tags`                      | Every tax tag (`TaxTag[]`: `category_id`, `code`)                                                                                                                                                                                                                                                                                                 |
-| `GET /api/tax-sections`                  | Every tax section (`TaxSection[]`), ordered by code; never the built-in `St-0`                                                                                                                                                                                                                                                                    |
-| `POST /api/tax-sections`                 | Create a section (`TaxSection`, zod-validated); `201` with the section as stored; `400` invalid body or code; `409` `{ error: 'duplicate' }` when the code is taken                                                                                                                                                                               |
-| `PUT /api/tax-sections/:code`            | Change a section (`TaxSectionUpdateRequest`: `expected`, `next`; a new code carries its tags along); `204`; `400` invalid body or `:code` ≠ `expected.code`; `409` `conflict` (changed or gone) or `duplicate`                                                                                                                                    |
-| `DELETE /api/tax-sections/:code`         | Delete a section; `204`; `404` no such section; `409` `{ error: 'in-use' }` while a category is tagged with it                                                                                                                                                                                                                                    |
+| Method & path                             | Purpose                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/me`                             | Echoes the authenticated identity                                                                                                                                                                                                                                                                                                                 |
+| `GET /api/accounts`                       | List `konto` rows, as stored (`AccountRow`)                                                                                                                                                                                                                                                                                                       |
+| `GET /api/transactions`                   | Every `umsatz` row, as stored, unfiltered and unpaged — columnar (`TransactionsResponse`)                                                                                                                                                                                                                                                         |
+| `PATCH /api/transactions/:id`             | Change `kommentar` and/or `umsatztyp_id` (`TransactionUpdateRequest`: `expected`, `next`); `204`; `400` invalid id/body or unknown category; `404` no such row; `409` if the row no longer holds `expected`                                                                                                                                       |
+| `POST /api/transactions/assign-category`  | Set `umsatztyp_id` on 1–10,000 selected rows (`TransactionAssignRequest`: `items` of `{ id, expected: { kommentar, umsatztyp_id } }`, `umsatztyp_id`); one DB transaction, all-or-nothing; `204`; `400` invalid body or unknown category; `409` `{ error: 'conflict', conflictIds }` if any row no longer holds its `expected`, nothing saved     |
+| `GET /api/categories`                     | List `umsatztyp` rows, as stored (`CategoryRow`)                                                                                                                                                                                                                                                                                                  |
+| `POST /api/categories`                    | Create a `umsatztyp` row (`CategoryCreateRequest`: every column but `id` plus `taxTag`, zod-validated); answers `201` with the created `CategoryRow` as stored; `400` invalid body, unknown parent/account or unknown tax section                                                                                                                 |
+| `PUT /api/categories/:id`                 | Change every editable column (`CategoryUpdateRequest`: `expected`, `next`, `taxTag`); one DB transaction with the tag; `204`; `400` invalid body, unknown parent/account, or `{ error: 'cycle' }` when the new parent is the category itself or one of its descendants; `404` no such row; `409` if the row or its tag no longer holds `expected` |
+| `GET /api/settings/date-presets`          | User's date presets; defaults if not stored                                                                                                                                                                                                                                                                                                       |
+| `PUT /api/settings/date-presets`          | Save whole preset list (zod-validated); answers `204`                                                                                                                                                                                                                                                                                             |
+| `DELETE /api/settings/date-presets`       | Restore defaults; answers `204`                                                                                                                                                                                                                                                                                                                   |
+| `GET /api/settings/table-densities`       | User's stored density map (`TableDensities`, view → density); `{}` if not stored                                                                                                                                                                                                                                                                  |
+| `PUT /api/settings/table-densities`       | Save the whole map (zod-validated); answers `204`                                                                                                                                                                                                                                                                                                 |
+| `GET /api/tax-tags`                       | Every tax tag (`TaxTag[]`: `category_id`, `code`)                                                                                                                                                                                                                                                                                                 |
+| `GET /api/tax-sections`                   | Every tax section (`TaxSection[]`), ordered by code; never the built-in `St-0`                                                                                                                                                                                                                                                                    |
+| `POST /api/tax-sections`                  | Create a section (`TaxSection`, zod-validated); `201` with the section as stored; `400` invalid body or code; `409` `{ error: 'duplicate' }` when the code is taken                                                                                                                                                                               |
+| `PUT /api/tax-sections/:code`             | Change a section (`TaxSectionUpdateRequest`: `expected`, `next`; a new code carries its tags along); `204`; `400` invalid body or `:code` ≠ `expected.code`; `409` `conflict` (changed or gone) or `duplicate`                                                                                                                                    |
+| `DELETE /api/tax-sections/:code`          | Delete a section; `204`; `404` no such section; `409` `{ error: 'in-use' }` while a category is tagged with it                                                                                                                                                                                                                                    |
+| `GET /api/bank-connections`               | Every bank connection (`BankConnection[]`, ordered by name) with its account mappings and last run outcome; never the PIN                                                                                                                                                                                                                         |
+| `POST /api/bank-connections`              | Create a connection (`BankConnectionCreateRequest`: settings plus `pin`); `201` with the stored `BankConnection`                                                                                                                                                                                                                                  |
+| `PUT /api/bank-connections/:id`           | Change the settings (`BankConnectionUpdateRequest`: `expected`, `next`, optional `pin`); `204`; `409` `conflict` or `locked`                                                                                                                                                                                                                      |
+| `DELETE /api/bank-connections/:id`        | Delete a connection; `204`; `409` `locked` while a run is active                                                                                                                                                                                                                                                                                  |
+| `POST /api/bank-connections/:id/discover` | Log in at the bank and list its TAN methods and accounts (`DiscoverResponse`); `tan_required` when a TAN is needed; `409` `locked`                                                                                                                                                                                                                |
+| `GET /api/bank-connections/:id/discovery` | The `DiscoverDone` result of a TAN-gated discovery once its run succeeded                                                                                                                                                                                                                                                                         |
+| `PUT /api/bank-connections/:id/accounts`  | Replace the account mapping (`BankConnectionAccountsRequest`); `204`                                                                                                                                                                                                                                                                              |
+| `POST /api/bank-connections/:id/sync`     | "Sync now": start a run in the background; `202` `{ runId }`; `409` `locked`; clears a TAN pause                                                                                                                                                                                                                                                  |
+| `GET /api/sync/status`                    | Per connection: last run, pause reason and the open TAN challenge (`SyncConnectionStatus[]`)                                                                                                                                                                                                                                                      |
+| `POST /api/sync/runs/:id/tan`             | Answer the open challenge (`TanAnswerRequest`, `tan` omitted for decoupled ones); `204`; `409` `no-challenge`                                                                                                                                                                                                                                     |
+| `GET /api/sync/runs/:id/challenge-image`  | The photo-TAN image of an open challenge; `404` if none                                                                                                                                                                                                                                                                                           |
 
 ### Shared contracts
 
@@ -315,6 +330,40 @@ category-report.ts`) keeps the transactions of categories whose effective sectio
 their ancestor category rows for the tree, and drops the unassigned node; the chosen sections are
 named in the export's scope lines.
 
+### Bank sync
+
+The backend fetches statements and balances from the bank itself, so the Hibiscus desktop client
+is no longer needed for that. Everything is declared once in `packages/shared/src/contracts/sync.d.ts`.
+
+- **Protocol.** FinTS 3.0 through `lib-fints`; statements arrive as MT940. Imported rows use the
+  same `umsatz` columns and the same checksum (`checksum`) as Hibiscus, so rows the desktop client
+  already imported are recognised, not duplicated, and the desktop client keeps working next to this.
+- **Connections.** Configured in Settings → Bank connections (`/:locale/settings/bank-connections`):
+  name, BLZ, FinTS URL (prefilled for known BLZs), login name, optional customer ID, PIN, interval
+  (1–168 h) and an enabled flag. "Discover" logs in once to read the bank's TAN methods and
+  accounts; each account is mapped to an existing `konto` (preselected by IBAN) and can be
+  switched off. Only mapped accounts are synced.
+- **Scheduler.** A 60-second tick starts a run for every enabled connection whose interval has
+  elapsed. One run or discovery per connection at a time (`409` `locked` otherwise).
+- **TANs.** A run that needs a TAN is `tan_required` for up to 15 minutes. The frontend polls
+  `GET /api/sync/status` (every 5 s while a run is active, otherwise every 60 s) and shows a
+  banner and a TAN dialog (typed TAN, photo-TAN image, or "approve in your banking app" for
+  decoupled methods). When a **scheduled** run's TAN expires (`tan_expired`) the connection is
+  paused (`pausedReason: 'tan'`): the scheduler stops sending TAN requests until someone presses
+  "Sync now", which clears the pause.
+- **Credentials.** The PIN is write-only. It is stored AES-256-GCM encrypted with
+  `BANK_CREDENTIALS_KEY` (base64 of 32 bytes) and never returned by any route; the edit form never
+  prefills it. Losing the key means re-entering every PIN.
+- **Product registration.** FinTS banks only accept registered software. The DK registration
+  number is the constant `FINTS_PRODUCT_ID` in `sync/fints-session.ts`, committed like in other
+  banking software: it names the product, not an installation, and every bank sees it anyway.
+  While it is `null` (registration pending), every bank dialog fails with a clear error. A fork
+  shipping under its own name registers its own. `BANK_CREDENTIALS_KEY` is validated at startup;
+  the backend does not start without it.
+- **Frontend.** `features/sync` holds the polled status store, the global banner (in the app
+  shell) and the TAN dialog; `features/bank-connections` the settings tab and its dialog; the
+  Accounts page shows each connection's last sync with a "Sync now" button.
+
 ## Ribbon toolbar
 
 `shared/components/ribbon/` is a generic MS-Office-style ribbon. A page provides `RibbonHost` and
@@ -420,7 +469,8 @@ locale data in `app.config.ts`, and add a `locale.<code>` label to every diction
 Per-user settings are accessed via a route-based tab interface at `/:locale/settings/<tab>`,
 with all tabs defined in a single source (`SETTINGS_TABS` in `settings-tabs.ts`). The route
 structure is: root shell component loads the active tab child route lazily. The first tab is
-the default. Settings are reachable from the user menu. Currently implemented: one tab. **Date
+the default. Settings are reachable from the user menu. Currently implemented: two tabs. **Bank
+connections** manages the bank sync (see Bank sync). **Date
 range presets** shows a preset picker on the left; picking one saves it immediately. (The former
 Table density tab and its demo table were removed; density is chosen in each page's ribbon.)
 

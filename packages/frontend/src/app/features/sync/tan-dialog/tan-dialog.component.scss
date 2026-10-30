@@ -1,0 +1,61 @@
+// The sheet, header, body, footer, buttons, hints and errors come from the shared dialog styles
+// (`styles/_dialog.scss`); this file adds the challenge message, image and waiting state.
+
+.tan {
+  min-inline-size: 0;
+}
+
+.tan__message {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.tan__image {
+  align-self: center;
+  max-inline-size: 100%;
+  block-size: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-base);
+  image-rendering: pixelated;
+}
+
+.tan__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.tan__input {
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+.tan__waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.tan__spinner {
+  flex: none;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  border: 2px solid var(--surface-border);
+  border-block-start-color: var(--color-accent);
+  border-radius: 50%;
+
+  @media (prefers-reduced-motion: no-preference) {
+    animation: tan-spin 0.9s linear infinite;
+  }
+}
+
+@keyframes tan-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

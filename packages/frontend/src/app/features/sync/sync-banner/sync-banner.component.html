@@ -1,0 +1,34 @@
+@if (challenges().length > 0 || paused().length > 0) {
+  <div class="sync-banner" role="region" [attr.aria-label]="i18n.t('sync.banner.label')">
+    @for (pending of challenges(); track pending.connectionId) {
+      <p class="sync-banner__row" role="status">
+        <span class="sync-banner__text">
+          <strong>{{ i18n.t('sync.banner.needsTan') }}</strong>
+          {{ pending.connectionName }}
+        </span>
+        <button type="button" class="sync-banner__button" (click)="answer(pending)">
+          {{ i18n.t('sync.banner.enterTan') }}
+        </button>
+      </p>
+    }
+    @for (status of paused(); track status.id) {
+      <p class="sync-banner__row">
+        <span class="sync-banner__text">
+          <strong>{{ i18n.t('sync.banner.paused') }}</strong>
+          {{ i18n.t('sync.banner.pausedDetail', { name: status.name }) }}
+        </span>
+        <button
+          type="button"
+          class="sync-banner__button"
+          [disabled]="startingId() !== null"
+          (click)="resume(status)"
+        >
+          {{ i18n.t('sync.syncNow') }}
+        </button>
+      </p>
+    }
+    @if (errorKey(); as key) {
+      <p class="sync-banner__error" role="alert">{{ i18n.t(key) }}</p>
+    }
+  </div>
+}

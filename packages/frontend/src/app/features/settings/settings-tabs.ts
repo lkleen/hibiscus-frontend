@@ -14,4 +14,12 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
     loadComponent: () =>
       import('./date-presets/date-presets.component').then((m) => m.DatePresetsComponent),
   },
+  {
+    path: 'bank-connections',
+    labelKey: 'settings.tab.bankConnections',
+    loadComponent: () =>
+      import('../bank-connections/bank-connections.component').then(
+        (m) => m.BankConnectionsComponent,
+      ),
+  },
 ];

@@ -1,0 +1,69 @@
+:host {
+  display: block;
+}
+
+// A band across the top of the page, in the accent's subtle tint: it asks for an action, so it
+// is louder than the page but quieter than an error.
+.sync-banner {
+  --sync-banner-bg: var(--color-accent-subtle);
+  --sync-banner-border-color: var(--color-accent);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem var(--layout-padding-x);
+  background: var(--sync-banner-bg);
+  border-block-end: 1px solid var(--sync-banner-border-color);
+  font-size: var(--text-sm);
+}
+
+.sync-banner__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.sync-banner__text {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sync-banner__button {
+  --sync-banner-button-bg: var(--color-accent);
+  --sync-banner-button-color: var(--text-on-accent);
+
+  flex: none;
+  padding: 0.35rem 0.75rem;
+  background: var(--sync-banner-button-bg);
+  color: var(--sync-banner-button-color);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-base);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  @media (pointer: coarse) {
+    min-block-size: 2.75rem;
+  }
+}
+
+.sync-banner__error {
+  margin: 0;
+  color: var(--color-danger);
+}

@@ -5,6 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/.."
 ENV_FILE="$ROOT_DIR/.env.dev.local"
 
+# macOS/BSD sed requires -i '' ; GNU sed requires -i without an argument. Try BSD form first.
+sed_inplace() {
+  if sed --version >/dev/null 2>&1; then
+    sed -i "$1" "$2" # GNU sed
+  else
+    sed -i '' "$1" "$2" # BSD sed (macOS)
+  fi
+}
+
+# Bank sync key for local development: freshly random. `|` is the sed delimiter because base64
+# contains `/` and `+`.
+set_bank_sync_values() {
+  BANK_CREDENTIALS_KEY="$(openssl rand -base64 32)"
+  sed_inplace "s|^BANK_CREDENTIALS_KEY=.*|BANK_CREDENTIALS_KEY=$BANK_CREDENTIALS_KEY|" "$ENV_FILE"
+}
+
 # First run: generate a local-only env file from the example, with real random secrets instead
 # of placeholders. This is dev convenience only — it does not weaken the auth contract, which
 # the backend enforces unconditionally regardless of where the values come from (see
@@ -17,25 +33,24 @@ if [ ! -f "$ENV_FILE" ]; then
   DB_ROOT_PASSWORD="$(openssl rand -hex 24)"
   INTERNAL_PROXY_SECRET="$(openssl rand -hex 32)"
 
-  # macOS/BSD sed requires -i '' ; GNU sed requires -i without an argument. Try BSD form first.
-  sed_inplace() {
-    if sed --version >/dev/null 2>&1; then
-      sed -i "$1" "$2" # GNU sed
-    else
-      sed -i '' "$1" "$2" # BSD sed (macOS)
-    fi
-  }
-
   sed_inplace "s/^DB_PASSWORD=.*/DB_PASSWORD=$DB_PASSWORD/" "$ENV_FILE"
   sed_inplace "s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD/" "$ENV_FILE"
   sed_inplace "s/^INTERNAL_PROXY_SECRET=.*/INTERNAL_PROXY_SECRET=$INTERNAL_PROXY_SECRET/" "$ENV_FILE"
   # Match the fixed dev identity that packages/frontend/proxy.config.mjs injects.
   sed_inplace "s/^ALLOWED_USERS=.*/ALLOWED_USERS=local-dev@example.com/" "$ENV_FILE"
+  set_bank_sync_values
 
   echo "Generated $ENV_FILE with fresh random secrets."
   echo "If this is a brand-new database, it will be created empty — see README.md for how to"
   echo "import a Hibiscus data dump."
   echo ""
+fi
+
+# An env file generated before bank sync existed lacks its key: add it once.
+if ! grep -q '^BANK_CREDENTIALS_KEY=' "$ENV_FILE"; then
+  echo "Adding the bank sync key to $ENV_FILE."
+  printf '\nBANK_CREDENTIALS_KEY=\n' >>"$ENV_FILE"
+  set_bank_sync_values
 fi
 
 export $(grep -v '^#' "$ENV_FILE" | xargs)

@@ -7,6 +7,34 @@
 } @else if (accounts().length === 0) {
   <p class="status-text">{{ i18n.t('accounts.empty') }}</p>
 } @else {
+  @if (syncs().length > 0) {
+    <ul class="sync-list" [attr.aria-label]="i18n.t('accounts.sync.label')">
+      @for (sync of syncs(); track sync.id) {
+        <li class="sync-list__item">
+          <span class="sync-list__name">{{ sync.name }}</span>
+          <span class="sync-list__time" [class.sync-list__time--error]="sync.failed">
+            {{
+              sync.lastSync === null
+                ? i18n.t('accounts.sync.never')
+                : i18n.t('accounts.sync.last', { time: sync.lastSync })
+            }}
+          </span>
+          <button
+            type="button"
+            class="sync-list__button"
+            [disabled]="sync.running || startingId() !== null"
+            (click)="syncNow(sync)"
+          >
+            {{ i18n.t(sync.running ? 'sync.running' : 'sync.syncNow') }}
+          </button>
+        </li>
+      }
+    </ul>
+    @if (syncErrorKey(); as key) {
+      <p class="status-text status-text--error" role="alert">{{ i18n.t(key) }}</p>
+    }
+  }
+
   <ul class="account-list">
     @for (account of accounts(); track account.id) {
       <li class="account-card">
@@ -14,6 +42,16 @@
           <span class="account-card__name">{{ accountLabel(account) }}</span>
           @if (account.iban) {
             <span class="account-card__iban">{{ account.iban }}</span>
+          }
+          @let sync = syncOf(account);
+          @if (sync) {
+            <span class="account-card__sync">
+              {{
+                sync.lastSync === null
+                  ? i18n.t('accounts.sync.neverVia', { name: sync.name })
+                  : i18n.t('accounts.sync.lastVia', { name: sync.name, time: sync.lastSync })
+              }}
+            </span>
           }
         </div>
         <div class="account-card__balance">

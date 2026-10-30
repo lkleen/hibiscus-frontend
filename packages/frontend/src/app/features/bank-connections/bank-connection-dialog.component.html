@@ -1,0 +1,316 @@
+<header class="app-dialog__header">
+  <h2 class="app-dialog__title" [id]="titleId">
+    {{
+      i18n.t(
+        saved() === null ? 'bankConnections.dialog.titleNew' : 'bankConnections.dialog.titleEdit'
+      )
+    }}
+  </h2>
+</header>
+
+<div class="app-dialog__body bank-dialog">
+  <form class="bank-dialog__form" (submit)="$event.preventDefault(); saveConnection()">
+    <fieldset class="bank-dialog__fields" [disabled]="saving()">
+      <div class="bank-dialog__field">
+        <label class="app-dialog__sublabel" for="bc-name">{{
+          i18n.t('bankConnections.field.name')
+        }}</label>
+        <input
+          id="bc-name"
+          class="app-dialog__select"
+          type="text"
+          autocomplete="off"
+          [value]="draft().name"
+          [attr.aria-invalid]="problem('name') ? 'true' : null"
+          (input)="onText('name', $event)"
+        />
+      </div>
+      <div class="bank-dialog__field">
+        <label class="app-dialog__sublabel" for="bc-blz">{{
+          i18n.t('bankConnections.field.blz')
+        }}</label>
+        <input
+          id="bc-blz"
+          class="app-dialog__select bank-dialog__mono"
+          type="text"
+          inputmode="numeric"
+          maxlength="8"
+          autocomplete="off"
+          [value]="draft().blz"
+          [attr.aria-invalid]="problem('blz') ? 'true' : null"
+          (input)="onText('blz', $event)"
+        />
+        @if (problem('blz')) {
+          <p class="bank-dialog__problem">{{ i18n.t('bankConnections.problem.blz') }}</p>
+        }
+      </div>
+      <div class="bank-dialog__field bank-dialog__field--wide">
+        <label class="app-dialog__sublabel" for="bc-url">{{
+          i18n.t('bankConnections.field.fintsUrl')
+        }}</label>
+        <input
+          id="bc-url"
+          class="app-dialog__select bank-dialog__mono"
+          type="url"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="draft().fintsUrl"
+          [attr.aria-invalid]="problem('fintsUrl') ? 'true' : null"
+          (input)="onText('fintsUrl', $event)"
+        />
+        @if (problem('fintsUrl')) {
+          <p class="bank-dialog__problem">{{ i18n.t('bankConnections.problem.fintsUrl') }}</p>
+        }
+      </div>
+      <div class="bank-dialog__field">
+        <label class="app-dialog__sublabel" for="bc-login">{{
+          i18n.t('bankConnections.field.loginName')
+        }}</label>
+        <input
+          id="bc-login"
+          class="app-dialog__select"
+          type="text"
+          autocomplete="off"
+          [value]="draft().loginName"
+          [attr.aria-invalid]="problem('loginName') ? 'true' : null"
+          (input)="onText('loginName', $event)"
+        />
+      </div>
+      <div class="bank-dialog__field">
+        <label class="app-dialog__sublabel" for="bc-customer">{{
+          i18n.t('bankConnections.field.customerId')
+        }}</label>
+        <input
+          id="bc-customer"
+          class="app-dialog__select"
+          type="text"
+          autocomplete="off"
+          [value]="draft().customerId"
+          (input)="onText('customerId', $event)"
+        />
+      </div>
+      <div class="bank-dialog__field">
+        <label class="app-dialog__sublabel" for="bc-pin">{{
+          i18n.t('bankConnections.field.pin')
+        }}</label>
+        <input
+          id="bc-pin"
+          class="app-dialog__select"
+          type="password"
+          autocomplete="new-password"
+          [value]="draft().pin"
+          [attr.aria-invalid]="problem('pin') ? 'true' : null"
+          [attr.aria-describedby]="saved() ? 'bc-pin-hint' : null"
+          (input)="onText('pin', $event)"
+        />
+        @if (saved()) {
+          <p class="app-dialog__hint bank-dialog__small" id="bc-pin-hint">
+            {{ i18n.t('bankConnections.hint.pinKeep') }}
+          </p>
+        }
+      </div>
+      <div class="bank-dialog__field">
+        <label class="app-dialog__sublabel" for="bc-interval">{{
+          i18n.t('bankConnections.field.interval')
+        }}</label>
+        <input
+          id="bc-interval"
+          class="app-dialog__select"
+          type="number"
+          step="1"
+          [attr.min]="intervalMin"
+          [attr.max]="intervalMax"
+          [value]="draft().syncIntervalHours"
+          [attr.aria-invalid]="problem('interval') ? 'true' : null"
+          (input)="onText('syncIntervalHours', $event)"
+        />
+        @if (problem('interval')) {
+          <p class="bank-dialog__problem">
+            {{ i18n.t('bankConnections.problem.interval', { min: intervalMin, max: intervalMax }) }}
+          </p>
+        }
+      </div>
+      <label class="bank-dialog__check bank-dialog__field--wide">
+        <input
+          type="checkbox"
+          class="app-dialog__radio"
+          [checked]="draft().enabled"
+          (change)="onEnabled($event)"
+        />
+        {{ i18n.t('bankConnections.field.enabled') }}
+      </label>
+    </fieldset>
+
+    @if (showProblems() && problems().length > 0) {
+      <p class="app-dialog__error" role="alert">{{ i18n.t('bankConnections.problem.summary') }}</p>
+    }
+    @if (saveError(); as error) {
+      <p class="app-dialog__error" role="alert">{{ i18n.t(errorKey(error)) }}</p>
+    }
+
+    <div class="bank-dialog__actions">
+      <button
+        type="submit"
+        class="app-dialog__button app-dialog__button--primary"
+        [disabled]="saving() || !dirty()"
+      >
+        {{ i18n.t(saving() ? 'bankConnections.saving' : 'bankConnections.save') }}
+      </button>
+    </div>
+  </form>
+
+  @if (saved(); as connection) {
+    <section class="bank-dialog__discovery" [attr.aria-labelledby]="'bc-discovery-title'">
+      <h3 class="bank-dialog__subtitle" id="bc-discovery-title">
+        {{ i18n.t('bankConnections.discover.title') }}
+      </h3>
+      <p class="app-dialog__hint">{{ i18n.t('bankConnections.discover.hint') }}</p>
+
+      @if (dirty()) {
+        <p class="app-dialog__hint">{{ i18n.t('bankConnections.discover.saveFirst') }}</p>
+      }
+
+      <div class="bank-dialog__actions">
+        <button
+          type="button"
+          class="app-dialog__button"
+          [disabled]="discovering() || dirty()"
+          (click)="discover()"
+        >
+          {{
+            i18n.t(
+              discovering() ? 'bankConnections.discover.running' : 'bankConnections.discover.start'
+            )
+          }}
+        </button>
+        @if (waitingRunId() !== null) {
+          <button type="button" class="app-dialog__button" (click)="reopenTan()">
+            {{ i18n.t('sync.banner.enterTan') }}
+          </button>
+        }
+      </div>
+
+      @if (waitingRunId() !== null) {
+        <p class="app-dialog__hint" role="status">
+          {{ i18n.t('bankConnections.discover.waiting') }}
+        </p>
+      }
+      @if (discoverError(); as message) {
+        <p class="app-dialog__error" role="alert">{{ message }}</p>
+      }
+
+      @if (discovery(); as found) {
+        <div class="bank-dialog__fields bank-dialog__fields--tan">
+          <div class="bank-dialog__field">
+            <label class="app-dialog__sublabel" for="bc-tan-method">{{
+              i18n.t('bankConnections.field.tanMethod')
+            }}</label>
+            <select
+              id="bc-tan-method"
+              class="app-dialog__select"
+              [value]="tanMethod() ?? ''"
+              (change)="onMethod($event)"
+            >
+              @if (tanMethod() === null) {
+                <option value="" selected>{{ i18n.t('bankConnections.choose') }}</option>
+              }
+              @for (method of found.tanMethods; track method.id) {
+                <option [value]="method.id" [selected]="method.id === tanMethod()">
+                  {{ method.name }}
+                </option>
+              }
+            </select>
+          </div>
+          @if (selectedMethod(); as method) {
+            @if (method.mediaRequired) {
+              <div class="bank-dialog__field">
+                <label class="app-dialog__sublabel" for="bc-tan-media">{{
+                  i18n.t('bankConnections.field.tanMedia')
+                }}</label>
+                <select id="bc-tan-media" class="app-dialog__select" (change)="onMedia($event)">
+                  @for (medium of method.media; track medium) {
+                    <option [value]="medium" [selected]="medium === tanMedia()">
+                      {{ medium }}
+                    </option>
+                  }
+                </select>
+              </div>
+            }
+          }
+        </div>
+
+        <h4 class="bank-dialog__subtitle">{{ i18n.t('bankConnections.accounts.title') }}</h4>
+        <ul class="bank-dialog__accounts">
+          @for (row of rows(); track row.identifier) {
+            <li class="bank-dialog__account">
+              <div class="bank-dialog__account-id">
+                <span>{{ row.name ?? row.accountNumber }}</span>
+                <span class="bank-dialog__mono bank-dialog__small">{{
+                  row.iban ?? row.accountNumber
+                }}</span>
+              </div>
+              <select
+                class="app-dialog__select"
+                [attr.aria-label]="
+                  i18n.t('bankConnections.accounts.mapAria', {
+                    name: row.name ?? row.accountNumber,
+                  })
+                "
+                (change)="onKonto(row.identifier, $event)"
+              >
+                <option value="" [selected]="row.kontoId === null">
+                  {{ i18n.t('bankConnections.accounts.unmapped') }}
+                </option>
+                @for (konto of hibiscusAccounts(); track konto.id) {
+                  <option [value]="konto.id" [selected]="konto.id === row.kontoId">
+                    {{ accountLabel(konto) }}{{ konto.iban ? ' · ' + konto.iban : '' }}
+                  </option>
+                }
+              </select>
+              <label class="bank-dialog__check">
+                <input
+                  type="checkbox"
+                  class="app-dialog__radio"
+                  [checked]="row.enabled"
+                  [disabled]="row.kontoId === null"
+                  (change)="onRowEnabled(row.identifier, $event)"
+                />
+                {{ i18n.t('bankConnections.accounts.enabled') }}
+              </label>
+            </li>
+          } @empty {
+            <li class="app-dialog__hint">{{ i18n.t('bankConnections.accounts.none') }}</li>
+          }
+        </ul>
+
+        @if (mappingError(); as error) {
+          <p class="app-dialog__error" role="alert">{{ i18n.t(errorKey(error)) }}</p>
+        }
+        <div class="bank-dialog__actions">
+          <button
+            type="button"
+            class="app-dialog__button app-dialog__button--primary"
+            [disabled]="!canSaveMapping()"
+            (click)="saveMapping()"
+          >
+            {{
+              i18n.t(
+                mappingSaving()
+                  ? 'bankConnections.saving'
+                  : mappingSaved()
+                    ? 'bankConnections.saved'
+                    : 'bankConnections.accounts.save'
+              )
+            }}
+          </button>
+        </div>
+      }
+    </section>
+  }
+</div>
+
+<footer class="app-dialog__footer">
+  <button type="button" class="app-dialog__button" (click)="close()">
+    {{ i18n.t('bankConnections.done') }}
+  </button>
+</footer>

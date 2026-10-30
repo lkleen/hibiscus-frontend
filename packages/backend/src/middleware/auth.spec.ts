@@ -17,6 +17,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     AUTH_HEADER_USER: 'X-Forwarded-User',
     ALLOWED_USERS: [VALID_USER],
     INTERNAL_PROXY_SECRET: VALID_SECRET,
+    BANK_CREDENTIALS_KEY: Buffer.alloc(32),
     ...overrides,
   };
 }

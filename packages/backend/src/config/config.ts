@@ -32,6 +32,18 @@ const ConfigSchema = z.object({
       'ALLOWED_USERS must contain at least one username after parsing',
     ),
   INTERNAL_PROXY_SECRET: z.string().min(1, 'INTERNAL_PROXY_SECRET is required'),
+  /**
+   * The AES-256-GCM key that encrypts the bank PINs at rest: base64 of exactly 32 bytes
+   * (`openssl rand -base64 32`). Losing it means re-entering every PIN.
+   */
+  BANK_CREDENTIALS_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'BANK_CREDENTIALS_KEY must be base64')
+    .transform((value: string): Buffer => Buffer.from(value, 'base64'))
+    .refine(
+      (key: Buffer): boolean => key.length === 32,
+      'BANK_CREDENTIALS_KEY must decode to exactly 32 bytes',
+    ),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

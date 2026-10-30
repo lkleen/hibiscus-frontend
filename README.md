@@ -53,6 +53,19 @@ mysql -h 127.0.0.1 -u root -p"$DB_ROOT_PASSWORD" "$DB_NAME" < /path/to/your-dump
 Press <kbd>Ctrl+C</kbd> to stop the frontend/backend; you'll be asked whether to also stop the
 database container (its data persists in a named volume either way).
 
+### Bank sync configuration
+
+The backend syncs bank accounts itself (see [docs/architecture.md](docs/architecture.md#bank-sync)).
+It needs one more required variable, and refuses to start without it:
+
+- `BANK_CREDENTIALS_KEY` — encrypts the stored bank PINs; generate it with
+  `openssl rand -base64 32` and keep it, a lost key means re-entering every PIN.
+
+The FinTS product registration ID (Deutsche Kreditwirtschaft, [fints.org](https://www.fints.org))
+is part of the source, like in other banking software: it identifies the product, not an
+installation. A fork that ships under its own name registers its own and replaces
+`FINTS_PRODUCT_ID` in `packages/backend/src/sync/fints-session.ts`.
+
 ## Docker
 
 ```bash
