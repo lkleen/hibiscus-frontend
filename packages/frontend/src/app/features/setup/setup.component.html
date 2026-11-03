@@ -42,12 +42,19 @@
     @case ('key') {
       <h2 class="setup__heading" id="setup-heading">{{ i18n.t('setup.key.title') }}</h2>
       <p class="setup__hint">{{ i18n.t('setup.key.hint') }}</p>
-      <app-key-create [mode]="mode()" (created)="finish()" />
-      <div class="app-form__actions setup__actions">
-        <button type="button" class="app-form__button" (click)="go('mode')">
-          {{ i18n.t('setup.back') }}
-        </button>
-      </div>
+      <app-key-create
+        [mode]="mode()"
+        (created)="finish()"
+        (exists)="finish()"
+        (revealing)="keyShown.set($event)"
+      />
+      @if (!keyShown()) {
+        <div class="app-form__actions setup__actions">
+          <button type="button" class="app-form__button" (click)="go('mode')">
+            {{ i18n.t('setup.back') }}
+          </button>
+        </div>
+      }
     }
   }
 </section>

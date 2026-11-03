@@ -43,6 +43,8 @@ export class SetupComponent {
   private readonly me = inject(MeService);
   protected readonly step = signal<SetupStep>(this.me.firstOpenStep());
   protected readonly mode = signal<KeyMode>('manual');
+  /** A generated key is on screen: Back is hidden, as leaving the step would drop it unseen. */
+  protected readonly keyShown = signal(false);
 
   protected indexOf(step: SetupStep): number {
     return this.steps.findIndex((entry: StepEntry) => entry.step === step);
@@ -52,7 +54,10 @@ export class SetupComponent {
     this.step.set(step);
   }
 
-  /** Refreshes the user first: the app pages are guarded by it and still see the key as missing. */
+  /**
+   * Refreshes the user first: the app pages are guarded by it and still see the key as missing.
+   * Also runs when the key turns out to exist already, so setup never dead-ends on `key-configured`.
+   */
   protected finish(): void {
     this.me.refresh().subscribe((): void => {
       void this.router.navigateByUrl(`/${this.locale()}/accounts`);
