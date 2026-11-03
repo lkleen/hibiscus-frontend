@@ -28,12 +28,18 @@ type TanMethod = FinTSConfig['availableTanMethods'][number];
 export const FINTS_PRODUCT_VERSION = '2.0';
 
 /**
- * The FinTS product registration (Deutsche Kreditwirtschaft) sent in every bank dialog: Hibiscus's
- * official one, as hibiscus-frontend is a frontend for Hibiscus and works on its database. Taken
- * from Hibiscus's `HBCI.java` (`client.product.name`). Public, like every distributed client's
- * ID. A fork that ships as a different application registers its own and replaces it here.
+ * The FinTS product registration (Deutsche Kreditwirtschaft) sent in every bank dialog.
+ * hibiscus-frontend's own registration was requested on 2026-10-30; until the number arrives this
+ * is `null` and bank sync is off: the scheduler does not start and every bank dialog throws, so no
+ * request reaches a bank under another product's registration. Public, like every distributed
+ * client's ID. A fork that ships as a different application registers its own and replaces it here.
  */
-export const FINTS_PRODUCT_ID = 'A44C2953982351617D475443E';
+export const FINTS_PRODUCT_ID: string | null = null;
+
+/** Whether bank sync can run: only with a registered FinTS product ID. */
+export function isBankSyncEnabled(): boolean {
+  return FINTS_PRODUCT_ID !== null;
+}
 
 /** Status poll delay for a decoupled TAN when the bank states none. */
 const DEFAULT_DECOUPLED_POLL_SECONDS = 5;
@@ -538,10 +544,11 @@ function describeTanMethodsOnly(config: FinTSConfig, tanMethod: number | null): 
 }
 
 function createConfig(lib: LibFints, login: FintsLogin): FinTSConfig {
+  const productId: string = requireProductId();
   const customerId: string | undefined = login.customerId ?? undefined;
   if (login.bankingInformation === null) {
     return lib.FinTSConfig.forFirstTimeUse(
-      FINTS_PRODUCT_ID,
+      productId,
       FINTS_PRODUCT_VERSION,
       login.fintsUrl,
       login.blz,
@@ -555,7 +562,7 @@ function createConfig(lib: LibFints, login: FintsLogin): FinTSConfig {
     login.tanMethod !== null &&
     (info.bpd?.availableTanMethodIds.includes(login.tanMethod) ?? false);
   return lib.FinTSConfig.fromBankingInformation(
-    FINTS_PRODUCT_ID,
+    productId,
     FINTS_PRODUCT_VERSION,
     info,
     login.loginName,
@@ -564,6 +571,16 @@ function createConfig(lib: LibFints, login: FintsLogin): FinTSConfig {
     known ? (login.tanMedia ?? undefined) : undefined,
     customerId,
   );
+}
+
+/** The registered product ID; throws while bank sync is off (see `FINTS_PRODUCT_ID`). */
+function requireProductId(): string {
+  if (FINTS_PRODUCT_ID === null) {
+    throw new Error(
+      'Bank sync is off until hibiscus-frontend has its own FinTS product registration.',
+    );
+  }
+  return FINTS_PRODUCT_ID;
 }
 
 /** The production factory: real lib-fints dialogs with the registered product ID. */

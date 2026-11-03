@@ -350,6 +350,11 @@ named in the export's scope lines.
 The backend fetches statements and balances from the bank itself, so the Hibiscus desktop client
 is no longer needed for that. Everything is declared once in `packages/shared/src/contracts/sync.d.ts`.
 
+- **Scope: read-only.** The sync fetches statements and balances and never sends an order to the
+  bank. Transfers, standing orders, direct debits and scheduled orders stay in the Hibiscus desktop
+  client, as do creating the schema and adding accounts. This keeps the app a companion to Hibiscus
+  rather than a banking client of its own.
+
 - **Protocol.** FinTS 3.0 through `lib-fints`; statements arrive as MT940. Imported rows use the
   same `umsatz` columns and the same checksum (`checksum`) as Hibiscus, so rows the desktop client
   already imported are recognised, not duplicated, and the desktop client keeps working next to this.
@@ -370,11 +375,12 @@ is no longer needed for that. Everything is declared once in `packages/shared/sr
 - **Credentials.** The PIN is write-only. It is stored AES-256-GCM encrypted with the **user's
   own key** (see [Multi-user](#multi-user)) and never returned by any route; the edit form never
   prefills it. Losing the key means re-entering every PIN ("Reset key").
-- **Product registration.** FinTS banks only accept registered software. As a frontend for
-  Hibiscus, the app sends Hibiscus's official DK registration (`FINTS_PRODUCT_ID` in
-  `sync/fints-session.ts`, from Hibiscus's `HBCI.java` `client.product.name`) with its own version
+- **Product registration.** FinTS banks only accept registered software. The app sends its own
+  DK registration (`FINTS_PRODUCT_ID` in `sync/fints-session.ts`) with its version
   `FINTS_PRODUCT_VERSION` (major.minor, at most 5 characters). The ID is public, like every
-  distributed client's. A fork that ships as a different application registers its own.
+  distributed client's. Until the registration arrives it is `null`: the scheduler does not start
+  and every bank dialog throws (`isBankSyncEnabled()`). A fork that ships as a different
+  application registers its own.
 - **Frontend.** `features/sync` holds the polled status store, the global banner (in the app
   shell) and the TAN dialog; `features/bank-connections` the settings tab and its dialog; the
   Accounts page shows each connection's last sync with a "Sync now" button.

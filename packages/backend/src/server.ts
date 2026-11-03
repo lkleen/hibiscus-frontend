@@ -22,7 +22,7 @@ import { createTransactionsRouter } from './routes/transactions';
 import { createUserDatabaseRouter } from './routes/user-database';
 import { createUserKeyRouter } from './routes/user-key';
 import { CredentialCrypto } from './sync/credential-crypto';
-import { createLibFintsSessionFactory } from './sync/fints-session';
+import { createLibFintsSessionFactory, isBankSyncEnabled } from './sync/fints-session';
 import { PendingTanRegistry, TAN_TIMEOUT_MS } from './sync/pending-tan-registry';
 import { SCHEDULER_TICK_MS, SyncScheduler } from './sync/scheduler';
 import { SyncService } from './sync/sync-service';
@@ -125,7 +125,11 @@ async function main(): Promise<void> {
     { service: syncService, users: pools, keys },
     SCHEDULER_TICK_MS,
   );
-  scheduler.start();
+  if (isBankSyncEnabled()) {
+    scheduler.start();
+  } else {
+    console.log('[hibiscus-backend] Bank sync off: no FinTS product registration yet');
+  }
 
   // Graceful stop: no further scheduled runs, no new requests. A run still in progress is cut
   // off with the process; its row stays `running`/`tan_required` and the MariaDB lock is freed

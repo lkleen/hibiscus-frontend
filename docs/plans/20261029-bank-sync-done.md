@@ -184,9 +184,11 @@ Bank connections settings page, sync banner, TAN dialog, Sync now, i18n. Update
 `docs/architecture.md` (API, data model, sync and credential section). Cut tag `1.2.0`.
 
 ### Phase D — Stack integration (ubuntu-server; after the tag)
-- **Status:** in progress
+- **Status:** done
 - **Started:** 2026-10-29 10:45
-- **Ended:**
+- **Ended:** 2026-11-03 10:40
+
+Shipped as part of 2.0.0 (multi-user, see `20261030-multi-user-done.md`); the product ID ended up as a source constant (Hibiscus's for now), not an env var.
 
 Compose env + tag bump, `/docs-sync`, plan file in `docs/plans/`. You add `ENV_HIBISCUS_BANK_CREDENTIALS_KEY`
 (`openssl rand -base64 32`) and, once it arrives, the product ID to `ubuntu-server.prod.env`.

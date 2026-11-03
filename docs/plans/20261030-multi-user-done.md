@@ -217,9 +217,11 @@ The local-development section stays and gets the second-user test setup.
 
 ### Phase D — Stack (ubuntu-server)
 
-- **Status:** todo
-- **Started:**
-- **Ended:**
+- **Status:** done
+- **Started:** 2026-10-30 12:30
+- **Ended:** 2026-11-03 10:40
+
+ubuntu-server `8af5802` deployed (run 41612065448); `lkleen/hibiscus-frontend:2.0.0` running.
 
 Compose and env template, `/docs-sync`, commit. Push once you have added `ENV_HIBISCUS_BANK_CREDENTIALS_KEY`.
 

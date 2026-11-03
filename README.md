@@ -163,11 +163,11 @@ available. Then:
 ### The FinTS product ID
 
 FinTS banks only accept registered software (Deutsche Kreditwirtschaft,
-[fints.org](https://www.fints.org)). hibiscus-frontend is a frontend for Hibiscus and works on its
-database, so it sends **Hibiscus's official product ID**, taken from Hibiscus's `HBCI.java`, with
-its own version (`FINTS_PRODUCT_VERSION`). Nothing to register when you run it. A fork that ships
-as a different application registers its own and replaces `FINTS_PRODUCT_ID` in
-`packages/backend/src/sync/fints-session.ts`.
+[fints.org](https://www.fints.org)). hibiscus-frontend's own registration has been requested;
+until the number arrives `FINTS_PRODUCT_ID` in `packages/backend/src/sync/fints-session.ts` is
+`null` and **bank sync is off** (no scheduled syncs, "Sync now" fails with a clear message). Once
+it is set, nothing is left to register when you run it. A fork that ships as a different
+application registers its own and replaces `FINTS_PRODUCT_ID`.
 
 ## Local development
 

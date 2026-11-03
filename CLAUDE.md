@@ -57,6 +57,11 @@ In addition to `@../claude-config/checklist.md`:
 
 - **Never commit real banking data or credentials.** `*.sql`, `*.sql.gz`, and every `.env*`
   (except `.env.example`) are gitignored as a safety net — keep it that way.
+- **The bank sync is read-only.** It fetches statements and balances, nothing else. Never add
+  anything that sends an order to the bank (transfers, standing orders, direct debits, scheduled
+  orders): those stay in the desktop Hibiscus. This repo is meant to be handed over to the
+  Hibiscus developers as a companion to their client; payments belong to a separate fork. See
+  `docs/architecture.md#bank-sync`.
 - **Never weaken the auth contract.** The backend must refuse every request without both a valid
   identity header and a matching `INTERNAL_PROXY_SECRET`, unconditionally — no `APP_ENV` (or any
   other) flag may add a bypass. See `docs/architecture.md#authentication`.
