@@ -1,6 +1,9 @@
 <header class="header">
   <div class="header__brand">
     <span class="header__brand-name">Hibiscus</span>
+    @if (me.isDemo()) {
+      <span class="header__demo" role="status">{{ i18n.t('demo.badge') }}</span>
+    }
   </div>
 
   <nav class="header__nav" [attr.aria-label]="i18n.t('nav.main')">

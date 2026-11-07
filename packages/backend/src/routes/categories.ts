@@ -4,8 +4,9 @@ import type {
   CategoryCycleError,
   CategoryRow,
 } from '@hibiscus-frontend/shared/contracts/categories';
-import { createCategory, listCategories, updateCategory } from '../repositories/umsatztyp';
-import type { CategoryUpdateResult } from '../repositories/umsatztyp';
+import { MissingReferenceError } from '../repositories/repository-errors';
+import type { MissingReference } from '../repositories/repository-errors';
+import type { CategoryRepository, CategoryUpdateResult } from '../repositories/umsatztyp';
 import {
   CategoryCreateSchema,
   CategoryIdSchema,
@@ -13,38 +14,37 @@ import {
 } from '../categories/category-update';
 import { respondWithValidationError } from './zod-validation';
 
-/** MySQL error code for a foreign key violation on insert/update (unknown parent or account). */
-const FK_VIOLATION_CODE = 'ER_NO_REFERENCED_ROW_2';
-
 const STATUS_BY_RESULT: Record<Exclude<CategoryUpdateResult, 'updated' | 'cycle'>, number> = {
   'not-found': 404,
   conflict: 409,
 };
 
-/**
- * Answers 400 for a foreign key violation and reports whether it did. The server message names
- * the violated constraint (`fk_umsatztyp_konto`, `fk_umsatztyp_umsatztyp` or
- * `fk_hf_tax_tag_section`).
- */
-function respondWithForeignKeyError(error: unknown, res: Response): boolean {
-  const { code, message } = error as { code?: unknown; message?: unknown };
-  if (code !== FK_VIOLATION_CODE) return false;
-  const constraint = String(message);
-  const unknown: string = constraint.includes('fk_hf_tax_tag_section')
-    ? 'Unknown tax section'
-    : constraint.includes('fk_umsatztyp_konto')
-      ? 'Unknown account'
-      : 'Unknown parent';
-  res.status(400).json({ error: unknown });
+const UNKNOWN_BY_REFERENCE: Partial<Record<MissingReference, string>> = {
+  'tax-section': 'Unknown tax section',
+  account: 'Unknown account',
+  parent: 'Unknown parent',
+};
+
+/** Answers 400 for a missing reference and reports whether it did. */
+function respondWithMissingReference(error: unknown, res: Response): boolean {
+  if (!(error instanceof MissingReferenceError)) return false;
+  const message: string | undefined = UNKNOWN_BY_REFERENCE[error.reference];
+  if (message === undefined) return false;
+  res.status(400).json({ error: message });
   return true;
 }
 
-export function createCategoriesRouter(): Router {
+export interface CategoriesRouterDeps {
+  readonly categories: CategoryRepository;
+}
+
+export function createCategoriesRouter(deps: CategoriesRouterDeps): Router {
   const router = Router();
 
   /** `GET /` lists `umsatztyp` rows exactly as stored (`CategoryRow`). */
   router.get('/', (_req: Request, res: Response, next: NextFunction): void => {
-    listCategories()
+    deps.categories
+      .list()
       .then((categories: CategoryRow[]) => res.json(categories))
       .catch(next);
   });
@@ -60,10 +60,11 @@ export function createCategoriesRouter(): Router {
       return;
     }
 
-    createCategory(bodyResult.data)
+    deps.categories
+      .create(bodyResult.data)
       .then((created: CategoryRow) => res.status(201).json(created))
       .catch((error: unknown) => {
-        if (!respondWithForeignKeyError(error, res)) next(error);
+        if (!respondWithMissingReference(error, res)) next(error);
       });
   });
 
@@ -84,7 +85,8 @@ export function createCategoriesRouter(): Router {
       return;
     }
 
-    updateCategory(idResult.data, bodyResult.data)
+    deps.categories
+      .update(idResult.data, bodyResult.data)
       .then((result: CategoryUpdateResult) => {
         if (result === 'updated') {
           res.status(204).send();
@@ -98,7 +100,7 @@ export function createCategoriesRouter(): Router {
         res.status(STATUS_BY_RESULT[result]).json({ error: result });
       })
       .catch((error: unknown) => {
-        if (!respondWithForeignKeyError(error, res)) next(error);
+        if (!respondWithMissingReference(error, res)) next(error);
       });
   });
 

@@ -8,17 +8,11 @@ import type {
 vi.mock('../db/pool', () => ({ getPool: vi.fn() }));
 
 import { getPool } from '../db/pool';
-import {
-  clearBankConnectionPins,
-  createBankConnection,
-  getBankConnectionRecord,
-  listBankConnections,
-  listDueBankConnectionIds,
-  reencryptBankConnectionPins,
-  replaceBankConnectionAccounts,
-  updateBankConnection,
-} from './bank-connection';
+import { MysqlBankConnectionRepository } from './bank-connection';
 import type { BankConnectionRecord, BankConnectionWriteResult } from './bank-connection';
+import { MissingReferenceError } from './repository-errors';
+
+const repo: MysqlBankConnectionRepository = new MysqlBankConnectionRepository();
 
 const settings: BankConnectionSettings = {
   name: 'comdirect',
@@ -85,7 +79,7 @@ beforeEach(() => {
   vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
 });
 
-describe('listBankConnections', () => {
+describe('MysqlBankConnectionRepository.list', () => {
   it('maps the rows with their accounts and never exposes the PIN or bank data', async () => {
     pool.query.mockResolvedValueOnce([[row]]).mockResolvedValueOnce([
       [
@@ -94,7 +88,7 @@ describe('listBankConnections', () => {
       ],
     ]);
 
-    const connections: BankConnection[] = await listBankConnections();
+    const connections: BankConnection[] = await repo.list();
 
     expect(connections).toEqual([
       {
@@ -112,11 +106,11 @@ describe('listBankConnections', () => {
   });
 });
 
-describe('getBankConnectionRecord', () => {
+describe('MysqlBankConnectionRepository.getRecord', () => {
   it('returns the encrypted PIN and the bank data', async () => {
     pool.query.mockResolvedValueOnce([[row]]).mockResolvedValueOnce([[]]);
 
-    const record: BankConnectionRecord | null = await getBankConnectionRecord(3);
+    const record: BankConnectionRecord | null = await repo.getRecord(3);
 
     expect(record?.pin).toEqual({
       ciphertext: pinColumns.pin_ciphertext,
@@ -131,21 +125,21 @@ describe('getBankConnectionRecord', () => {
       .mockResolvedValueOnce([[{ ...row, pin_ciphertext: null, pin_iv: null, pin_tag: null }]])
       .mockResolvedValueOnce([[]]);
 
-    expect((await getBankConnectionRecord(3))?.pin).toBeNull();
+    expect((await repo.getRecord(3))?.pin).toBeNull();
   });
 
   it('returns null for an unknown id', async () => {
     pool.query.mockResolvedValueOnce([[]]);
 
-    expect(await getBankConnectionRecord(3)).toBeNull();
+    expect(await repo.getRecord(3)).toBeNull();
   });
 });
 
-describe('createBankConnection', () => {
+describe('MysqlBankConnectionRepository.create', () => {
   it('inserts the settings and the encrypted PIN', async () => {
     pool.query.mockResolvedValueOnce([{ insertId: 7 }]);
 
-    expect(await createBankConnection({ settings, pin: encrypted })).toBe(7);
+    expect(await repo.create({ settings, pin: encrypted })).toBe(7);
     const values: unknown[] = pool.query.mock.calls[0]![1];
     expect(values).toEqual([
       'comdirect',
@@ -164,13 +158,13 @@ describe('createBankConnection', () => {
   });
 });
 
-describe('updateBankConnection', () => {
+describe('MysqlBankConnectionRepository.update', () => {
   function run(
     stored: unknown[],
     next: BankConnectionSettings,
   ): Promise<BankConnectionWriteResult> {
     connection.query.mockResolvedValueOnce([stored]).mockResolvedValue([{ affectedRows: 1 }]);
-    return updateBankConnection({ id: 3, expected: settings, next });
+    return repo.update({ id: 3, expected: settings, next });
   }
 
   it('updates when the row still holds expected, locking it first', async () => {
@@ -194,7 +188,7 @@ describe('updateBankConnection', () => {
   it('writes the new PIN when given', async () => {
     connection.query.mockResolvedValueOnce([[row]]).mockResolvedValue([{ affectedRows: 1 }]);
 
-    await updateBankConnection({ id: 3, expected: settings, next: settings, pin: encrypted });
+    await repo.update({ id: 3, expected: settings, next: settings, pin: encrypted });
 
     expect(connection.query.mock.calls[1]![0]).toContain('pin_ciphertext = ?');
     expect(connection.query.mock.calls[1]![1]).toContain(encrypted.ciphertext);
@@ -209,19 +203,17 @@ describe('updateBankConnection', () => {
   it('rolls back and rethrows on a DB error', async () => {
     connection.query.mockRejectedValueOnce(new Error('db'));
 
-    await expect(
-      updateBankConnection({ id: 3, expected: settings, next: settings }),
-    ).rejects.toThrow('db');
+    await expect(repo.update({ id: 3, expected: settings, next: settings })).rejects.toThrow('db');
     expect(connection.rollback).toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalled();
   });
 });
 
-describe('replaceBankConnectionAccounts', () => {
+describe('MysqlBankConnectionRepository.replaceAccounts', () => {
   it('replaces the whole mapping in one transaction', async () => {
     connection.query.mockResolvedValueOnce([[{ id: 3 }]]).mockResolvedValue([{}]);
 
-    const result = await replaceBankConnectionAccounts(3, [
+    const result = await repo.replaceAccounts(3, [
       { accountIdentifier: 'DE1', kontoId: 11, enabled: false },
     ]);
 
@@ -234,16 +226,38 @@ describe('replaceBankConnectionAccounts', () => {
   it('answers not-found for an unknown connection', async () => {
     connection.query.mockResolvedValueOnce([[]]);
 
-    expect(await replaceBankConnectionAccounts(3, [])).toBe('not-found');
+    expect(await repo.replaceAccounts(3, [])).toBe('not-found');
     expect(connection.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws MissingReferenceError for an unknown kontoId and rolls back', async () => {
+    const violation: Error & { code?: string } = Object.assign(
+      new Error(
+        'Cannot add or update a child row: a foreign key constraint fails (CONSTRAINT `fk_hf_bca_konto` FOREIGN KEY (`konto_id`) REFERENCES `konto` (`id`))',
+      ),
+      { code: 'ER_NO_REFERENCED_ROW_2' },
+    );
+    connection.query
+      .mockResolvedValueOnce([[{ id: 3 }]])
+      .mockResolvedValueOnce([{}])
+      .mockRejectedValueOnce(violation);
+
+    const error: unknown = await repo
+      .replaceAccounts(3, [{ accountIdentifier: 'DE1', kontoId: 99, enabled: true }])
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MissingReferenceError);
+    expect((error as MissingReferenceError).reference).toBe('konto');
+    expect((error as MissingReferenceError).cause).toBe(violation);
+    expect(connection.rollback).toHaveBeenCalled();
   });
 });
 
-describe('listDueBankConnectionIds', () => {
+describe('MysqlBankConnectionRepository.listDueIds', () => {
   it('selects enabled, unpaused connections whose interval has passed', async () => {
     pool.query.mockResolvedValueOnce([[{ id: 1 }, { id: 4 }]]);
 
-    expect(await listDueBankConnectionIds()).toEqual([1, 4]);
+    expect(await repo.listDueIds()).toEqual([1, 4]);
     const sql: string = pool.query.mock.calls[0]![0].replace(/\s+/g, ' ');
     expect(sql).toContain('enabled = 1 AND paused_reason IS NULL AND pin_ciphertext IS NOT NULL');
     expect(sql).toContain(
@@ -252,7 +266,7 @@ describe('listDueBankConnectionIds', () => {
   });
 });
 
-describe('reencryptBankConnectionPins', () => {
+describe('MysqlBankConnectionRepository.reencryptPins', () => {
   const second = { ...pinColumns, id: 4, pin_ciphertext: Buffer.from('d') };
 
   it('rewrites every PIN and runs beforeCommit inside one transaction', async () => {
@@ -261,7 +275,7 @@ describe('reencryptBankConnectionPins', () => {
     const order: string[] = [];
     connection.commit.mockImplementation(async () => order.push('commit'));
 
-    const count: number = await reencryptBankConnectionPins({
+    const count: number = await repo.reencryptPins({
       reencrypt: () => encrypted,
       beforeCommit: async () => {
         order.push('beforeCommit');
@@ -294,7 +308,7 @@ describe('reencryptBankConnectionPins', () => {
     let calls = 0;
 
     await expect(
-      reencryptBankConnectionPins({
+      repo.reencryptPins({
         reencrypt: () => {
           calls += 1;
           if (calls === 2) throw new Error('wrong key');
@@ -315,7 +329,7 @@ describe('reencryptBankConnectionPins', () => {
     connection.query.mockResolvedValue([{}]);
 
     await expect(
-      reencryptBankConnectionPins({
+      repo.reencryptPins({
         reencrypt: () => encrypted,
         beforeCommit: async () => {
           throw new Error('app db down');
@@ -328,11 +342,11 @@ describe('reencryptBankConnectionPins', () => {
   });
 });
 
-describe('clearBankConnectionPins', () => {
+describe('MysqlBankConnectionRepository.clearPins', () => {
   it('nulls every PIN and disables the connections', async () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]);
 
-    expect(await clearBankConnectionPins()).toBe(2);
+    expect(await repo.clearPins()).toBe(2);
     const sql: string = pool.query.mock.calls[0]![0].replace(/\s+/g, ' ');
     expect(sql).toContain('pin_ciphertext = NULL, pin_iv = NULL, pin_tag = NULL, enabled = 0');
   });

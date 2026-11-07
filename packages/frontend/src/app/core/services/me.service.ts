@@ -18,6 +18,8 @@ export class MeService {
   /** `null` until the first answer. */
   readonly me: Signal<Me | null> = this.state.asReadonly();
   readonly user: Signal<string | null> = computed(() => this.state()?.user ?? null);
+  /** The app runs on built-in sample data: nothing is saved and the database cannot be changed. */
+  readonly isDemo: Signal<boolean> = computed(() => this.state()?.dataSource === 'demo');
   /** The step the setup opens at: the database first, then the key (mode and key). */
   readonly firstOpenStep: Signal<'database' | 'mode'> = computed(() =>
     this.state()?.database === 'configured' ? 'mode' : 'database',

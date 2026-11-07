@@ -5,7 +5,9 @@ import type { SyncRun } from '@hibiscus-frontend/shared/contracts/sync';
 vi.mock('../db/pool', () => ({ getPool: vi.fn() }));
 
 import { getPool } from '../db/pool';
-import { createSyncRun, finishSyncRun, listLatestSyncRuns, setSyncRunWaiting } from './sync-run';
+import { MysqlSyncRunRepository } from './sync-run';
+
+const repo: MysqlSyncRunRepository = new MysqlSyncRunRepository();
 
 let pool: { query: ReturnType<typeof vi.fn> };
 
@@ -17,14 +19,14 @@ beforeEach(() => {
 
 describe('sync-run repository', () => {
   it('creates a running run', async () => {
-    expect(await createSyncRun(3, 'scheduled')).toBe(41);
+    expect(await repo.create(3, 'scheduled')).toBe(41);
     expect(pool.query.mock.calls[0]![0]).toContain("VALUES (?, ?, NOW(), 'running')");
     expect(pool.query.mock.calls[0]![1]).toEqual([3, 'scheduled']);
   });
 
   it('switches only an unfinished run between running and tan_required', async () => {
-    await setSyncRunWaiting(41, true);
-    await setSyncRunWaiting(41, false);
+    await repo.setWaiting(41, true);
+    await repo.setWaiting(41, false);
 
     expect(pool.query.mock.calls[0]![0]).toContain('finished_at IS NULL');
     expect(pool.query.mock.calls[0]![1]).toEqual(['tan_required', 41]);
@@ -32,7 +34,7 @@ describe('sync-run repository', () => {
   });
 
   it('finishes a run with its outcome', async () => {
-    await finishSyncRun(41, { status: 'error', error: 'x', inserted: 1, deleted: 2 });
+    await repo.finish(41, { status: 'error', error: 'x', inserted: 1, deleted: 2 });
 
     expect(pool.query.mock.calls[0]![1]).toEqual(['error', 'x', 1, 2, 41]);
   });
@@ -54,7 +56,7 @@ describe('sync-run repository', () => {
       ],
     ]);
 
-    const runs: Map<number, SyncRun> = await listLatestSyncRuns();
+    const runs: Map<number, SyncRun> = await repo.listLatest();
 
     expect(runs.get(3)).toEqual({
       id: 41,

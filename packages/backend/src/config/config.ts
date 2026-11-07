@@ -28,22 +28,14 @@ const AllowedDbHostSchema = z
   );
 
 /**
- * All runtime configuration and secrets for this app. Built once, in this module, from
- * `process.env` — no other module reads `process.env` directly. Every field here is required:
- * a missing or invalid value is a startup failure (thrown below), never a silent default.
+ * The values every data source needs.
  *
  * Note: `INTERNAL_PROXY_SECRET` is validated here, but the *header name* it arrives on
  * (`X-Internal-Auth-Secret`) is intentionally not configurable — see
  * `src/middleware/auth.ts`'s `INTERNAL_AUTH_SECRET_HEADER` constant. Only the identity header's
  * name (`AUTH_HEADER_USER`) is configurable, per docs/architecture.md#authentication.
  */
-const ConfigSchema = z.object({
-  /** `DB_*`: the app database. It holds only `hf_app_user`; each user's data is elsewhere. */
-  DB_HOST: z.string().min(1, 'DB_HOST is required'),
-  DB_PORT: z.coerce.number().int().positive(),
-  DB_NAME: z.string().min(1, 'DB_NAME is required'),
-  DB_USER: z.string().min(1, 'DB_USER is required'),
-  DB_PASSWORD: z.string().min(1, 'DB_PASSWORD is required'),
+const CommonConfigSchema = z.object({
   PORT: z.coerce.number().int().positive(),
   AUTH_HEADER_USER: z.string().min(1, 'AUTH_HEADER_USER is required'),
   ALLOWED_USERS: z
@@ -61,20 +53,6 @@ const ConfigSchema = z.object({
     ),
   INTERNAL_PROXY_SECRET: z.string().min(1, 'INTERNAL_PROXY_SECRET is required'),
   /**
-   * The database hosts users may point their Hibiscus database at: comma-separated `host` or
-   * `host:port`. Checked when the settings are saved and again before every pool is created.
-   */
-  ALLOWED_DB_HOSTS: z
-    .string()
-    .min(1, 'ALLOWED_DB_HOSTS is required')
-    .transform((value: string): string[] =>
-      value
-        .split(',')
-        .map((entry: string): string => entry.trim())
-        .filter((entry: string): boolean => entry.length > 0),
-    )
-    .pipe(z.array(AllowedDbHostSchema).min(1, 'ALLOWED_DB_HOSTS must contain at least one host')),
-  /**
    * The server key (AES-256-GCM) that encrypts the bank PINs at rest: base64 of exactly 32 bytes
    * (`openssl rand -base64 32`). Losing it means re-entering every PIN.
    */
@@ -88,7 +66,64 @@ const ConfigSchema = z.object({
     ),
 });
 
+/** `DATA_SOURCE=mariadb`: the app database and each user's own Hibiscus database on MariaDB. */
+const MariadbConfigSchema = CommonConfigSchema.extend({
+  DATA_SOURCE: z.literal('mariadb'),
+  /** `DB_*`: the app database. It holds only `hf_app_user`; each user's data is elsewhere. */
+  DB_HOST: z.string().min(1, 'DB_HOST is required'),
+  DB_PORT: z.coerce.number().int().positive(),
+  DB_NAME: z.string().min(1, 'DB_NAME is required'),
+  DB_USER: z.string().min(1, 'DB_USER is required'),
+  DB_PASSWORD: z.string().min(1, 'DB_PASSWORD is required'),
+  /**
+   * The database hosts users may point their Hibiscus database at: comma-separated `host` or
+   * `host:port`. Checked when the settings are saved and again before every pool is created.
+   */
+  ALLOWED_DB_HOSTS: z
+    .string()
+    .min(1, 'ALLOWED_DB_HOSTS is required')
+    .transform((value: string): string[] =>
+      value
+        .split(',')
+        .map((entry: string): string => entry.trim())
+        .filter((entry: string): boolean => entry.length > 0),
+    )
+    .pipe(z.array(AllowedDbHostSchema).min(1, 'ALLOWED_DB_HOSTS must contain at least one host')),
+});
+
+/** `DATA_SOURCE=demo`: the bundled demo data in memory; no database is configured or reached. */
+const DemoConfigSchema = CommonConfigSchema.extend({
+  DATA_SOURCE: z.literal('demo'),
+});
+
+const DATA_SOURCES: readonly string[] = [
+  MariadbConfigSchema.shape.DATA_SOURCE.value,
+  DemoConfigSchema.shape.DATA_SOURCE.value,
+];
+
+/**
+ * All runtime configuration and secrets for this app. Built once, in this module, from
+ * `process.env` — no other module reads `process.env` directly. Every field here is required:
+ * a missing or invalid value is a startup failure (thrown below), never a silent default.
+ *
+ * `DATA_SOURCE` picks the shape. It is deployment-scoped: the same build serves both, and each
+ * launch picks one (the server and the auth demo `mariadb`, the local test download `demo`).
+ * It has no default, so a missing value fails startup like any other.
+ */
+const ConfigSchema = z.discriminatedUnion('DATA_SOURCE', [MariadbConfigSchema, DemoConfigSchema], {
+  errorMap: (issue: z.ZodIssueOptionalMessage, context: z.ErrorMapCtx): { message: string } =>
+    issue.code === z.ZodIssueCode.invalid_union_discriminator
+      ? { message: `DATA_SOURCE is required and must be one of: ${DATA_SOURCES.join(', ')}` }
+      : { message: context.defaultError },
+});
+
 export type Config = z.infer<typeof ConfigSchema>;
+
+/** Where the users' banking data comes from: MariaDB or the bundled demo data. */
+export type DataSource = Config['DATA_SOURCE'];
+
+/** The configuration of `DATA_SOURCE=mariadb`, with the `DB_*` values and `ALLOWED_DB_HOSTS`. */
+export type MariadbConfig = Extract<Config, { DATA_SOURCE: 'mariadb' }>;
 
 /** Exact match on the host (case-insensitive), and on the port when the entry names one. */
 export function isDbHostAllowed(allowed: readonly AllowedDbHost[], target: DbHostTarget): boolean {

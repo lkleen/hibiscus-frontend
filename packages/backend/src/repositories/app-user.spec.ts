@@ -4,18 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../db/pool', () => ({ getAppPool: vi.fn() }));
 
 import { getAppPool } from '../db/pool';
-import {
-  createAppUserKey,
-  deleteAppUserKey,
-  ensureAppUserTable,
-  getAppUserDatabase,
-  getAppUserKey,
-  isDatabaseUsedByOther,
-  listAppUsersWithDatabase,
-  saveAppUserDatabase,
-  updateAppUserKey,
-} from './app-user';
+import { ensureAppUserTable, MysqlAppUserRepository } from './app-user';
 import type { AppUserDatabaseRecord, AppUserKeyRecord } from './app-user';
+import { DuplicateKeyError } from './repository-errors';
+
+const repo: MysqlAppUserRepository = new MysqlAppUserRepository();
 
 let pool: { query: ReturnType<typeof vi.fn> };
 
@@ -64,9 +57,9 @@ describe('app-user repository', () => {
     pool.query.mockResolvedValueOnce([[{ username: 'bob' }]]);
     const settings = { host: 'Hibiscus-DB', port: 3306, name: 'x', user: 'u' };
 
-    expect(await isDatabaseUsedByOther('alice', settings)).toBe(true);
+    expect(await repo.isDatabaseUsedByOther('alice', settings)).toBe(true);
     expect(pool.query.mock.calls[0]![1]).toEqual(['alice', 'hibiscus-db', 3306, 'x']);
-    expect(await isDatabaseUsedByOther('alice', settings)).toBe(false);
+    expect(await repo.isDatabaseUsedByOther('alice', settings)).toBe(false);
   });
 
   it('maps a stored row to the settings, encrypted password and version', async () => {
@@ -85,7 +78,7 @@ describe('app-user repository', () => {
       ],
     ]);
 
-    const record: AppUserDatabaseRecord | null = await getAppUserDatabase('alice');
+    const record: AppUserDatabaseRecord | null = await repo.getDatabase('alice');
 
     expect(record).toEqual({
       settings: { host: 'hibiscus-db', port: 3306, name: 'alice', user: 'alice' },
@@ -97,11 +90,11 @@ describe('app-user repository', () => {
   });
 
   it('answers null for a user without a database', async () => {
-    expect(await getAppUserDatabase('carol')).toBeNull();
+    expect(await repo.getDatabase('carol')).toBeNull();
   });
 
   it('creates the row, then updates it and raises the version', async () => {
-    await saveAppUserDatabase({
+    await repo.saveDatabase({
       username: 'alice',
       settings: { host: 'hibiscus-db', port: 3306, name: 'alice', user: 'alice' },
       password: secret,
@@ -123,10 +116,24 @@ describe('app-user repository', () => {
     ]);
   });
 
+  it('throws DuplicateKeyError when another user saved the same database', async () => {
+    const duplicate: Error & { code?: string } = Object.assign(new Error('Duplicate entry'), {
+      code: 'ER_DUP_ENTRY',
+    });
+    pool.query.mockResolvedValueOnce([{}]).mockRejectedValueOnce(duplicate);
+    const settings = { host: 'hibiscus-db', port: 3306, name: 'alice', user: 'alice' };
+
+    const error: unknown = await repo
+      .saveDatabase({ username: 'alice', settings, password: secret })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(DuplicateKeyError);
+    expect((error as DuplicateKeyError).cause).toBe(duplicate);
+  });
+
   it('lists the users with a database', async () => {
     pool.query.mockResolvedValue([[{ username: 'alice' }, { username: 'bob' }]]);
 
-    expect(await listAppUsersWithDatabase()).toEqual(['alice', 'bob']);
+    expect(await repo.listUsersWithDatabase()).toEqual(['alice', 'bob']);
   });
 
   it('maps the key columns, with the wrapped key only when stored', async () => {
@@ -154,15 +161,15 @@ describe('app-user repository', () => {
       ],
     ]);
 
-    expect(await getAppUserKey('alice')).toEqual({ mode: 'stored', check, wrapped: secret });
-    expect(await getAppUserKey('alice')).toEqual({ mode: 'manual', check, wrapped: null });
+    expect(await repo.getKey('alice')).toEqual({ mode: 'stored', check, wrapped: secret });
+    expect(await repo.getKey('alice')).toEqual({ mode: 'manual', check, wrapped: null });
   });
 
   it('answers null without a key or without a row', async () => {
     pool.query.mockResolvedValueOnce([[{ key_mode: null, key_check: null }]]);
 
-    expect(await getAppUserKey('alice')).toBeNull();
-    expect(await getAppUserKey('carol')).toBeNull();
+    expect(await repo.getKey('alice')).toBeNull();
+    expect(await repo.getKey('carol')).toBeNull();
   });
 
   const record: AppUserKeyRecord = { mode: 'memory', check: Buffer.alloc(32, 2), wrapped: null };
@@ -174,8 +181,8 @@ describe('app-user repository', () => {
       .mockResolvedValueOnce([{}])
       .mockResolvedValueOnce([{ affectedRows: 0 }]);
 
-    expect(await createAppUserKey('alice', record)).toBe(true);
-    expect(await createAppUserKey('alice', record)).toBe(false);
+    expect(await repo.createKey('alice', record)).toBe(true);
+    expect(await repo.createKey('alice', record)).toBe(false);
     expect(pool.query.mock.calls[0]![0]).toContain('INSERT IGNORE INTO hf_app_user');
     expect(pool.query.mock.calls[1]![0]).toContain('key_mode IS NULL');
     expect(pool.query.mock.calls[1]![1]).toEqual([
@@ -191,7 +198,7 @@ describe('app-user repository', () => {
   it('updates the key only while it holds the expected check value', async () => {
     const expectedCheck: Buffer = Buffer.alloc(32, 3);
     pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
-    await updateAppUserKey('alice', { expectedCheck, next: record });
+    await repo.updateKey('alice', { expectedCheck, next: record });
     expect(pool.query.mock.calls[0]![0]).toContain('key_check = ?');
     expect(pool.query.mock.calls[0]![1]).toEqual([
       'memory',
@@ -204,13 +211,13 @@ describe('app-user repository', () => {
     ]);
 
     pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]);
-    await expect(updateAppUserKey('alice', { expectedCheck, next: record })).rejects.toThrow(
+    await expect(repo.updateKey('alice', { expectedCheck, next: record })).rejects.toThrow(
       'changed',
     );
   });
 
   it('deletes the key columns', async () => {
-    await deleteAppUserKey('alice');
+    await repo.deleteKey('alice');
 
     const sql: string = pool.query.mock.calls[0]![0];
     expect(sql).toContain('key_mode = NULL');

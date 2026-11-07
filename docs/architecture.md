@@ -33,8 +33,36 @@
   descendant leaves' values (computed once per tree rebuild; throws outside tree mode). The pure
   `quickFilterMatches(row, columns, query)` (`data-table.defaults.ts`) reproduces the table's own
   quick filter for rows rendered elsewhere.
+- `packages/launcher` — local CLI (`@hibiscus-frontend/launcher`) for the release archives. Asks for
+  demo data or MariaDB, starts the backend and a localhost forward proxy in front of it and opens
+  the browser. See [Authentication](#authentication) and [Release packaging](#release-packaging).
 - `packages/shared` — types-only API contracts, imported by both packages (see
   [Shared contracts](#shared-contracts)). No runtime code and no build step.
+
+## Data sources
+
+`DATA_SOURCE` (`mariadb` | `demo`, required, deployment-scoped) picks the data access.
+`src/data-source.ts` `createDataSource(...)` builds the implementations; everything after it is
+shared.
+
+- **Repositories.** Each repository is an interface (`repositories/*.ts`), collected in
+  `Repositories` (`repositories/repositories.ts`). `createMysqlRepositories()` builds the MariaDB
+  versions. Routes and specs only see the interfaces; specs inject fakes through deps objects.
+- **Domain errors.** `repositories/repository-errors.ts` has `DuplicateKeyError`,
+  `MissingReferenceError` and `StillReferencedError`. Routes map these; they know no MySQL error
+  codes.
+- **`UserDatabases`** (`db/user-databases.ts`) gives a user's repositories. `UserPools` is the
+  MariaDB version, `DemoUserDatabases` the demo one.
+- **`SyncDatabase`** (`sync/sync-database.ts`) hides the sync's storage. `MysqlSyncDatabase` holds
+  `GET_LOCK` and the merge transaction; `DemoSyncDatabase` is the in-memory version.
+- **Demo mode.** `DB_*` and `ALLOWED_DB_HOSTS` are not used. The backend loads
+  `demo-data/demo-data.json.gz` (gzip JSON) into in-memory repositories (`packages/backend/src/demo/`).
+  Changes are lost on restart and bank sync is off. At startup every user in `ALLOWED_USERS` gets
+  a `stored` key, so the setup page is skipped. `/api/user/database` test and save answer `409`
+  `demo-mode`. The frontend shows a "Demo data" badge and a read-only database tab.
+- **Demo data file.** The backend build writes it from a deterministic story generator
+  (`packages/backend/src/demo/generator/`): the invented Tobias Testmann from 2014 to the build
+  date, about 25,000 transactions.
 
 ## Data model
 
@@ -347,6 +375,8 @@ named in the export's scope lines.
 
 ### Bank sync
 
+In demo mode (`DATA_SOURCE=demo`) bank sync is off.
+
 The backend fetches statements and balances from the bank itself, so the Hibiscus desktop client
 is no longer needed for that. Everything is declared once in `packages/shared/src/contracts/sync.d.ts`.
 
@@ -578,6 +608,13 @@ paper, all fixed in `auth-demo/Caddyfile` / `docker-compose.auth-demo.yml`:
   address) and oauth2-proxy's `--insecure-oidc-skip-issuer-verification` (the strict issuer
   match otherwise rejects the resulting mismatch between the two).
 
+The local launcher (`packages/launcher`) is such a proxy on one machine. It starts the backend on
+a random free port and listens on 127.0.0.1 only. It sets the identity header to `local@localhost`
+and the secret, overwriting any client values. A fresh random `INTERNAL_PROXY_SECRET` is made for
+every launch. It answers `403` when the `Host` is not `127.0.0.1` or `localhost` with its port, or
+when the `Origin` is foreign, and strips `Access-Control-Allow-*` from responses. The backend is
+unchanged and has no bypass.
+
 TLS termination is the proxy's responsibility; this app only ever speaks plain HTTP behind it.
 
 ## Internationalization
@@ -622,4 +659,17 @@ Table density tab and its demo table were removed; density is chosen in each pag
 See the root `README.md` for the full setup (including importing a data dump). In short:
 `pnpm start:local` (`scripts/start-local.sh`) starts the local MariaDB container and both
 packages together, with the auth contract satisfied automatically (see above) — no manual
-token setup needed.
+token setup needed. `.env.dev.local` must contain `DATA_SOURCE=mariadb`; `start-local.sh` adds it to
+files generated earlier.
+
+## Release packaging
+
+`scripts/package-release.sh <version>` needs `NODE_VERSION`; `TARGETS` optionally limits the
+targets (`linux-x64 linux-arm64 darwin-x64 darwin-arm64 win-x64`). For each target it builds
+`release/hibiscus-frontend-<version>-<target>.tar.gz` (`.zip` for Windows). It holds the official
+Node runtime (sha256-verified), `app/` (backend dist and production `node_modules`, the frontend
+as `public/`, `demo-data/`, the launcher dist), `start.sh` / `start.cmd` and `README.txt`.
+
+`.github/workflows/release.yml` runs on a semver tag push: lint, test, build, package, then
+`gh release create` with all archives. `workflow_dispatch` is a dry run that uploads workflow
+artifacts. `NODE_VERSION` is pinned in the workflow.

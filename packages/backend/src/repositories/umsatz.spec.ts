@@ -11,7 +11,10 @@ vi.mock('../db/pool', () => ({
 }));
 
 import { getPool } from '../db/pool';
-import { TRANSACTION_COLUMNS, assignCategory, listTransactions, updateTransaction } from './umsatz';
+import { MissingReferenceError } from './repository-errors';
+import { MysqlTransactionRepository, TRANSACTION_COLUMNS } from './umsatz';
+
+const repository: MysqlTransactionRepository = new MysqlTransactionRepository();
 
 interface FakePool {
   query: ReturnType<typeof vi.fn>;
@@ -32,7 +35,7 @@ describe('listTransactions', () => {
   it('selects every row unfiltered and unpaged, as value arrays', async () => {
     pool.query.mockResolvedValueOnce([[]]);
 
-    await listTransactions();
+    await repository.list();
 
     expect(pool.query).toHaveBeenCalledTimes(1);
     const [options] = pool.query.mock.calls[0] as [{ sql: string; rowsAsArray: boolean }];
@@ -45,7 +48,7 @@ describe('listTransactions', () => {
   it('selects exactly the response columns, in response order', async () => {
     pool.query.mockResolvedValueOnce([[]]);
 
-    const result = await listTransactions();
+    const result = await repository.list();
 
     const [options] = pool.query.mock.calls[0] as [{ sql: string }];
     expect(result.columns).toBe(TRANSACTION_COLUMNS);
@@ -59,7 +62,7 @@ describe('listTransactions', () => {
     ];
     pool.query.mockResolvedValueOnce([rows]);
 
-    const result = await listTransactions();
+    const result = await repository.list();
 
     expect(result.rows).toBe(rows);
   });
@@ -81,7 +84,7 @@ describe('updateTransaction', () => {
   it('writes only kommentar and umsatztyp_id, guarded by the expected values', async () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-    const result = await updateTransaction(42, request);
+    const result = await repository.update(42, request);
 
     expect(result).toBe('updated');
     expect(pool.query).toHaveBeenCalledTimes(1);
@@ -96,7 +99,7 @@ describe('updateTransaction', () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
     const same: TransactionEditableFields = { kommentar: 'x', umsatztyp_id: 1 };
-    const result = await updateTransaction(1, { expected: same, next: same });
+    const result = await repository.update(1, { expected: same, next: same });
 
     expect(result).toBe('updated');
   });
@@ -104,7 +107,7 @@ describe('updateTransaction', () => {
   it('reports not-found when nothing matched and the row does not exist', async () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]).mockResolvedValueOnce([[]]);
 
-    expect(await updateTransaction(42, request)).toBe('not-found');
+    expect(await repository.update(42, request)).toBe('not-found');
     const [sql, params] = pool.query.mock.calls[1] as [string, unknown[]];
     expect(sql).toBe('SELECT 1 FROM umsatz WHERE id = ?');
     expect(params).toEqual([42]);
@@ -113,13 +116,13 @@ describe('updateTransaction', () => {
   it('reports conflict when nothing matched but the row exists', async () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]).mockResolvedValueOnce([[{ 1: 1 }]]);
 
-    expect(await updateTransaction(42, request)).toBe('conflict');
+    expect(await repository.update(42, request)).toBe('conflict');
   });
 
   it('throws on an unexpected affected row count', async () => {
     pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]);
 
-    await expect(updateTransaction(42, request)).rejects.toThrow('affected 2 rows');
+    await expect(repository.update(42, request)).rejects.toThrow('affected 2 rows');
   });
 });
 
@@ -158,7 +161,7 @@ describe('assignCategory', () => {
   it('updates every row in id order, writing only umsatztyp_id, then commits', async () => {
     connection.query.mockResolvedValue([{ affectedRows: 1 }]);
 
-    expect(await assignCategory(request)).toEqual({ result: 'assigned' });
+    expect(await repository.assignCategory(request)).toEqual({ result: 'assigned' });
 
     expect(connection.query).toHaveBeenCalledTimes(2);
     const [sql, params] = connection.query.mock.calls[0] as [string, unknown[]];
@@ -175,7 +178,10 @@ describe('assignCategory', () => {
   it('rolls back and reports all conflicting ids when a row no longer matches', async () => {
     connection.query.mockResolvedValue([{ affectedRows: 0 }]);
 
-    expect(await assignCategory(request)).toEqual({ result: 'conflict', conflictIds: [4, 9] });
+    expect(await repository.assignCategory(request)).toEqual({
+      result: 'conflict',
+      conflictIds: [4, 9],
+    });
 
     expect(connection.rollback).toHaveBeenCalledTimes(1);
     expect(connection.commit).not.toHaveBeenCalled();
@@ -186,7 +192,7 @@ describe('assignCategory', () => {
     const error: Error = new Error('fk');
     connection.query.mockRejectedValue(error);
 
-    await expect(assignCategory(request)).rejects.toBe(error);
+    await expect(repository.assignCategory(request)).rejects.toBe(error);
 
     expect(connection.rollback).toHaveBeenCalledTimes(1);
     expect(connection.commit).not.toHaveBeenCalled();
@@ -196,7 +202,67 @@ describe('assignCategory', () => {
   it('throws on an unexpected affected row count', async () => {
     connection.query.mockResolvedValue([{ affectedRows: 2 }]);
 
-    await expect(assignCategory(request)).rejects.toThrow('affected 2 rows');
+    await expect(repository.assignCategory(request)).rejects.toThrow('affected 2 rows');
     expect(connection.rollback).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('foreign key translation', () => {
+  function driverError(): Error {
+    return Object.assign(new Error('fk_umsatz_umsatztyp'), { code: 'ER_NO_REFERENCED_ROW_2' });
+  }
+
+  it('turns an unknown category on update into MissingReferenceError(category)', async () => {
+    const cause: Error = driverError();
+    vi.mocked(getPool).mockReturnValue({
+      query: vi.fn().mockRejectedValueOnce(cause),
+    } as unknown as Pool);
+
+    const failure: unknown = await repository
+      .update(1, {
+        expected: { kommentar: null, umsatztyp_id: 3 },
+        next: { kommentar: null, umsatztyp_id: 99 },
+      })
+      .catch((e: unknown) => e);
+
+    expect(failure).toBeInstanceOf(MissingReferenceError);
+    expect((failure as MissingReferenceError).reference).toBe('category');
+    expect((failure as MissingReferenceError).cause).toBe(cause);
+  });
+
+  it('turns an unknown category on assign into MissingReferenceError(category) after rollback', async () => {
+    const connection = {
+      beginTransaction: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockRejectedValueOnce(driverError()),
+      commit: vi.fn(),
+      rollback: vi.fn().mockResolvedValue(undefined),
+      release: vi.fn(),
+    };
+    vi.mocked(getPool).mockReturnValue({
+      getConnection: vi.fn().mockResolvedValue(connection),
+    } as unknown as Pool);
+
+    await expect(
+      repository.assignCategory({
+        items: [{ id: 1, expected: { kommentar: null, umsatztyp_id: null } }],
+        umsatztyp_id: 99,
+      }),
+    ).rejects.toBeInstanceOf(MissingReferenceError);
+    expect(connection.rollback).toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalled();
+  });
+
+  it('leaves other driver errors untouched', async () => {
+    const boom: Error = new Error('boom');
+    vi.mocked(getPool).mockReturnValue({
+      query: vi.fn().mockRejectedValueOnce(boom),
+    } as unknown as Pool);
+
+    await expect(
+      repository.update(1, {
+        expected: { kommentar: null, umsatztyp_id: 3 },
+        next: { kommentar: null, umsatztyp_id: 4 },
+      }),
+    ).rejects.toBe(boom);
   });
 });

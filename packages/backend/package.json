@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node dist/demo/generator/main.js",
     "start:local": "ts-node-dev --respawn --transpile-only src/server.ts",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src",

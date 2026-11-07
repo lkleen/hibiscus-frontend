@@ -9,17 +9,8 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/user';
 import { currentUser } from '../db/pool';
 import { whileReconfiguring } from '../db/user-activity';
-import {
-  createAppUserKey,
-  deleteAppUserKey,
-  getAppUserKey,
-  updateAppUserKey,
-} from '../repositories/app-user';
-import type { AppUserKeyRecord } from '../repositories/app-user';
-import {
-  clearBankConnectionPins,
-  reencryptBankConnectionPins,
-} from '../repositories/bank-connection';
+import type { AppUserKeyRecord, AppUserRepository } from '../repositories/app-user';
+import type { BankConnectionRepository } from '../repositories/bank-connection';
 import { CredentialCrypto } from './credential-crypto';
 import type { EncryptedSecret } from './credential-crypto';
 
@@ -157,6 +148,10 @@ export interface UserKeysDeps {
   /** The server key instance; wraps the key in `stored` mode. */
   readonly serverCrypto: CredentialCrypto;
   readonly store: UserKeyStore;
+  /** The key records in the app database. */
+  readonly appUsers: Pick<AppUserRepository, 'getKey' | 'createKey' | 'updateKey' | 'deleteKey'>;
+  /** The PINs in the current user's database, re-encrypted or cleared with the key. */
+  readonly bankConnections: Pick<BankConnectionRepository, 'reencryptPins' | 'clearPins'>;
 }
 
 /**
@@ -173,7 +168,7 @@ export class UserKeys {
   constructor(private readonly deps: UserKeysDeps) {}
 
   async status(username: string): Promise<UserKeyStatus> {
-    const record: AppUserKeyRecord | null = await getAppUserKey(username);
+    const record: AppUserKeyRecord | null = await this.deps.appUsers.getKey(username);
     if (record === null) return { configured: false, mode: null, state: 'not-applicable' };
     if (record.mode !== 'memory') {
       return { configured: true, mode: record.mode, state: 'not-applicable' };
@@ -208,7 +203,7 @@ export class UserKeys {
 
   /** Whether a scheduled sync can get the key without the user. */
   async unattendedState(username: string): Promise<UnattendedKeyState> {
-    const record: AppUserKeyRecord | null = await getAppUserKey(username);
+    const record: AppUserKeyRecord | null = await this.deps.appUsers.getKey(username);
     if (record === null) return 'not-configured';
     if (record.mode === 'manual') return 'manual';
     if (record.mode === 'memory' && !this.deps.store.has(username)) return 'locked';
@@ -226,7 +221,7 @@ export class UserKeys {
       const key: Buffer =
         request.key === undefined ? generateUserKey() : decodeUserKey(request.key);
       try {
-        const created: boolean = await createAppUserKey(username, {
+        const created: boolean = await this.deps.appUsers.createKey(username, {
           mode: request.mode,
           check: userKeyCheck(key),
           wrapped: request.mode === 'stored' ? this.wrap(key) : null,
@@ -255,7 +250,7 @@ export class UserKeys {
       try {
         if (request.mode === 'stored' && entered === null) throw new KeyRequiredError();
         if (request.mode === 'memory') memoryKey = this.keyAtHand(username, record, entered);
-        await updateAppUserKey(username, {
+        await this.deps.appUsers.updateKey(username, {
           expectedCheck: record.check,
           next: {
             mode: request.mode,
@@ -330,8 +325,8 @@ export class UserKeys {
   reset(username: string): Promise<void> {
     return this.serialized(username, () =>
       whileReconfiguring(username, async (): Promise<void> => {
-        if (currentUser().database !== null) await clearBankConnectionPins();
-        await deleteAppUserKey(username);
+        if (currentUser().database !== null) await this.deps.bankConnections.clearPins();
+        await this.deps.appUsers.deleteKey(username);
         this.deps.store.clear(username);
       }),
     );
@@ -353,14 +348,14 @@ export class UserKeys {
   ): Promise<void> {
     const { record, next, oldKey, newKey } = change;
     const writeKey = (): Promise<void> =>
-      updateAppUserKey(username, { expectedCheck: record.check, next });
+      this.deps.appUsers.updateKey(username, { expectedCheck: record.check, next });
     if (currentUser().database === null) {
       await writeKey();
       return;
     }
     let keyWritten = false;
     try {
-      await reencryptBankConnectionPins({
+      await this.deps.bankConnections.reencryptPins({
         reencrypt: (pin: EncryptedSecret): EncryptedSecret =>
           encryptPin(newKey, decryptPin(oldKey, pin)),
         beforeCommit: async (): Promise<void> => {
@@ -371,7 +366,7 @@ export class UserKeys {
     } catch (error: unknown) {
       if (!keyWritten) throw error;
       try {
-        await updateAppUserKey(username, { expectedCheck: next.check, next: record });
+        await this.deps.appUsers.updateKey(username, { expectedCheck: next.check, next: record });
       } catch (restoreError: unknown) {
         throw new AggregateError(
           [error, restoreError],
@@ -395,7 +390,7 @@ export class UserKeys {
   }
 
   private async requireKey(username: string): Promise<AppUserKeyRecord> {
-    const record: AppUserKeyRecord | null = await getAppUserKey(username);
+    const record: AppUserKeyRecord | null = await this.deps.appUsers.getKey(username);
     if (record === null) throw new KeyNotConfiguredError();
     return record;
   }

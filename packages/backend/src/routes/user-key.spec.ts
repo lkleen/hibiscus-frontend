@@ -4,35 +4,15 @@ import type { Express, NextFunction, Request, Response } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserKeyStatus } from '@hibiscus-frontend/shared/contracts/user';
 
-vi.mock('../repositories/app-user', () => ({
-  createAppUserKey: vi.fn(),
-  deleteAppUserKey: vi.fn(),
-  getAppUserKey: vi.fn(),
-  updateAppUserKey: vi.fn(),
-}));
-vi.mock('../repositories/bank-connection', () => ({
-  clearBankConnectionPins: vi.fn(),
-  reencryptBankConnectionPins: vi.fn(),
-}));
-
 import { currentUser, runWithUserContext } from '../db/pool';
 import type { UserDatabaseHandle } from '../db/pool';
 import { markUserBusy, unmarkUserBusy } from '../db/user-activity';
-import type { UserDatabaseLookup } from '../db/user-pools';
-import {
-  createAppUserKey,
-  deleteAppUserKey,
-  getAppUserKey,
-  updateAppUserKey,
-} from '../repositories/app-user';
+import type { UserDatabaseLookup } from '../db/user-databases';
 import type { AppUserKeyRecord, AppUserKeyUpdate } from '../repositories/app-user';
-import {
-  clearBankConnectionPins,
-  reencryptBankConnectionPins,
-} from '../repositories/bank-connection';
 import type { PinReencryption } from '../repositories/bank-connection';
 import { CredentialCrypto } from '../sync/credential-crypto';
 import type { EncryptedSecret } from '../sync/credential-crypto';
+import type { UserKeysDeps } from '../sync/user-keys';
 import {
   decodeUserKey,
   decryptPin,
@@ -56,6 +36,14 @@ const database: UserDatabaseHandle = {} as UserDatabaseHandle;
 const serverCrypto: CredentialCrypto = new CredentialCrypto(randomBytes(32));
 const acquire = vi.fn<(user: string) => Promise<UserDatabaseLookup>>();
 const loggedErrors: unknown[] = [];
+const appUsers: { [K in keyof UserKeysDeps['appUsers']]: ReturnType<typeof vi.fn> } = {
+  getKey: vi.fn(),
+  createKey: vi.fn(),
+  updateKey: vi.fn(),
+  deleteKey: vi.fn(),
+};
+const bankConnections: { [K in keyof UserKeysDeps['bankConnections']]: ReturnType<typeof vi.fn> } =
+  { reencryptPins: vi.fn(), clearPins: vi.fn() };
 let keyRow: AppUserKeyRecord | null;
 let pin: EncryptedSecret | null;
 /** The database the PIN work ran with, as the context showed it. */
@@ -97,11 +85,15 @@ beforeAll(
         runWithUserContext({ user: USER, database: null }, next);
       });
       app.use('/user/key', (req: Request, res: Response, next: NextFunction) =>
-        createUserKeyRouter({ keys: new UserKeys({ serverCrypto, store }), pools: { acquire } })(
-          req,
-          res,
-          next,
-        ),
+        createUserKeyRouter({
+          keys: new UserKeys({
+            serverCrypto,
+            store,
+            appUsers: appUsers as unknown as UserKeysDeps['appUsers'],
+            bankConnections: bankConnections as unknown as UserKeysDeps['bankConnections'],
+          }),
+          databases: { acquire },
+        })(req, res, next),
       );
       // eslint-disable-next-line @typescript-eslint/max-params, @typescript-eslint/no-unused-vars
       app.use((err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
@@ -134,33 +126,29 @@ beforeEach(() => {
   pinContext = undefined;
   store = new UserKeyStore();
   acquire.mockResolvedValue({ status: 'configured', database });
-  vi.mocked(getAppUserKey).mockImplementation(async () => keyRow);
-  vi.mocked(createAppUserKey).mockImplementation(
-    async (_user: string, record: AppUserKeyRecord) => {
-      if (keyRow !== null) return false;
-      keyRow = record;
-      return true;
-    },
-  );
-  vi.mocked(updateAppUserKey).mockImplementation(
-    async (_user: string, update: AppUserKeyUpdate) => {
-      if (keyRow === null || !keyRow.check.equals(update.expectedCheck)) {
-        throw new Error('The key changed');
-      }
-      keyRow = update.next;
-    },
-  );
-  vi.mocked(deleteAppUserKey).mockImplementation(async () => {
+  appUsers.getKey.mockImplementation(async () => keyRow);
+  appUsers.createKey.mockImplementation(async (_user: string, record: AppUserKeyRecord) => {
+    if (keyRow !== null) return false;
+    keyRow = record;
+    return true;
+  });
+  appUsers.updateKey.mockImplementation(async (_user: string, update: AppUserKeyUpdate) => {
+    if (keyRow === null || !keyRow.check.equals(update.expectedCheck)) {
+      throw new Error('The key changed');
+    }
+    keyRow = update.next;
+  });
+  appUsers.deleteKey.mockImplementation(async () => {
     keyRow = null;
   });
-  vi.mocked(reencryptBankConnectionPins).mockImplementation(async (params: PinReencryption) => {
+  bankConnections.reencryptPins.mockImplementation(async (params: PinReencryption) => {
     pinContext = currentUser().database;
     const next: EncryptedSecret | null = pin === null ? null : params.reencrypt(pin);
     await params.beforeCommit();
     pin = next;
     return next === null ? 0 : 1;
   });
-  vi.mocked(clearBankConnectionPins).mockImplementation(async () => {
+  bankConnections.clearPins.mockImplementation(async () => {
     pinContext = currentUser().database;
     pin = null;
     return 1;
@@ -288,7 +276,7 @@ describe('POST /user/key/change', () => {
 
     expect(response).toMatchObject({ status: 400, body: { error: 'key-invalid' } });
     expect(response.text).not.toContain(wrongText);
-    expect(reencryptBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.reencryptPins).not.toHaveBeenCalled();
     expect(pin).toBe(before);
   });
 
@@ -302,7 +290,7 @@ describe('POST /user/key/change', () => {
     } finally {
       unmarkUserBusy(USER);
     }
-    expect(reencryptBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.reencryptPins).not.toHaveBeenCalled();
   });
 
   it('answers 400 host-not-allowed when the database left the allowlist', async () => {
@@ -321,7 +309,7 @@ describe('POST /user/key/change', () => {
     const oldText: string = keyText();
     const newText: string = keyText();
     configure('manual', oldText);
-    vi.mocked(reencryptBankConnectionPins).mockRejectedValueOnce(new Error('db down'));
+    bankConnections.reencryptPins.mockRejectedValueOnce(new Error('db down'));
 
     const response: HttpResponse = await send('POST', '/user/key/change', {
       oldKey: oldText,
@@ -356,7 +344,7 @@ describe('POST /user/key/reset', () => {
     acquire.mockResolvedValueOnce({ status: 'unconfigured' });
 
     expect((await send('POST', '/user/key/reset')).status).toBe(204);
-    expect(clearBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.clearPins).not.toHaveBeenCalled();
     expect(keyRow).toBeNull();
   });
 
@@ -369,7 +357,7 @@ describe('POST /user/key/reset', () => {
     } finally {
       unmarkUserBusy(USER);
     }
-    expect(clearBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.clearPins).not.toHaveBeenCalled();
     expect(keyRow).not.toBeNull();
   });
 });

@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type {
   BankConnection,
   BankConnectionAccount,
@@ -13,34 +11,23 @@ import type {
   SyncTrigger,
   TanChallenge,
 } from '@hibiscus-frontend/shared/contracts/sync';
-import type { UserDatabaseSettings } from '@hibiscus-frontend/shared/contracts/user';
-import { currentDatabase, currentUser, getPool } from '../db/pool';
+import { currentUser } from '../db/pool';
 import { markUserBusy, unmarkUserBusy } from '../db/user-activity';
-import {
-  deleteBankConnection,
-  getBankConnectionRecord,
-  listBankConnections,
-  listKontoMatchKeys,
-  recordBankConnectionOutcome,
-  saveBankingInformation,
-  setBankConnectionPaused,
+import type {
+  BankConnectionRecord,
+  BankConnectionRepository,
+  KontoMatchKey,
 } from '../repositories/bank-connection';
-import type { BankConnectionRecord, KontoMatchKey } from '../repositories/bank-connection';
-import {
-  createSyncRun,
-  finishSyncRun,
-  listLatestSyncRuns,
-  setSyncRunWaiting,
-} from '../repositories/sync-run';
+import type { SyncRunRepository } from '../repositories/sync-run';
 import type { FetchedBooking, MergeResult, StatementBalance } from './fetched-booking';
 import { describeStoredBankingInformation } from './fints-session';
 import type { FintsDiscovery, FintsSession, FintsSessionFactory } from './fints-session';
 import { TanTimeoutError } from './pending-tan-registry';
 import type { PendingChallenge, PendingTanRegistry, TanPrompt } from './pending-tan-registry';
-import { mergeStatement } from './umsatz-merge';
+import type { SyncDatabase, SyncLock } from './sync-database';
 import { decryptPin, encodeUserKey } from './user-keys';
 
-/** A run or discovery of the connection is already in progress (`GET_LOCK` not acquired). */
+/** A run or discovery of the connection is already in progress (its lock is held). */
 export class ConflictError extends Error {
   constructor(connectionId: number) {
     super(`Bank connection ${connectionId} already has a run in progress`);
@@ -77,6 +64,19 @@ export class SyncRunError extends Error {
 export interface SyncServiceDeps {
   readonly sessions: FintsSessionFactory;
   readonly registry: PendingTanRegistry;
+  /** The per-connection lock and the statement merge; the service holds no SQL. */
+  readonly syncDatabase: SyncDatabase;
+  readonly bankConnections: Pick<
+    BankConnectionRepository,
+    | 'list'
+    | 'getRecord'
+    | 'delete'
+    | 'saveBankingInformation'
+    | 'recordOutcome'
+    | 'setPaused'
+    | 'listKontoMatchKeys'
+  >;
+  readonly syncRuns: SyncRunRepository;
 }
 
 /**
@@ -107,14 +107,6 @@ export interface StartedRun {
 
 type RunTrigger = Exclude<SyncTrigger, 'discover'>;
 
-interface LockRow extends RowDataPacket {
-  acquired: number | null;
-}
-
-interface LatestDateRow extends RowDataPacket {
-  latest: string | null;
-}
-
 /** The decrypted PIN, once the run has it; kept only to mask it in errors. */
 interface RunSecrets {
   pin: string | null;
@@ -125,8 +117,8 @@ interface BegunRun {
   readonly user: string;
   readonly runId: number;
   readonly record: BankConnectionRecord;
-  /** The pooled connection that holds `GET_LOCK` for the whole run; merges run on it too. */
-  readonly lock: PoolConnection;
+  /** The connection's lock, held for the whole run; merges run under it too. */
+  readonly lock: SyncLock;
   /** The user's key, zeroed when the run ends. */
   readonly key: Buffer;
 }
@@ -143,20 +135,6 @@ interface RunContext extends BegunRun {
 const OVERLAP_DAYS = 10;
 /** Days fetched for an account without any booked row yet. */
 const INITIAL_DAYS = 90;
-
-/**
- * `GET_LOCK` names are server-wide, so the name carries the current user's database: two users on
- * the same MariaDB with connection id 1 must not block each other. `hf_sync_` + 16 hex + `_` + id
- * stays well under MariaDB's 64-character limit.
- */
-function lockName(connectionId: number): string {
-  const settings: UserDatabaseSettings = currentDatabase().settings;
-  const database: string = createHash('sha1')
-    .update(`${settings.host}:${settings.port}/${settings.name}`)
-    .digest('hex')
-    .slice(0, 16);
-  return `hf_sync_${database}_${connectionId}`;
-}
 
 function localDay(date: Date, offsetDays: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offsetDays);
@@ -208,9 +186,8 @@ function matchKonto(
 }
 
 /**
- * Runs bank syncs and discoveries. One at a time per connection: each holds the MariaDB lock
- * (`lockName`) on a dedicated pooled connection for its whole duration, a second attempt gets a
- * `ConflictError` at once. Each run marks its user busy for its whole duration (`UserBusyError`
+ * Runs bank syncs and discoveries. One at a time per connection: each holds the connection's lock
+ * (`SyncDatabase.lock`) for its whole duration, a second attempt gets a `ConflictError` at once. Each run marks its user busy for its whole duration (`UserBusyError`
  * while the user's database or key is being reconfigured) and decrypts the PIN with the user's
  * key, which it zeroes when it ends.
  */
@@ -273,7 +250,8 @@ export class SyncService {
 
   /** The last discovery's result from the stored bank parameter data, `null` if there is none. */
   async describeDiscovery(connectionId: number): Promise<DiscoverDone | null> {
-    const record: BankConnectionRecord | null = await getBankConnectionRecord(connectionId);
+    const record: BankConnectionRecord | null =
+      await this.deps.bankConnections.getRecord(connectionId);
     if (record === null) throw new NotFoundError(`Bank connection ${connectionId}`);
     if (record.bankingInformation === null) return null;
     const discovery: FintsDiscovery = describeStoredBankingInformation(
@@ -285,8 +263,8 @@ export class SyncService {
 
   /** Every connection's sync state, ordered by name. */
   async status(): Promise<SyncConnectionStatus[]> {
-    const connections: BankConnection[] = await listBankConnections();
-    const runs: Map<number, SyncRun> = await listLatestSyncRuns();
+    const connections: BankConnection[] = await this.deps.bankConnections.list();
+    const runs: Map<number, SyncRun> = await this.deps.syncRuns.listLatest();
     return connections.map((connection: BankConnection): SyncConnectionStatus => ({
       id: connection.id,
       name: connection.name,
@@ -306,11 +284,11 @@ export class SyncService {
    * run holds the lock.
    */
   async deleteConnection(connectionId: number): Promise<boolean> {
-    const lock: PoolConnection = await this.lock(connectionId);
+    const lock: SyncLock = await this.lock(connectionId);
     try {
-      return await deleteBankConnection(connectionId);
+      return await this.deps.bankConnections.delete(connectionId);
     } finally {
-      await this.unlock(lock, connectionId);
+      await lock.release();
     }
   }
 
@@ -328,15 +306,16 @@ export class SyncService {
     let key: Buffer | null = null;
     try {
       key = await source();
-      const lock: PoolConnection = await this.lock(connectionId);
+      const lock: SyncLock = await this.lock(connectionId);
       try {
-        const record: BankConnectionRecord | null = await getBankConnectionRecord(connectionId);
+        const record: BankConnectionRecord | null =
+          await this.deps.bankConnections.getRecord(connectionId);
         if (record === null) throw new NotFoundError(`Bank connection ${connectionId}`);
-        if (trigger === 'manual') await setBankConnectionPaused(connectionId, null);
-        const runId: number = await createSyncRun(connectionId, trigger);
+        if (trigger === 'manual') await this.deps.bankConnections.setPaused(connectionId, null);
+        const runId: number = await this.deps.syncRuns.create(connectionId, trigger);
         return { user, runId, record, lock, key };
       } catch (error: unknown) {
-        await this.unlock(lock, connectionId);
+        await lock.release();
         throw error;
       }
     } catch (error: unknown) {
@@ -350,37 +329,17 @@ export class SyncService {
   private async end(run: BegunRun): Promise<void> {
     run.key.fill(0);
     try {
-      await this.unlock(run.lock, run.record.id);
+      await run.lock.release();
     } finally {
       unmarkUserBusy(run.user);
     }
   }
 
-  private async lock(connectionId: number): Promise<PoolConnection> {
-    const connection: PoolConnection = await getPool().getConnection();
-    try {
-      const [rows] = await connection.query<LockRow[]>('SELECT GET_LOCK(?, 0) AS acquired', [
-        lockName(connectionId),
-      ]);
-      const acquired: number | null | undefined = rows[0]?.acquired;
-      if (acquired === 0) throw new ConflictError(connectionId);
-      if (acquired !== 1) throw new Error(`GET_LOCK for connection ${connectionId} failed`);
-      return connection;
-    } catch (error: unknown) {
-      connection.release();
-      throw error;
-    }
-  }
-
-  /** Releases the lock; a connection whose release failed is destroyed, which frees the lock. */
-  private async unlock(connection: PoolConnection, connectionId: number): Promise<void> {
-    try {
-      await connection.query('SELECT RELEASE_LOCK(?)', [lockName(connectionId)]);
-    } catch (error: unknown) {
-      connection.destroy();
-      throw error;
-    }
-    connection.release();
+  /** Takes the connection's lock; `ConflictError` while another run holds it. */
+  private async lock(connectionId: number): Promise<SyncLock> {
+    const lock: SyncLock | null = await this.deps.syncDatabase.lock(connectionId);
+    if (lock === null) throw new ConflictError(connectionId);
+    return lock;
   }
 
   private async executeSync(context: RunContext): Promise<void> {
@@ -395,8 +354,11 @@ export class SyncService {
         totals.inserted += result.inserted;
         totals.deleted += result.deleted;
       }
-      await finishSyncRun(context.runId, { status: 'success', error: null, ...totals });
-      await recordBankConnectionOutcome(context.record.id, { status: 'success', error: null });
+      await this.deps.syncRuns.finish(context.runId, { status: 'success', error: null, ...totals });
+      await this.deps.bankConnections.recordOutcome(context.record.id, {
+        status: 'success',
+        error: null,
+      });
     });
   }
 
@@ -405,7 +367,7 @@ export class SyncService {
     return this.recordFailures(context, totals, async (): Promise<DiscoverDone> => {
       const session: FintsSession = await this.openSession(context);
       const done: DiscoverDone = await this.toDiscoverDone(await session.discover());
-      await finishSyncRun(context.runId, { status: 'success', error: null, ...totals });
+      await this.deps.syncRuns.finish(context.runId, { status: 'success', error: null, ...totals });
       return done;
     });
   }
@@ -427,12 +389,15 @@ export class SyncService {
       const status: SyncRunStatus = error instanceof TanTimeoutError ? 'tan_expired' : 'error';
       const message: string = redact(messageOf(error), secrets);
       try {
-        await finishSyncRun(context.runId, { status, error: message, ...totals });
+        await this.deps.syncRuns.finish(context.runId, { status, error: message, ...totals });
         if (context.trigger !== 'discover') {
-          await recordBankConnectionOutcome(context.record.id, { status, error: message });
+          await this.deps.bankConnections.recordOutcome(context.record.id, {
+            status,
+            error: message,
+          });
         }
         if (status === 'tan_expired' && context.trigger === 'scheduled') {
-          await setBankConnectionPaused(context.record.id, 'tan');
+          await this.deps.bankConnections.setPaused(context.record.id, 'tan');
         }
       } catch (recordError: unknown) {
         throw new SyncRunError(
@@ -473,7 +438,7 @@ export class SyncService {
       },
       prompt: this.trackedPrompt(context),
       saveBankingInformation: (json: string): Promise<void> =>
-        saveBankingInformation(record.id, json),
+        this.deps.bankConnections.saveBankingInformation(record.id, json),
     });
   }
 
@@ -493,12 +458,12 @@ export class SyncService {
         context.onChallenge?.(challenge);
         if (!waiting) {
           waiting = true;
-          await setSyncRunWaiting(context.runId, true);
+          await this.deps.syncRuns.setWaiting(context.runId, true);
         }
         const tan: string | undefined = await answer;
         if (challenge.kind !== 'decoupled') {
           waiting = false;
-          await setSyncRunWaiting(context.runId, false);
+          await this.deps.syncRuns.setWaiting(context.runId, false);
         }
         return tan;
       },
@@ -506,7 +471,7 @@ export class SyncService {
         await inner.settled();
         if (waiting) {
           waiting = false;
-          await setSyncRunWaiting(context.runId, false);
+          await this.deps.syncRuns.setWaiting(context.runId, false);
         }
       },
     };
@@ -525,36 +490,23 @@ export class SyncService {
       to: today,
     });
     const balance: StatementBalance | null = await session.fetchBalance(account.accountIdentifier);
-    await context.lock.beginTransaction();
-    try {
-      const result: MergeResult = await mergeStatement(context.lock, {
-        kontoId: account.kontoId,
-        bookings,
-        balance,
-      });
-      await context.lock.commit();
-      return result;
-    } catch (error: unknown) {
-      await context.lock.rollback();
-      throw error;
-    }
+    return this.deps.syncDatabase.mergeInTransaction(context.lock, {
+      kontoId: account.kontoId,
+      bookings,
+      balance,
+    });
   }
 
   /** The newest booked row's date minus the overlap, or the initial window without rows. */
-  private async fetchStart(connection: PoolConnection, kontoId: number): Promise<Date> {
-    const [rows] = await connection.query<LatestDateRow[]>(
-      `SELECT DATE_FORMAT(MAX(datum), '%Y-%m-%d') AS latest FROM umsatz
-       WHERE konto_id = ? AND (COALESCE(flags, 0) & 2) = 0`,
-      [kontoId],
-    );
-    const latest: string | null = rows[0]?.latest ?? null;
+  private async fetchStart(lock: SyncLock, kontoId: number): Promise<Date> {
+    const latest: string | null = await this.deps.syncDatabase.latestBookedDate(lock, kontoId);
     if (latest === null) return localDay(new Date(), -INITIAL_DAYS);
     const [year, month, day] = latest.split('-').map(Number) as [number, number, number];
     return new Date(year, month - 1, day - OVERLAP_DAYS);
   }
 
   private async toDiscoverDone(discovery: FintsDiscovery): Promise<DiscoverDone> {
-    const kontos: KontoMatchKey[] = await listKontoMatchKeys();
+    const kontos: KontoMatchKey[] = await this.deps.bankConnections.listKontoMatchKeys();
     return {
       status: 'done',
       tanMethods: discovery.tanMethods,

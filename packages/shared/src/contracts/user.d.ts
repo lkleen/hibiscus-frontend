@@ -19,6 +19,12 @@ export interface Me {
   readonly user: string;
   readonly database: 'configured' | 'unconfigured';
   readonly key: 'configured' | 'unconfigured';
+  /**
+   * Where the data comes from, as the server was started (`DATA_SOURCE`): `mariadb` — the user's
+   * own Hibiscus database; `demo` — the bundled demo data in memory, changes are lost on restart
+   * and the database settings cannot be changed.
+   */
+  readonly dataSource: 'mariadb' | 'demo';
 }
 
 /** Where the user's Hibiscus database is. `host` must be on the operator's `ALLOWED_DB_HOSTS`. */
@@ -136,6 +142,8 @@ export interface UserKeyChangeRequest {
  * - `key-required` (`400`) — this action needs the key in the request (`manual`, or `memory` while
  *   locked).
  * - `key-invalid` (`400`) — the key does not match.
+ * - `demo-mode` (`409`) — the server runs on the demo data; the database settings cannot be tested
+ *   or changed.
  * `POST /api/user/key/lock` and `POST /api/user/key/reset` (deletes all stored PINs) answer `204`.
  */
 export interface UserError {
@@ -147,5 +155,6 @@ export interface UserError {
     | 'key-not-configured'
     | 'key-configured'
     | 'key-required'
-    | 'key-invalid';
+    | 'key-invalid'
+    | 'demo-mode';
 }

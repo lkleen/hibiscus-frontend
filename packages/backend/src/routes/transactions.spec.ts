@@ -6,13 +6,16 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/transactions';
 import { createTransactionsRouter } from './transactions';
 
-vi.mock('../repositories/umsatz', () => ({
-  listTransactions: vi.fn(),
-  updateTransaction: vi.fn(),
-  assignCategory: vi.fn(),
-}));
+import { MissingReferenceError } from '../repositories/repository-errors';
+import type { TransactionRepository } from '../repositories/umsatz';
 
-import { assignCategory, updateTransaction } from '../repositories/umsatz';
+const updateTransaction = vi.fn<TransactionRepository['update']>();
+const assignCategory = vi.fn<TransactionRepository['assignCategory']>();
+const transactions: TransactionRepository = {
+  list: vi.fn<TransactionRepository['list']>(),
+  update: updateTransaction,
+  assignCategory,
+};
 
 interface PatchResponse {
   status: number;
@@ -45,7 +48,7 @@ beforeAll(
     new Promise<void>((resolve) => {
       const app: Express = express();
       app.use(express.json({ limit: '5mb' }));
-      app.use('/transactions', createTransactionsRouter());
+      app.use('/transactions', createTransactionsRouter({ transactions }));
       /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
       app.use(
         (
@@ -135,9 +138,7 @@ describe('transactions router PATCH /:id', () => {
   });
 
   it('returns 400 for an unknown category (foreign key violation)', async () => {
-    vi.mocked(updateTransaction).mockRejectedValueOnce(
-      Object.assign(new Error('fk'), { code: 'ER_NO_REFERENCED_ROW_2' }),
-    );
+    vi.mocked(updateTransaction).mockRejectedValueOnce(new MissingReferenceError('category'));
 
     expect((await patch('/transactions/42', validBody)).status).toBe(400);
   });
@@ -197,9 +198,7 @@ describe('transactions router POST /assign-category', () => {
   });
 
   it('returns 400 for an unknown category (foreign key violation)', async () => {
-    vi.mocked(assignCategory).mockRejectedValueOnce(
-      Object.assign(new Error('fk'), { code: 'ER_NO_REFERENCED_ROW_2' }),
-    );
+    vi.mocked(assignCategory).mockRejectedValueOnce(new MissingReferenceError('category'));
 
     expect((await post(assignBody)).status).toBe(400);
   });

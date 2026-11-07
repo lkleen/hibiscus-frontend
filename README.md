@@ -30,6 +30,31 @@ database or its accounts; it needs one that already holds them.
 See [docs/architecture.md](docs/architecture.md) for the data model, API, auth contract and the
 [multi-user model](docs/architecture.md#multi-user) in full.
 
+## Try it locally (no Docker)
+
+For trying the app out on one machine, download the archive for your OS from the latest
+[GitHub release](../../releases), unpack it and start it:
+
+```bash
+./start.sh      # macOS and Linux
+start.cmd       # Windows
+```
+
+The launcher asks whether to use demo data or an existing MariaDB (Hibiscus) database, starts the
+app and opens http://127.0.0.1:8080 in your browser. Press <kbd>Ctrl+C</kbd> to stop it. Demo
+changes are not saved; they are gone after a restart. Flags: `--demo`, `--mariadb`, `--port <n>`,
+`--no-open`, `--help`.
+
+On macOS, remove the quarantine flag once if Gatekeeper blocks the start:
+`xattr -dr com.apple.quarantine <folder>`.
+
+The demo data is the invented story of Tobias Testmann from 2014 until today (about 25,000
+transactions): flats, jobs, a car, a marriage, a house and a son. Every person and amount is made
+up.
+
+This is for one machine only, not for serving other people. Use the [Docker](#docker) setup for
+that.
+
 ## Setting up hibiscus-frontend
 
 One deployment serves several people. Everyone signs in through your identity provider, connects
@@ -53,10 +78,13 @@ value stops the app at startup):
 | `AUTH_HEADER_USER`                                        | Name of the header your proxy fills with the signed-in username, e.g. `X-Forwarded-User`. This username is the only identity the app knows; it stores one small record per username.                                                                                                           |
 | `ALLOWED_USERS`                                           | Comma-separated usernames (or emails) that may use the app, exactly as the proxy asserts them. Anyone else gets `403`.                                                                                                                                                                         |
 | `INTERNAL_PROXY_SECRET`                                   | Pre-shared secret your proxy must send in the fixed header `X-Internal-Auth-Secret`. Use a long random value: `openssl rand -hex 32`.                                                                                                                                                          |
+| `DATA_SOURCE`                                             | Where the data lives: `mariadb` (production: the app database and the users' Hibiscus databases) or `demo` (built-in sample data in memory, no database, bank sync off; for evaluation). Without it the app does not start.                                                                    |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | The **app database**. It holds one table, `hf_app_user` (each user's database settings and key state), created at startup. It is not a Hibiscus database; the users' Hibiscus databases are configured in the web UI. A dedicated database and user are recommended.                           |
 | `ALLOWED_DB_HOSTS`                                        | Comma-separated database hosts users may connect to, as `host` or `host:port` (e.g. `hibiscus-db,db.internal:3307`). A host without a port allows every port. Users pick from this list in the UI; the check runs when they save and before every connection.                                  |
 | `BANK_CREDENTIALS_KEY`                                    | The **server key**: base64 of exactly 32 bytes, generate it with `openssl rand -base64 32`. It encrypts the users' database passwords and, for users who chose "Store on the server", their keys. Keep a copy somewhere safe: losing it means every user enters their database password again. |
 | `PORT`                                                    | Port the app listens on inside its container, e.g. `3000`.                                                                                                                                                                                                                                     |
+
+`DB_*` and `ALLOWED_DB_HOSTS` are only used with `DATA_SOURCE=mariadb`.
 
 `.env.example` lists all of them with local-development values.
 
@@ -69,6 +97,7 @@ services:
     image: hibiscus-frontend
     restart: unless-stopped
     environment:
+      DATA_SOURCE: mariadb
       DB_HOST: hibiscus-db
       DB_PORT: 3306
       DB_NAME: hibiscus_app
@@ -266,6 +295,20 @@ docker build -t hibiscus-frontend .
 The image serves both the API and the built frontend on a single port (`3000`) and expects to
 sit behind a forward-auth proxy on an internal Docker network — see below for a runnable
 reference, and `.env.example` for the full list of required configuration.
+
+### Releases
+
+Pushing a semver tag runs `.github/workflows/release.yml`: lint, test and build, then one archive
+per platform is attached to a GitHub release. Running the workflow by hand is a dry run that
+uploads the archives as workflow artifacts. To build an archive locally:
+
+```bash
+NODE_VERSION=<x> TARGETS=<target> bash scripts/package-release.sh <version>
+```
+
+`TARGETS` is optional and takes a subset of `linux-x64 linux-arm64 darwin-x64 darwin-arm64
+win-x64`. The result is in `release/`. See
+[Release packaging](docs/architecture.md#release-packaging).
 
 ## Trying the auth contract with a real IdP
 

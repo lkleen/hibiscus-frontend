@@ -8,15 +8,10 @@ vi.mock('./pool', async (importOriginal: () => Promise<typeof import('./pool')>)
   ...(await importOriginal()),
   createUserDatabasePool: vi.fn(),
 }));
-vi.mock('../repositories/app-user', () => ({
-  getAppUserDatabase: vi.fn(),
-  listAppUsersWithDatabase: vi.fn(),
-}));
 vi.mock('../repositories/user-setting', () => ({ ensureUserSettingTable: vi.fn() }));
 vi.mock('../repositories/tax-tag', () => ({ ensureTaxTagTables: vi.fn() }));
 vi.mock('../sync/sync-tables', () => ({ ensureSyncTables: vi.fn() }));
 
-import { getAppUserDatabase } from '../repositories/app-user';
 import type { AppUserDatabaseRecord } from '../repositories/app-user';
 import { ensureTaxTagTables } from '../repositories/tax-tag';
 import { ensureUserSettingTable } from '../repositories/user-setting';
@@ -25,7 +20,7 @@ import { ensureSyncTables } from '../sync/sync-tables';
 import { createUserDatabasePool, currentUser, getPool } from './pool';
 import type { DatabaseTarget } from './pool';
 import { UserPools } from './user-pools';
-import type { UserDatabaseLookup } from './user-pools';
+import type { UserDatabaseLookup } from './user-databases';
 
 interface FakePool {
   readonly id: number;
@@ -36,6 +31,7 @@ const crypto: CredentialCrypto = new CredentialCrypto(randomBytes(32));
 let records: Map<string, AppUserDatabaseRecord>;
 let created: FakePool[];
 let pools: UserPools;
+let appUsers: { getDatabase: Mock; listUsersWithDatabase: Mock };
 
 function settingsOf(user: string, host = 'hibiscus-db'): UserDatabaseSettings {
   return { host, port: 3306, name: user, user };
@@ -52,6 +48,7 @@ function store(user: string, params: { version: number; host?: string }): void {
 async function poolOf(user: string): Promise<Pool> {
   const lookup: UserDatabaseLookup = await pools.acquire(user);
   if (lookup.status !== 'configured') throw new Error(`${user} is ${lookup.status}`);
+  if (lookup.database.pool === null) throw new Error(`${user} has no pool`);
   return lookup.database.pool;
 }
 
@@ -59,15 +56,20 @@ beforeEach(() => {
   vi.resetAllMocks();
   records = new Map<string, AppUserDatabaseRecord>();
   created = [];
-  vi.mocked(getAppUserDatabase).mockImplementation(
-    async (user: string) => records.get(user) ?? null,
-  );
+  appUsers = {
+    getDatabase: vi.fn(async (user: string) => records.get(user) ?? null),
+    listUsersWithDatabase: vi.fn(),
+  };
   vi.mocked(createUserDatabasePool).mockImplementation((): Pool => {
     const pool: FakePool = { id: created.length + 1, end: vi.fn().mockResolvedValue(undefined) };
     created.push(pool);
     return pool as unknown as Pool;
   });
-  pools = new UserPools({ crypto, allowedHosts: [{ host: 'hibiscus-db', port: null }] });
+  pools = new UserPools({
+    crypto,
+    allowedHosts: [{ host: 'hibiscus-db', port: null }],
+    appUsers,
+  });
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
@@ -196,5 +198,13 @@ describe('UserPools.acquire', () => {
 
     expect(await pools.databaseStatus('alice')).toBe('configured');
     expect(createUserDatabasePool).not.toHaveBeenCalled();
+  });
+});
+
+describe('UserPools.listUsersWithDatabase', () => {
+  it('lists the users with a database from the app users', async () => {
+    appUsers.listUsersWithDatabase.mockResolvedValueOnce(['alice', 'bob']);
+
+    expect(await pools.listUsersWithDatabase()).toEqual(['alice', 'bob']);
   });
 });

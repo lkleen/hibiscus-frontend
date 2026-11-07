@@ -61,6 +61,13 @@ if ! grep -q '^ALLOWED_DB_HOSTS=' "$ENV_FILE"; then
   printf '\nALLOWED_DB_HOSTS=%s\n' "$DEV_DB_HOST" >>"$ENV_FILE"
 fi
 
+# An env file generated before the demo data source lacks DATA_SOURCE, which has no default:
+# local dev runs on the dev MariaDB.
+if ! grep -q '^DATA_SOURCE=' "$ENV_FILE"; then
+  echo "Adding DATA_SOURCE=mariadb to $ENV_FILE."
+  printf '\nDATA_SOURCE=mariadb\n' >>"$ENV_FILE"
+fi
+
 export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 echo "Starting local database..."

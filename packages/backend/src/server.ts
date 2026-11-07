@@ -5,11 +5,16 @@ import type { NextFunction, Request, Response } from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig } from './config/config';
-import { initAppPool, testDatabaseConnection } from './db/pool';
-import { UserPools } from './db/user-pools';
+import type { Config } from './config/config';
+import { createDataSource, createDemoUserKeys } from './data-source';
+import type { DataSourceParts } from './data-source';
+import { demoDataFilePath } from './demo/demo-dataset';
 import { createAuthMiddleware } from './middleware/auth';
 import { createUserDbMiddleware } from './middleware/user-db';
-import { ensureAppUserTable } from './repositories/app-user';
+import type { UserDatabases } from './db/user-databases';
+import type { AppUserRepository } from './repositories/app-user';
+import type { BankConnectionRepository } from './repositories/bank-connection';
+import type { Repositories } from './repositories/repositories';
 import { createAccountsRouter } from './routes/accounts';
 import { createBankConnectionsRouter } from './routes/bank-connections';
 import { createCategoriesRouter } from './routes/categories';
@@ -29,21 +34,34 @@ import { SyncService } from './sync/sync-service';
 import { UserKeys, UserKeyStore } from './sync/user-keys';
 
 async function main(): Promise<void> {
-  const config = loadConfig();
-  initAppPool(config);
-  // The app database holds only `hf_app_user`; each user's `hf_*` tables are created on their
-  // own database when its pool is first used (see `db/user-pools.ts`).
-  await ensureAppUserTable();
-
+  const config: Config = loadConfig();
   // The server key: encrypts the users' database passwords and, in `stored` mode, wraps their
   // keys. The bank PINs are encrypted with each user's own key (`sync/user-keys.ts`).
   const crypto: CredentialCrypto = new CredentialCrypto(config.BANK_CREDENTIALS_KEY);
-  const pools: UserPools = new UserPools({ crypto, allowedHosts: config.ALLOWED_DB_HOSTS });
-  const keys: UserKeys = new UserKeys({ serverCrypto: crypto, store: new UserKeyStore() });
+  // The only place the data sources differ; everything below is the same for both.
+  const dataSource: DataSourceParts = await createDataSource({
+    config,
+    crypto,
+    demoDataPath: demoDataFilePath(),
+  });
+  const repositories: Repositories = dataSource.repositories;
+  const databases: UserDatabases = dataSource.databases;
+  const appUsers: AppUserRepository = repositories.appUsers;
+  const bankConnections: BankConnectionRepository = repositories.bankConnections;
+  const keys: UserKeys = new UserKeys({
+    serverCrypto: crypto,
+    store: new UserKeyStore(),
+    appUsers,
+    bankConnections,
+  });
+  if (config.DATA_SOURCE === 'demo') await createDemoUserKeys(keys, config.ALLOWED_USERS);
   const registry: PendingTanRegistry = new PendingTanRegistry(TAN_TIMEOUT_MS);
   const syncService: SyncService = new SyncService({
-    sessions: createLibFintsSessionFactory(),
+    sessions: createLibFintsSessionFactory(config.DATA_SOURCE),
     registry,
+    syncDatabase: dataSource.syncDatabase,
+    bankConnections,
+    syncRuns: repositories.syncRuns,
   });
 
   const app = express();
@@ -66,25 +84,30 @@ async function main(): Promise<void> {
   const api = express.Router();
   api.use(requireAuth);
   // Every route below runs in the user's context, on the user's own database.
-  api.use(createUserDbMiddleware(pools));
-  api.use('/me', createMeRouter(pools));
+  api.use(createUserDbMiddleware(databases));
+  api.use('/me', createMeRouter({ databases, appUsers, dataSource: config.DATA_SOURCE }));
   api.use(
     '/user/database',
     createUserDatabaseRouter({
-      pools,
+      databases,
+      appUsers,
       crypto,
-      allowedHosts: config.ALLOWED_DB_HOSTS,
-      test: testDatabaseConnection,
+      allowedHosts: dataSource.allowedDbHosts,
+      test: dataSource.testDatabase,
+      dataSource: config.DATA_SOURCE,
     }),
   );
-  api.use('/user/key', createUserKeyRouter({ keys, pools }));
-  api.use('/accounts', createAccountsRouter());
-  api.use('/transactions', createTransactionsRouter());
-  api.use('/categories', createCategoriesRouter());
-  api.use('/settings', createSettingsRouter());
-  api.use('/tax-sections', createTaxSectionsRouter());
-  api.use('/tax-tags', createTaxTagsRouter());
-  api.use('/bank-connections', createBankConnectionsRouter({ service: syncService, keys }));
+  api.use('/user/key', createUserKeyRouter({ keys, databases }));
+  api.use('/accounts', createAccountsRouter(repositories));
+  api.use('/transactions', createTransactionsRouter(repositories));
+  api.use('/categories', createCategoriesRouter(repositories));
+  api.use('/settings', createSettingsRouter(repositories));
+  api.use('/tax-sections', createTaxSectionsRouter(repositories));
+  api.use('/tax-tags', createTaxTagsRouter(repositories));
+  api.use(
+    '/bank-connections',
+    createBankConnectionsRouter({ service: syncService, keys, bankConnections }),
+  );
   api.use('/sync', createSyncRouter({ service: syncService, registry, keys }));
   app.use('/api', api);
 
@@ -122,11 +145,13 @@ async function main(): Promise<void> {
   });
 
   const scheduler: SyncScheduler = new SyncScheduler(
-    { service: syncService, users: pools, keys },
+    { service: syncService, users: databases, keys, bankConnections },
     SCHEDULER_TICK_MS,
   );
-  if (isBankSyncEnabled()) {
+  if (isBankSyncEnabled(config.DATA_SOURCE)) {
     scheduler.start();
+  } else if (config.DATA_SOURCE === 'demo') {
+    console.log('[hibiscus-backend] Bank sync off: no bank is contacted with the demo data');
   } else {
     console.log('[hibiscus-backend] Bank sync off: no FinTS product registration yet');
   }

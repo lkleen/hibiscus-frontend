@@ -3,33 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserDatabaseHandle } from '../db/pool';
 
 vi.mock('../db/pool', () => ({ currentUser: vi.fn() }));
-vi.mock('../repositories/app-user', () => ({
-  createAppUserKey: vi.fn(),
-  deleteAppUserKey: vi.fn(),
-  getAppUserKey: vi.fn(),
-  updateAppUserKey: vi.fn(),
-}));
-vi.mock('../repositories/bank-connection', () => ({
-  clearBankConnectionPins: vi.fn(),
-  reencryptBankConnectionPins: vi.fn(),
-}));
 
 import { currentUser } from '../db/pool';
 import { isReconfiguring, markUserBusy, unmarkUserBusy, UserBusyError } from '../db/user-activity';
-import {
-  createAppUserKey,
-  deleteAppUserKey,
-  getAppUserKey,
-  updateAppUserKey,
-} from '../repositories/app-user';
 import type { AppUserKeyRecord, AppUserKeyUpdate } from '../repositories/app-user';
-import {
-  clearBankConnectionPins,
-  reencryptBankConnectionPins,
-} from '../repositories/bank-connection';
 import type { PinReencryption } from '../repositories/bank-connection';
 import { CredentialCrypto } from './credential-crypto';
 import type { EncryptedSecret } from './credential-crypto';
+import type { UserKeysDeps } from './user-keys';
 import {
   decodeUserKey,
   decryptPin,
@@ -57,6 +38,8 @@ let pins: Map<number, EncryptedSecret>;
 let commitFails: boolean;
 let store: UserKeyStore;
 let keys: UserKeys;
+let appUsers: { [K in keyof UserKeysDeps['appUsers']]: ReturnType<typeof vi.fn> };
+let bankConnections: { [K in keyof UserKeysDeps['bankConnections']]: ReturnType<typeof vi.fn> };
 
 function newKeyText(): string {
   return randomBytes(32).toString('base64');
@@ -94,29 +77,32 @@ beforeEach(() => {
   pins = new Map<number, EncryptedSecret>();
   commitFails = false;
   store = new UserKeyStore();
-  keys = new UserKeys({ serverCrypto, store });
+  appUsers = { getKey: vi.fn(), createKey: vi.fn(), updateKey: vi.fn(), deleteKey: vi.fn() };
+  bankConnections = { reencryptPins: vi.fn(), clearPins: vi.fn() };
+  keys = new UserKeys({
+    serverCrypto,
+    store,
+    appUsers: appUsers as unknown as UserKeysDeps['appUsers'],
+    bankConnections: bankConnections as unknown as UserKeysDeps['bankConnections'],
+  });
   withDatabase(true);
-  vi.mocked(getAppUserKey).mockImplementation(async () => keyRow);
-  vi.mocked(createAppUserKey).mockImplementation(
-    async (_user: string, record: AppUserKeyRecord) => {
-      if (keyRow !== null) return false;
-      keyRow = record;
-      return true;
-    },
-  );
-  vi.mocked(updateAppUserKey).mockImplementation(
-    async (_user: string, update: AppUserKeyUpdate) => {
-      if (keyRow === null || !keyRow.check.equals(update.expectedCheck)) {
-        throw new Error('The key changed');
-      }
-      keyRow = update.next;
-    },
-  );
-  vi.mocked(deleteAppUserKey).mockImplementation(async () => {
+  appUsers.getKey.mockImplementation(async () => keyRow);
+  appUsers.createKey.mockImplementation(async (_user: string, record: AppUserKeyRecord) => {
+    if (keyRow !== null) return false;
+    keyRow = record;
+    return true;
+  });
+  appUsers.updateKey.mockImplementation(async (_user: string, update: AppUserKeyUpdate) => {
+    if (keyRow === null || !keyRow.check.equals(update.expectedCheck)) {
+      throw new Error('The key changed');
+    }
+    keyRow = update.next;
+  });
+  appUsers.deleteKey.mockImplementation(async () => {
     keyRow = null;
   });
   // A transaction: the new PINs only replace the old ones when everything succeeded.
-  vi.mocked(reencryptBankConnectionPins).mockImplementation(async (params: PinReencryption) => {
+  bankConnections.reencryptPins.mockImplementation(async (params: PinReencryption) => {
     const next: Map<number, EncryptedSecret> = new Map<number, EncryptedSecret>();
     for (const [id, pin] of pins) next.set(id, params.reencrypt(pin));
     await params.beforeCommit();
@@ -124,7 +110,7 @@ beforeEach(() => {
     pins = next;
     return next.size;
   });
-  vi.mocked(clearBankConnectionPins).mockImplementation(async () => {
+  bankConnections.clearPins.mockImplementation(async () => {
     const count: number = pins.size;
     pins.clear();
     return count;
@@ -377,7 +363,7 @@ describe('UserKeys.change', () => {
       KeyInvalidError,
     );
 
-    expect(reencryptBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.reencryptPins).not.toHaveBeenCalled();
     expect(pins).toBe(before);
     expect(keyRow).toBe(row);
   });
@@ -421,11 +407,11 @@ describe('UserKeys.change', () => {
     } finally {
       unmarkUserBusy(USER);
     }
-    expect(reencryptBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.reencryptPins).not.toHaveBeenCalled();
     expect(pins.size).toBe(2);
 
     let syncRefused = false;
-    vi.mocked(reencryptBankConnectionPins).mockImplementationOnce(async () => {
+    bankConnections.reencryptPins.mockImplementationOnce(async () => {
       syncRefused = (() => {
         try {
           markUserBusy(USER);
@@ -448,7 +434,7 @@ describe('UserKeys.change', () => {
 
     const newText: string = await keys.change(USER, { oldKey: oldText });
 
-    expect(reencryptBankConnectionPins).not.toHaveBeenCalled();
+    expect(bankConnections.reencryptPins).not.toHaveBeenCalled();
     expect(matchesKeyCheck(decodeUserKey(newText), keyRow!.check)).toBe(true);
   });
 });

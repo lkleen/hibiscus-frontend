@@ -1,2 +1,6 @@
-<p class="database-tab__hint">{{ i18n.t('database.tabHint') }}</p>
-<app-database-form />
+@if (me.isDemo()) {
+  <p class="app-form__notice" role="status">{{ i18n.t('database.demoNotice') }}</p>
+} @else {
+  <p class="database-tab__hint">{{ i18n.t('database.tabHint') }}</p>
+  <app-database-form />
+}

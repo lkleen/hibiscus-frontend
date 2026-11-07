@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { UserError } from '@hibiscus-frontend/shared/contracts/user';
 import { runWithUserContext } from '../db/pool';
-import type { UserDatabaseLookup, UserPools } from '../db/user-pools';
+import type { UserDatabaseLookup, UserDatabases } from '../db/user-databases';
 
 /** `/api/me` and `/api/user/*` work without a database: they are how a user sets one up. */
 function runsWithoutDatabase(path: string): boolean {
@@ -17,7 +17,7 @@ function runsWithoutDatabase(path: string): boolean {
  * Data routes of a user without a database answer `409 database-not-configured`; a database
  * whose host left `ALLOWED_DB_HOSTS` answers `400 host-not-allowed`.
  */
-export function createUserDbMiddleware(pools: Pick<UserPools, 'acquire'>): RequestHandler {
+export function createUserDbMiddleware(databases: Pick<UserDatabases, 'acquire'>): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
     const user: unknown = res.locals['user'];
     if (typeof user !== 'string') {
@@ -27,7 +27,7 @@ export function createUserDbMiddleware(pools: Pick<UserPools, 'acquire'>): Reque
       runWithUserContext({ user, database: null }, next);
       return;
     }
-    pools
+    databases
       .acquire(user)
       .then((lookup: UserDatabaseLookup): void => {
         if (lookup.status === 'unconfigured') {

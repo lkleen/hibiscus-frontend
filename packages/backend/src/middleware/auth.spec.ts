@@ -8,6 +8,7 @@ const VALID_SECRET = 'super-secret-proxy-value';
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
+    DATA_SOURCE: 'mariadb',
     DB_HOST: 'localhost',
     DB_PORT: 3306,
     DB_NAME: 'hibiscus',

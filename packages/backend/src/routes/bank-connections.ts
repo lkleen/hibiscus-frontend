@@ -13,14 +13,11 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/sync';
 import { currentUser } from '../db/pool';
 import { whileUserBusy } from '../db/user-activity';
-import {
-  createBankConnection,
-  getBankConnection,
-  listBankConnections,
-  replaceBankConnectionAccounts,
-  updateBankConnection,
+import type {
+  BankConnectionRepository,
+  BankConnectionWriteResult,
 } from '../repositories/bank-connection';
-import type { BankConnectionWriteResult } from '../repositories/bank-connection';
+import { MissingReferenceError } from '../repositories/repository-errors';
 import type { EncryptedSecret } from '../sync/credential-crypto';
 import { ConflictError, NotFoundError } from '../sync/sync-service';
 import type { StartedRun, SyncService } from '../sync/sync-service';
@@ -28,8 +25,6 @@ import { encryptPin } from '../sync/user-keys';
 import type { UserKeys } from '../sync/user-keys';
 import { respondToUserKeyError, WithUserKeySchema } from './user-key';
 import { respondWithValidationError } from './zod-validation';
-
-const NO_REFERENCED_ROW_CODE = 'ER_NO_REFERENCED_ROW_2';
 
 const IdSchema = z.coerce.number().int().positive();
 
@@ -135,6 +130,10 @@ export interface BankConnectionsRouterDeps {
     'deleteConnection' | 'discover' | 'describeDiscovery' | 'startSync'
   >;
   readonly keys: Pick<UserKeys, 'resolve'>;
+  readonly bankConnections: Pick<
+    BankConnectionRepository,
+    'list' | 'get' | 'create' | 'update' | 'replaceAccounts'
+  >;
 }
 
 /**
@@ -168,7 +167,8 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
 
   /** GET /: every connection ordered by name, with its account mapping. */
   router.get('/', (_req: Request, res: Response, next: NextFunction): void => {
-    listBankConnections()
+    deps.bankConnections
+      .list()
       .then((connections: BankConnection[]) => res.json(connections))
       .catch(next);
   });
@@ -186,9 +186,9 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
     const { pin, key, keepUnlocked, ...settings } = bodyResult.data;
     const typedSettings: BankConnectionSettings = settings;
     writeWithPin({ pin, key, keepUnlocked }, (encrypted: EncryptedSecret) =>
-      createBankConnection({ settings: typedSettings, pin: encrypted }),
+      deps.bankConnections.create({ settings: typedSettings, pin: encrypted }),
     )
-      .then((id: number) => getBankConnection(id))
+      .then((id: number) => deps.bankConnections.get(id))
       .then((created: BankConnection | null) => {
         if (created === null) throw new Error('The created bank connection is gone');
         res.status(201).json(created);
@@ -213,9 +213,9 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
     const { expected, next: nextSettings, pin, key, keepUnlocked } = bodyResult.data;
     const update: Promise<BankConnectionWriteResult> =
       pin === undefined
-        ? updateBankConnection({ id, expected, next: nextSettings })
+        ? deps.bankConnections.update({ id, expected, next: nextSettings })
         : writeWithPin({ pin, key, keepUnlocked }, (encrypted: EncryptedSecret) =>
-            updateBankConnection({ id, expected, next: nextSettings, pin: encrypted }),
+            deps.bankConnections.update({ id, expected, next: nextSettings, pin: encrypted }),
           );
     update
       .then((result: BankConnectionWriteResult) => {
@@ -296,7 +296,8 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
       respondWithValidationError(res, bodyResult.error);
       return;
     }
-    replaceBankConnectionAccounts(id, bodyResult.data.accounts)
+    deps.bankConnections
+      .replaceAccounts(id, bodyResult.data.accounts)
       .then((result: 'updated' | 'not-found') => {
         if (result === 'updated') {
           res.status(204).send();
@@ -305,7 +306,7 @@ export function createBankConnectionsRouter(deps: BankConnectionsRouterDeps): Ro
         sendError(res, 404, 'not-found');
       })
       .catch((error: unknown) => {
-        if ((error as { code?: unknown }).code === NO_REFERENCED_ROW_CODE) {
+        if (error instanceof MissingReferenceError && error.reference === 'konto') {
           res.status(400).json({ error: 'Unknown kontoId' });
           return;
         }

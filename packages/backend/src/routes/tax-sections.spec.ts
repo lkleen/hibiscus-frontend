@@ -6,19 +6,19 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/tax-tags';
 import { createTaxSectionsRouter } from './tax-sections';
 
-vi.mock('../repositories/tax-section', () => ({
-  listTaxSections: vi.fn(),
-  createTaxSection: vi.fn(),
-  updateTaxSection: vi.fn(),
-  deleteTaxSection: vi.fn(),
-}));
+import { DuplicateKeyError, StillReferencedError } from '../repositories/repository-errors';
+import type { TaxSectionRepository } from '../repositories/tax-section';
 
-import {
-  createTaxSection,
-  deleteTaxSection,
-  listTaxSections,
-  updateTaxSection,
-} from '../repositories/tax-section';
+const listTaxSections = vi.fn<TaxSectionRepository['list']>();
+const createTaxSection = vi.fn<TaxSectionRepository['create']>();
+const updateTaxSection = vi.fn<TaxSectionRepository['update']>();
+const deleteTaxSection = vi.fn<TaxSectionRepository['delete']>();
+const taxSections: TaxSectionRepository = {
+  list: listTaxSections,
+  create: createTaxSection,
+  update: updateTaxSection,
+  delete: deleteTaxSection,
+};
 
 interface HttpResponse {
   status: number;
@@ -55,16 +55,12 @@ async function send(method: string, path: string, body?: unknown): Promise<HttpR
   return { status: response.status, body: responseBody };
 }
 
-function dbError(code: string): Error {
-  return Object.assign(new Error(code), { code });
-}
-
 beforeAll(
   () =>
     new Promise<void>((resolve) => {
       const app: Express = express();
       app.use(express.json());
-      app.use('/tax-sections', createTaxSectionsRouter());
+      app.use('/tax-sections', createTaxSectionsRouter({ taxSections }));
       /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
       app.use(
         (
@@ -145,7 +141,7 @@ describe('tax-sections router POST /', () => {
   });
 
   it('returns 409 duplicate for a taken code', async () => {
-    vi.mocked(createTaxSection).mockRejectedValueOnce(dbError('ER_DUP_ENTRY'));
+    vi.mocked(createTaxSection).mockRejectedValueOnce(new DuplicateKeyError('Tax section'));
 
     const response: HttpResponse = await send('POST', '/tax-sections', section);
 
@@ -199,7 +195,7 @@ describe('tax-sections router PUT /:code', () => {
   });
 
   it('returns 409 duplicate when the new code is taken', async () => {
-    vi.mocked(updateTaxSection).mockRejectedValueOnce(dbError('ER_DUP_ENTRY'));
+    vi.mocked(updateTaxSection).mockRejectedValueOnce(new DuplicateKeyError('Tax section'));
 
     const response: HttpResponse = await send('PUT', '/tax-sections/St-WK', updateBody);
 
@@ -223,7 +219,7 @@ describe('tax-sections router DELETE /:code', () => {
   });
 
   it('returns 409 in-use when a category still has the tag', async () => {
-    vi.mocked(deleteTaxSection).mockRejectedValueOnce(dbError('ER_ROW_IS_REFERENCED_2'));
+    vi.mocked(deleteTaxSection).mockRejectedValueOnce(new StillReferencedError('Tax section'));
 
     const response: HttpResponse = await send('DELETE', '/tax-sections/St-WK');
 

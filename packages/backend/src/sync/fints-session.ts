@@ -15,6 +15,7 @@ import type {
   TanChallengeKind,
   TanMethodOption,
 } from '@hibiscus-frontend/shared/contracts/sync';
+import type { DataSource } from '../config/config';
 import type { FetchedBooking, StatementBalance } from './fetched-booking';
 import type { ChallengeImage, PendingChallenge, TanPrompt } from './pending-tan-registry';
 
@@ -36,9 +37,12 @@ export const FINTS_PRODUCT_VERSION = '2.0';
  */
 export const FINTS_PRODUCT_ID: string | null = null;
 
-/** Whether bank sync can run: only with a registered FinTS product ID. */
-export function isBankSyncEnabled(): boolean {
-  return FINTS_PRODUCT_ID !== null;
+/**
+ * Whether bank sync can run: only on a real Hibiscus database (never with the demo data) and
+ * only with a registered FinTS product ID.
+ */
+export function isBankSyncEnabled(dataSource: DataSource): boolean {
+  return dataSource !== 'demo' && FINTS_PRODUCT_ID !== null;
 }
 
 /** Status poll delay for a decoupled TAN when the bank states none. */
@@ -543,8 +547,9 @@ function describeTanMethodsOnly(config: FinTSConfig, tanMethod: number | null): 
   );
 }
 
-function createConfig(lib: LibFints, login: FintsLogin): FinTSConfig {
-  const productId: string = requireProductId();
+function createConfig(lib: LibFints, params: FintsConfigParams): FinTSConfig {
+  const { login } = params;
+  const productId: string = requireProductId(params.dataSource);
   const customerId: string | undefined = login.customerId ?? undefined;
   if (login.bankingInformation === null) {
     return lib.FinTSConfig.forFirstTimeUse(
@@ -573,8 +578,14 @@ function createConfig(lib: LibFints, login: FintsLogin): FinTSConfig {
   );
 }
 
-/** The registered product ID; throws while bank sync is off (see `FINTS_PRODUCT_ID`). */
-function requireProductId(): string {
+/**
+ * The registered product ID; throws while bank sync is off (see `isBankSyncEnabled`), so no
+ * dialog with the demo data and none without a registration reaches a bank.
+ */
+function requireProductId(dataSource: DataSource): string {
+  if (dataSource === 'demo') {
+    throw new Error('Bank sync is off with the demo data: no bank is ever contacted.');
+  }
   if (FINTS_PRODUCT_ID === null) {
     throw new Error(
       'Bank sync is off until hibiscus-frontend has its own FinTS product registration.',
@@ -583,13 +594,24 @@ function requireProductId(): string {
   return FINTS_PRODUCT_ID;
 }
 
-/** The production factory: real lib-fints dialogs with the registered product ID. */
-export function createLibFintsSessionFactory(): FintsSessionFactory {
+/** What `createConfig` builds the lib-fints configuration from. */
+interface FintsConfigParams {
+  readonly login: FintsLogin;
+  readonly dataSource: DataSource;
+}
+
+/**
+ * The production factory: real lib-fints dialogs with the registered product ID. Every dialog
+ * throws while bank sync is off for `dataSource` (see `isBankSyncEnabled`).
+ */
+export function createLibFintsSessionFactory(dataSource: DataSource): FintsSessionFactory {
   return async (params: FintsSessionParams): Promise<FintsSession> => {
     // lib-fints is ESM-only and this backend is CommonJS: load it with a dynamic import.
     const lib: LibFints = await import('lib-fints');
     installMt940Hooks(lib.Mt940Parser);
-    const client: FinTSClient = new lib.FinTSClient(createConfig(lib, params.login));
+    const client: FinTSClient = new lib.FinTSClient(
+      createConfig(lib, { login: params.login, dataSource }),
+    );
     return new LibFintsSession(client, params);
   };
 }

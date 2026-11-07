@@ -17,21 +17,22 @@ deliberately **not** `@` imports — an `@` import is expanded into every sessio
 Skills containing a `.copied-from-claude-config` file are copies from `../claude-config/skills/`. Never
 edit them here — edit the skill in `claude-config` and re-run `pnpm run copy-skills` there.
 
-| Task type                                              | Load                                                                                 |
-|----------------------------------------------------------|---------------------------------------------------------------------------------------|
-| Project structure, data model, package boundaries       | `docs/architecture.md`                                                                 |
-| Backend routes, repositories, the DB client              | `docs/architecture.md`                                                                 |
-| Forward-auth contract, `ALLOWED_USERS`, the demo compose | `docs/architecture.md#authentication`                                                  |
-| Build commands, local dev, environment setup             | `web-toolchain` skill                                                    |
-| Layout, flexbox, responsive design, CSS conventions       | `frontend` skill                                                         |
-| Component architecture, signals, DI, i18n                 | `frontend-angular` skill                                                 |
-| CDK overlays, a11y, virtual scroll, drag-drop              | `frontend-angular-cdk` skill                                            |
-| Tokens, theming, dark mode                                | `frontend-theming` skill                                                 |
-| Creating or modifying a theme file                        | `frontend-theming` skill + `frontend-theming-custom` skill  |
-| Transactions table — columns, `/api/transactions`, grid sort/filter/group | `transactions-table` skill (`.claude/skills/transactions-table`)                        |
-| Any table or grid work (`p-table`, `p-treetable`)         | `angular-primeng-table` skill (`.claude/skills/angular-primeng-table`)                 |
-| Planning / plan mode (writing or updating a plan)          | `plan-mode` skill                                                        |
-| Executing an approved plan                                 | `plan-execution` skill (`.claude/skills/plan-execution`)                              |
+| Task type                                                                 | Load                                                                   |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Project structure, data model, package boundaries                         | `docs/architecture.md`                                                 |
+| Data sources, demo data, launcher, release packaging                      | `docs/architecture.md`                                                 |
+| Backend routes, repositories, the DB client                               | `docs/architecture.md`                                                 |
+| Forward-auth contract, `ALLOWED_USERS`, the demo compose                  | `docs/architecture.md#authentication`                                  |
+| Build commands, local dev, environment setup                              | `web-toolchain` skill                                                  |
+| Layout, flexbox, responsive design, CSS conventions                       | `frontend` skill                                                       |
+| Component architecture, signals, DI, i18n                                 | `frontend-angular` skill                                               |
+| CDK overlays, a11y, virtual scroll, drag-drop                             | `frontend-angular-cdk` skill                                           |
+| Tokens, theming, dark mode                                                | `frontend-theming` skill                                               |
+| Creating or modifying a theme file                                        | `frontend-theming` skill + `frontend-theming-custom` skill             |
+| Transactions table — columns, `/api/transactions`, grid sort/filter/group | `transactions-table` skill (`.claude/skills/transactions-table`)       |
+| Any table or grid work (`p-table`, `p-treetable`)                         | `angular-primeng-table` skill (`.claude/skills/angular-primeng-table`) |
+| Planning / plan mode (writing or updating a plan)                         | `plan-mode` skill                                                      |
+| Executing an approved plan                                                | `plan-execution` skill (`.claude/skills/plan-execution`)               |
 
 **No Angular Material.** This project uses `@angular/cdk` primitives plus the custom token/component
 system described in the `frontend-theming`/`frontend-theming-custom` skills — do not add

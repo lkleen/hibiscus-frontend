@@ -22,6 +22,18 @@ export interface SyncRunResult {
   readonly deleted: number;
 }
 
+/** The sync run log (`hf_sync_run`); runs are removed with their connection. */
+export interface SyncRunRepository {
+  /** Inserts a `running` run started now and returns its id. */
+  create(connectionId: number, trigger: SyncTrigger): Promise<number>;
+  /** Switches an unfinished run between `running` and `tan_required`. */
+  setWaiting(id: number, waiting: boolean): Promise<void>;
+  /** Finishes a run now with its outcome. */
+  finish(id: number, result: SyncRunResult): Promise<void>;
+  /** The newest run of every connection that has one, keyed by connection id. */
+  listLatest(): Promise<Map<number, SyncRun>>;
+}
+
 function toSyncRun(row: SyncRunRow): SyncRun {
   return {
     id: row.id,
@@ -35,43 +47,46 @@ function toSyncRun(row: SyncRunRow): SyncRun {
   };
 }
 
-/** Inserts a `running` run started now and returns its id. */
-export async function createSyncRun(connectionId: number, trigger: SyncTrigger): Promise<number> {
-  const [result] = await getPool().query<ResultSetHeader>(
-    `INSERT INTO hf_sync_run (connection_id, trigger_type, started_at, status)
-     VALUES (?, ?, NOW(), 'running')`,
-    [connectionId, trigger],
-  );
-  return result.insertId;
-}
+/** The sync run log (`hf_sync_run`) in the current user's database (`getPool()`). */
+export class MysqlSyncRunRepository implements SyncRunRepository {
+  /** Inserts a `running` run started now and returns its id. */
+  async create(connectionId: number, trigger: SyncTrigger): Promise<number> {
+    const [result] = await getPool().query<ResultSetHeader>(
+      `INSERT INTO hf_sync_run (connection_id, trigger_type, started_at, status)
+       VALUES (?, ?, NOW(), 'running')`,
+      [connectionId, trigger],
+    );
+    return result.insertId;
+  }
 
-/** Switches an unfinished run between `running` and `tan_required`. */
-export async function setSyncRunWaiting(id: number, waiting: boolean): Promise<void> {
-  await getPool().query('UPDATE hf_sync_run SET status = ? WHERE id = ? AND finished_at IS NULL', [
-    waiting ? 'tan_required' : 'running',
-    id,
-  ]);
-}
+  /** Switches an unfinished run between `running` and `tan_required`. */
+  async setWaiting(id: number, waiting: boolean): Promise<void> {
+    await getPool().query(
+      'UPDATE hf_sync_run SET status = ? WHERE id = ? AND finished_at IS NULL',
+      [waiting ? 'tan_required' : 'running', id],
+    );
+  }
 
-/** Finishes a run now with its outcome. */
-export async function finishSyncRun(id: number, result: SyncRunResult): Promise<void> {
-  await getPool().query(
-    `UPDATE hf_sync_run SET finished_at = NOW(), status = ?, error = ?, inserted = ?, deleted = ?
-     WHERE id = ?`,
-    [result.status, result.error, result.inserted, result.deleted, id],
-  );
-}
+  /** Finishes a run now with its outcome. */
+  async finish(id: number, result: SyncRunResult): Promise<void> {
+    await getPool().query(
+      `UPDATE hf_sync_run SET finished_at = NOW(), status = ?, error = ?, inserted = ?, deleted = ?
+       WHERE id = ?`,
+      [result.status, result.error, result.inserted, result.deleted, id],
+    );
+  }
 
-/** The newest run of every connection that has one, keyed by connection id. */
-export async function listLatestSyncRuns(): Promise<Map<number, SyncRun>> {
-  const [rows] = await getPool().query<SyncRunRow[]>(
-    `SELECT r.id, r.connection_id, r.trigger_type, r.started_at, r.finished_at, r.status, r.error,
-            r.inserted, r.deleted
-     FROM hf_sync_run r
-     JOIN (SELECT connection_id, MAX(id) AS id FROM hf_sync_run GROUP BY connection_id) latest
-       ON latest.id = r.id`,
-  );
-  return new Map<number, SyncRun>(
-    rows.map((row: SyncRunRow): [number, SyncRun] => [row.connection_id, toSyncRun(row)]),
-  );
+  /** The newest run of every connection that has one, keyed by connection id. */
+  async listLatest(): Promise<Map<number, SyncRun>> {
+    const [rows] = await getPool().query<SyncRunRow[]>(
+      `SELECT r.id, r.connection_id, r.trigger_type, r.started_at, r.finished_at, r.status,
+              r.error, r.inserted, r.deleted
+       FROM hf_sync_run r
+       JOIN (SELECT connection_id, MAX(id) AS id FROM hf_sync_run GROUP BY connection_id) latest
+         ON latest.id = r.id`,
+    );
+    return new Map<number, SyncRun>(
+      rows.map((row: SyncRunRow): [number, SyncRun] => [row.connection_id, toSyncRun(row)]),
+    );
+  }
 }

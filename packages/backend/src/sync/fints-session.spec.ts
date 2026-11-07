@@ -4,12 +4,15 @@ import type { FetchedBooking } from './fetched-booking';
 import {
   assertStatementsParsed,
   capturedRawInfo,
+  createLibFintsSessionFactory,
   describeBankingInformation,
+  FINTS_PRODUCT_ID,
   installMt940Hooks,
+  isBankSyncEnabled,
   parseInfo86,
   toFetchedBookings,
 } from './fints-session';
-import type { FintsDiscovery } from './fints-session';
+import type { FintsDiscovery, FintsSessionFactory, FintsSessionParams } from './fints-session';
 
 type LibFints = typeof import('lib-fints', { with: { 'resolution-mode': 'import' } });
 
@@ -202,5 +205,46 @@ describe('describeBankingInformation', () => {
     expect(() => describeBankingInformation({ ...info, upd: undefined }, null)).toThrow(
       'no account list',
     );
+  });
+});
+
+describe('isBankSyncEnabled', () => {
+  it('is off with the demo data, whatever the product registration', () => {
+    expect(isBankSyncEnabled('demo')).toBe(false);
+  });
+
+  it('follows the product registration on MariaDB', () => {
+    expect(isBankSyncEnabled('mariadb')).toBe(FINTS_PRODUCT_ID !== null);
+  });
+});
+
+describe('createLibFintsSessionFactory', () => {
+  const params: FintsSessionParams = {
+    login: {
+      blz: '12030000',
+      fintsUrl: 'https://bank.invalid/fints',
+      loginName: 'tobias',
+      customerId: null,
+      pin: '12345',
+      tanMethod: null,
+      tanMedia: null,
+      bankingInformation: null,
+    },
+    prompt: {
+      request: async (): Promise<string | undefined> => {
+        throw new Error('no TAN expected');
+      },
+      settled: async (): Promise<void> => {
+        throw new Error('no TAN expected');
+      },
+    },
+    saveBankingInformation: async (): Promise<void> => {
+      throw new Error('no dialog expected');
+    },
+  };
+
+  it('opens no dialog with the demo data', async () => {
+    const factory: FintsSessionFactory = createLibFintsSessionFactory('demo');
+    await expect(factory(params)).rejects.toThrow('Bank sync is off with the demo data');
   });
 });

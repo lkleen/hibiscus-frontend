@@ -2,11 +2,10 @@ import express, { Express } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTaxTagsRouter } from './tax-tags';
 
-vi.mock('../repositories/tax-tag', () => ({
-  listTaxTags: vi.fn(),
-}));
+import type { TaxTagRepository } from '../repositories/tax-tag';
 
-import { listTaxTags } from '../repositories/tax-tag';
+const listTaxTags = vi.fn<TaxTagRepository['list']>();
+const taxTags: TaxTagRepository = { list: listTaxTags };
 
 interface HttpResponse {
   status: number;
@@ -34,7 +33,7 @@ beforeAll(
     new Promise<void>((resolve) => {
       const app: Express = express();
       app.use(express.json());
-      app.use('/tax-tags', createTaxTagsRouter());
+      app.use('/tax-tags', createTaxTagsRouter({ taxTags }));
       /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
       app.use(
         (

@@ -12,7 +12,10 @@ function run(
 ): Observable<boolean | UrlTree> {
   TestBed.configureTestingModule({
     providers: [
-      { provide: MeService, useValue: { load: () => of({ user: 'lars', database, key }) } },
+      {
+        provide: MeService,
+        useValue: { load: () => of({ user: 'lars', database, key, dataSource: 'mariadb' }) },
+      },
       { provide: Router, useValue: { createUrlTree: (commands: string[]) => commands.join('/') } },
     ],
   });

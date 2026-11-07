@@ -9,7 +9,7 @@ import type {
 import { currentUser, runWithUserContext } from '../db/pool';
 import type { UserDatabaseHandle } from '../db/pool';
 import { UserBusyError } from '../db/user-activity';
-import type { UserDatabaseLookup, UserPools } from '../db/user-pools';
+import type { UserDatabaseLookup, UserDatabases } from '../db/user-databases';
 import {
   KeyConfiguredError,
   KeyInvalidError,
@@ -64,7 +64,7 @@ export function respondToUserKeyError(error: unknown, res: Response): boolean {
 export interface UserKeyRouterDeps {
   readonly keys: UserKeys;
   /** Change and reset work on the PINs in the user's database, which this router looks up. */
-  readonly pools: Pick<UserPools, 'acquire'>;
+  readonly databases: Pick<UserDatabases, 'acquire'>;
 }
 
 /**
@@ -88,7 +88,7 @@ export function createUserKeyRouter(deps: UserKeyRouterDeps): Router {
    */
   async function withUserDatabase<T>(res: Response, work: () => Promise<T>): Promise<T | null> {
     const user: string = currentUser().user;
-    const lookup: UserDatabaseLookup = await deps.pools.acquire(user);
+    const lookup: UserDatabaseLookup = await deps.databases.acquire(user);
     if (lookup.status === 'host-not-allowed') {
       sendUserError(res, 400, 'host-not-allowed');
       return null;

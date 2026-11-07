@@ -115,8 +115,11 @@ export class DatabaseFormComponent {
       },
       error: (failure: unknown): void => {
         this.testing.set(false);
-        if (userErrorOf(failure) === 'host-not-allowed') {
-          this.saveError.set('database.error.host');
+        const testCode = userErrorOf(failure);
+        if (testCode === 'host-not-allowed' || testCode === 'demo-mode') {
+          this.saveError.set(
+            testCode === 'demo-mode' ? 'database.error.demo' : 'database.error.host',
+          );
           return;
         }
         this.testResult.set(
@@ -165,13 +168,15 @@ export class DatabaseFormComponent {
         }
         const code = userErrorOf(failure);
         this.saveError.set(
-          code === 'host-not-allowed'
-            ? 'database.error.host'
-            : code === 'busy'
-              ? 'database.error.busy'
-              : code === 'database-in-use'
-                ? 'database.error.inUse'
-                : 'database.error.failed',
+          code === 'demo-mode'
+            ? 'database.error.demo'
+            : code === 'host-not-allowed'
+              ? 'database.error.host'
+              : code === 'busy'
+                ? 'database.error.busy'
+                : code === 'database-in-use'
+                  ? 'database.error.inUse'
+                  : 'database.error.failed',
         );
       },
     });

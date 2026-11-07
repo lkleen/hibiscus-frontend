@@ -4,8 +4,12 @@ import type {
   TransactionAssignConflict,
   TransactionsResponse,
 } from '@hibiscus-frontend/shared/contracts/transactions';
-import { assignCategory, listTransactions, updateTransaction } from '../repositories/umsatz';
-import type { TransactionAssignResult, TransactionUpdateResult } from '../repositories/umsatz';
+import { MissingReferenceError } from '../repositories/repository-errors';
+import type {
+  TransactionAssignResult,
+  TransactionRepository,
+  TransactionUpdateResult,
+} from '../repositories/umsatz';
 import {
   TransactionAssignSchema,
   TransactionIdSchema,
@@ -13,21 +17,23 @@ import {
 } from '../transactions/transaction-update';
 import { respondWithValidationError } from './zod-validation';
 
-/** MySQL error code for a foreign key violation on insert/update (unknown `umsatztyp_id`). */
-const FK_VIOLATION_CODE = 'ER_NO_REFERENCED_ROW_2';
-
 const STATUS_BY_RESULT: Record<Exclude<TransactionUpdateResult, 'updated'>, number> = {
   'not-found': 404,
   conflict: 409,
 };
 
-export function createTransactionsRouter(): Router {
+export interface TransactionsRouterDeps {
+  readonly transactions: TransactionRepository;
+}
+
+export function createTransactionsRouter(deps: TransactionsRouterDeps): Router {
   const router = Router();
 
   // Every row, unfiltered: sorting, filtering and paging are the grid's job (see the
   // `transactions-table` skill).
   router.get('/', (_req: Request, res: Response, next: NextFunction): void => {
-    listTransactions()
+    deps.transactions
+      .list()
       .then((response: TransactionsResponse) => res.json(response))
       .catch(next);
   });
@@ -44,7 +50,8 @@ export function createTransactionsRouter(): Router {
       return;
     }
 
-    assignCategory(bodyResult.data)
+    deps.transactions
+      .assignCategory(bodyResult.data)
       .then((result: TransactionAssignResult) => {
         if (result.result === 'assigned') {
           res.status(204).send();
@@ -57,7 +64,7 @@ export function createTransactionsRouter(): Router {
         res.status(409).json(conflict);
       })
       .catch((error: unknown) => {
-        if ((error as { code?: unknown }).code === FK_VIOLATION_CODE) {
+        if (error instanceof MissingReferenceError) {
           res.status(400).json({ error: 'Unknown category' });
           return;
         }
@@ -81,7 +88,8 @@ export function createTransactionsRouter(): Router {
       return;
     }
 
-    updateTransaction(idResult.data, bodyResult.data)
+    deps.transactions
+      .update(idResult.data, bodyResult.data)
       .then((result: TransactionUpdateResult) => {
         if (result === 'updated') {
           res.status(204).send();
@@ -90,7 +98,7 @@ export function createTransactionsRouter(): Router {
         res.status(STATUS_BY_RESULT[result]).json({ error: result });
       })
       .catch((error: unknown) => {
-        if ((error as { code?: unknown }).code === FK_VIOLATION_CODE) {
+        if (error instanceof MissingReferenceError) {
           res.status(400).json({ error: 'Unknown category' });
           return;
         }

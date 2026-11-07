@@ -10,6 +10,7 @@ const USER_ERRORS: readonly UserError['error'][] = [
   'key-configured',
   'key-required',
   'key-invalid',
+  'demo-mode',
 ];
 
 /**

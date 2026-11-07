@@ -8,6 +8,7 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/sync';
 import { getPool } from '../db/pool';
 import type { EncryptedSecret } from '../sync/credential-crypto';
+import { MissingReferenceError } from './repository-errors';
 
 interface ConnectionRow extends RowDataPacket {
   id: number;
@@ -67,7 +68,7 @@ export interface BankConnectionRecord {
   readonly accounts: readonly BankConnectionAccount[];
 }
 
-/** Parameters of `reencryptBankConnectionPins`. */
+/** Parameters of `MysqlBankConnectionRepository.reencryptPins`. */
 export interface PinReencryption {
   /** Decrypts a PIN with the old key and encrypts it with the new one; throws on a wrong key. */
   readonly reencrypt: (pin: EncryptedSecret) => EncryptedSecret;
@@ -81,7 +82,7 @@ export interface BankConnectionCreateParams {
   readonly pin: EncryptedSecret;
 }
 
-/** Parameters of `updateBankConnection`. `pin`: only when it is replaced. */
+/** Parameters of `MysqlBankConnectionRepository.update`. `pin`: only when it is replaced. */
 export interface BankConnectionUpdateParams {
   readonly id: number;
   readonly expected: BankConnectionSettings;
@@ -104,12 +105,50 @@ export interface KontoMatchKey {
 
 export type BankConnectionWriteResult = 'updated' | 'conflict' | 'not-found';
 
+/** The bank connections (`hf_bank_connection`) with their account mapping. */
+export interface BankConnectionRepository {
+  /** Every connection ordered by name, without the PIN or bank parameter data. */
+  list(): Promise<BankConnection[]>;
+  /** One connection's API view, `null` when it does not exist. */
+  get(id: number): Promise<BankConnection | null>;
+  /** One connection with its encrypted PIN, `null` when it does not exist. */
+  getRecord(id: number): Promise<BankConnectionRecord | null>;
+  /** Inserts a connection and returns its id. */
+  create(params: BankConnectionCreateParams): Promise<number>;
+  /** See `MysqlBankConnectionRepository.update`: guarded by `expected`; a changed bank identity drops the BPD. */
+  update(params: BankConnectionUpdateParams): Promise<BankConnectionWriteResult>;
+  /** Deletes a connection with its account mapping and runs; whether it existed. */
+  delete(id: number): Promise<boolean>;
+  /**
+   * Replaces the whole account mapping atomically. An unknown `kontoId` throws
+   * `MissingReferenceError` (`konto`).
+   */
+  replaceAccounts(
+    id: number,
+    accounts: readonly BankConnectionAccount[],
+  ): Promise<'updated' | 'not-found'>;
+  /** Stores lib-fints's bank parameter data (JSON) after a dialog. */
+  saveBankingInformation(id: number, json: string): Promise<void>;
+  /** Records a finished run: `last_sync_at` = now, whatever the outcome. */
+  recordOutcome(id: number, outcome: BankConnectionOutcome): Promise<void>;
+  /** Sets or clears (`null`) why the scheduler skips the connection. */
+  setPaused(id: number, reason: SyncPausedReason | null): Promise<void>;
+  /** Ids of the connections the scheduler runs now, ordered by id. */
+  listDueIds(): Promise<number[]>;
+  /** See `MysqlBankConnectionRepository.reencryptPins`: all PINs or none; returns how many were re-encrypted. */
+  reencryptPins(params: PinReencryption): Promise<number>;
+  /** Deletes every PIN and disables the connections; returns how many were affected. */
+  clearPins(): Promise<number>;
+  /** Every konto's id, IBAN and account number, for matching discovered accounts. */
+  listKontoMatchKeys(): Promise<KontoMatchKey[]>;
+}
+
 const CONNECTION_COLUMNS = `id, name, blz, fints_url, login_name, customer_id, pin_ciphertext,
   pin_iv, pin_tag, tan_method, tan_media, banking_information, sync_interval_hours, enabled,
   paused_reason, last_sync_at, last_status, last_error`;
 
 /** The fields whose change makes stored bank parameter data stale. */
-const BANK_IDENTITY_FIELDS: (keyof BankConnectionSettings)[] = [
+export const BANK_IDENTITY_FIELDS: readonly (keyof BankConnectionSettings)[] = [
   'blz',
   'fintsUrl',
   'loginName',
@@ -192,64 +231,6 @@ async function listAccountRows(connectionId?: number): Promise<AccountRow[]> {
   return rows;
 }
 
-/** Every connection ordered by name, without the PIN or bank parameter data. */
-export async function listBankConnections(): Promise<BankConnection[]> {
-  const [rows] = await getPool().query<ConnectionRow[]>(
-    `SELECT ${CONNECTION_COLUMNS} FROM hf_bank_connection ORDER BY name, id`,
-  );
-  const accounts: AccountRow[] = await listAccountRows();
-  return rows.map((row: ConnectionRow): BankConnection => ({
-    id: row.id,
-    ...toSettings(row),
-    accounts: accounts
-      .filter((account: AccountRow) => account.connection_id === row.id)
-      .map(toAccount),
-    pausedReason: row.paused_reason,
-    lastSyncAt: row.last_sync_at,
-    lastStatus: row.last_status,
-    lastError: row.last_error,
-  }));
-}
-
-/** One connection's API view, `null` when it does not exist. */
-export async function getBankConnection(id: number): Promise<BankConnection | null> {
-  const all: BankConnection[] = await listBankConnections();
-  return all.find((connection: BankConnection) => connection.id === id) ?? null;
-}
-
-/** One connection with its encrypted PIN, `null` when it does not exist. */
-export async function getBankConnectionRecord(id: number): Promise<BankConnectionRecord | null> {
-  const [rows] = await getPool().query<ConnectionRow[]>(
-    `SELECT ${CONNECTION_COLUMNS} FROM hf_bank_connection WHERE id = ?`,
-    [id],
-  );
-  const row: ConnectionRow | undefined = rows[0];
-  if (row === undefined) return null;
-  const accounts: AccountRow[] = await listAccountRows(id);
-  const pin: EncryptedSecret | null =
-    row.pin_ciphertext === null || row.pin_iv === null || row.pin_tag === null
-      ? null
-      : { ciphertext: row.pin_ciphertext, iv: row.pin_iv, tag: row.pin_tag };
-  return {
-    id: row.id,
-    settings: toSettings(row),
-    pin,
-    bankingInformation: row.banking_information,
-    accounts: accounts.map(toAccount),
-  };
-}
-
-/** Inserts a connection and returns its id. */
-export async function createBankConnection(params: BankConnectionCreateParams): Promise<number> {
-  const [result] = await getPool().query<ResultSetHeader>(
-    `INSERT INTO hf_bank_connection
-       (${SETTINGS_SQL_COLUMNS.join(', ')}, pin_ciphertext, pin_iv, pin_tag)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [...settingsValues(params.settings), params.pin.ciphertext, params.pin.iv, params.pin.tag],
-  );
-  return result.insertId;
-}
-
 async function writeUpdate(
   connection: PoolConnection,
   params: BankConnectionUpdateParams,
@@ -270,188 +251,266 @@ async function writeUpdate(
   ]);
 }
 
-/**
- * Changes a connection's settings (and PIN, when given) if it still holds `expected`; the row is
- * read `FOR UPDATE` and compared inside one transaction. A changed bank identity (BLZ, URL, login,
- * customer ID) drops the stored bank parameter data.
- */
-export async function updateBankConnection(
-  params: BankConnectionUpdateParams,
-): Promise<BankConnectionWriteResult> {
-  const connection: PoolConnection = await getPool().getConnection();
-  try {
-    await connection.beginTransaction();
-    const [rows] = await connection.query<ConnectionRow[]>(
-      `SELECT ${CONNECTION_COLUMNS} FROM hf_bank_connection WHERE id = ? FOR UPDATE`,
-      [params.id],
-    );
-    const row: ConnectionRow | undefined = rows[0];
-    let result: BankConnectionWriteResult = 'updated';
-    if (row === undefined) result = 'not-found';
-    else if (!sameSettings(toSettings(row), params.expected)) result = 'conflict';
-    else await writeUpdate(connection, params);
-    await connection.commit();
-    return result;
-  } catch (error: unknown) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
+const NO_REFERENCED_ROW_CODE = 'ER_NO_REFERENCED_ROW_2';
+/** The foreign key from an account mapping to its `konto`. */
+const KONTO_FOREIGN_KEY = 'fk_hf_bca_konto';
+
+/** Turns the driver's violation of `fk_hf_bca_konto` (unknown `kontoId`) into the domain error. */
+function translateAccountsError(error: unknown): unknown {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === NO_REFERENCED_ROW_CODE &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.includes(KONTO_FOREIGN_KEY)
+  ) {
+    return new MissingReferenceError('konto', { cause: error });
   }
+  return error;
 }
 
-/** Deletes a connection with its account mapping and runs; whether it existed. */
-export async function deleteBankConnection(id: number): Promise<boolean> {
-  const [result] = await getPool().query<ResultSetHeader>(
-    'DELETE FROM hf_bank_connection WHERE id = ?',
-    [id],
-  );
-  return result.affectedRows === 1;
-}
+/** The bank connections in the current user's database (`getPool()`). */
+export class MysqlBankConnectionRepository implements BankConnectionRepository {
+  /** Every connection ordered by name, without the PIN or bank parameter data. */
+  async list(): Promise<BankConnection[]> {
+    const [rows] = await getPool().query<ConnectionRow[]>(
+      `SELECT ${CONNECTION_COLUMNS} FROM hf_bank_connection ORDER BY name, id`,
+    );
+    const accounts: AccountRow[] = await listAccountRows();
+    return rows.map((row: ConnectionRow): BankConnection => ({
+      id: row.id,
+      ...toSettings(row),
+      accounts: accounts
+        .filter((account: AccountRow) => account.connection_id === row.id)
+        .map(toAccount),
+      pausedReason: row.paused_reason,
+      lastSyncAt: row.last_sync_at,
+      lastStatus: row.last_status,
+      lastError: row.last_error,
+    }));
+  }
 
-/** Replaces a connection's whole account mapping in one transaction. */
-export async function replaceBankConnectionAccounts(
-  id: number,
-  accounts: readonly BankConnectionAccount[],
-): Promise<'updated' | 'not-found'> {
-  const connection: PoolConnection = await getPool().getConnection();
-  try {
-    await connection.beginTransaction();
-    const [rows] = await connection.query<IdRow[]>(
-      'SELECT id FROM hf_bank_connection WHERE id = ? FOR UPDATE',
+  /** One connection's API view, `null` when it does not exist. */
+  async get(id: number): Promise<BankConnection | null> {
+    const all: BankConnection[] = await this.list();
+    return all.find((connection: BankConnection) => connection.id === id) ?? null;
+  }
+
+  /** One connection with its encrypted PIN, `null` when it does not exist. */
+  async getRecord(id: number): Promise<BankConnectionRecord | null> {
+    const [rows] = await getPool().query<ConnectionRow[]>(
+      `SELECT ${CONNECTION_COLUMNS} FROM hf_bank_connection WHERE id = ?`,
       [id],
     );
-    if (rows.length === 0) {
-      await connection.commit();
-      return 'not-found';
-    }
-    await connection.query('DELETE FROM hf_bank_connection_account WHERE connection_id = ?', [id]);
-    if (accounts.length > 0) {
-      await connection.query(
-        `INSERT INTO hf_bank_connection_account
-           (connection_id, account_identifier, konto_id, enabled) VALUES ?`,
-        [
-          accounts.map((account: BankConnectionAccount) => [
-            id,
-            account.accountIdentifier,
-            account.kontoId,
-            account.enabled ? 1 : 0,
-          ]),
-        ],
-      );
-    }
-    await connection.commit();
-    return 'updated';
-  } catch (error: unknown) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
+    const row: ConnectionRow | undefined = rows[0];
+    if (row === undefined) return null;
+    const accounts: AccountRow[] = await listAccountRows(id);
+    const pin: EncryptedSecret | null =
+      row.pin_ciphertext === null || row.pin_iv === null || row.pin_tag === null
+        ? null
+        : { ciphertext: row.pin_ciphertext, iv: row.pin_iv, tag: row.pin_tag };
+    return {
+      id: row.id,
+      settings: toSettings(row),
+      pin,
+      bankingInformation: row.banking_information,
+      accounts: accounts.map(toAccount),
+    };
   }
-}
 
-/** Stores lib-fints's bank parameter data (JSON) after a dialog. */
-export async function saveBankingInformation(id: number, json: string): Promise<void> {
-  await getPool().query('UPDATE hf_bank_connection SET banking_information = ? WHERE id = ?', [
-    json,
-    id,
-  ]);
-}
-
-/** Records a finished run: `last_sync_at` = now, whatever the outcome. */
-export async function recordBankConnectionOutcome(
-  id: number,
-  outcome: BankConnectionOutcome,
-): Promise<void> {
-  await getPool().query(
-    `UPDATE hf_bank_connection SET last_sync_at = NOW(), last_status = ?, last_error = ?
-     WHERE id = ?`,
-    [outcome.status, outcome.error, id],
-  );
-}
-
-/** Sets or clears (`null`) why the scheduler skips the connection. */
-export async function setBankConnectionPaused(
-  id: number,
-  reason: SyncPausedReason | null,
-): Promise<void> {
-  await getPool().query('UPDATE hf_bank_connection SET paused_reason = ? WHERE id = ?', [
-    reason,
-    id,
-  ]);
-}
-
-/**
- * Ids of the connections the scheduler runs now, ordered by id: enabled, not paused, with a PIN,
- * and never synced or last synced at least `sync_interval_hours` ago.
- */
-export async function listDueBankConnectionIds(): Promise<number[]> {
-  const [rows] = await getPool().query<IdRow[]>(
-    `SELECT id FROM hf_bank_connection
-     WHERE enabled = 1 AND paused_reason IS NULL AND pin_ciphertext IS NOT NULL
-       AND (last_sync_at IS NULL
-            OR last_sync_at + INTERVAL sync_interval_hours HOUR <= NOW())
-     ORDER BY id`,
-  );
-  return rows.map((row: IdRow) => row.id);
-}
-
-/**
- * Re-encrypts every stored PIN under a new key in one transaction: the PINs are read `FOR UPDATE`,
- * each is passed through `reencrypt` and written back, then `beforeCommit` runs. Any throw rolls
- * all of them back, so the PINs are either all under the old key or all under the new one.
- * Returns how many PINs were re-encrypted.
- */
-export async function reencryptBankConnectionPins(params: PinReencryption): Promise<number> {
-  const connection: PoolConnection = await getPool().getConnection();
-  try {
-    await connection.beginTransaction();
-    const [rows] = await connection.query<PinRow[]>(
-      `SELECT id, pin_ciphertext, pin_iv, pin_tag FROM hf_bank_connection
-       WHERE pin_ciphertext IS NOT NULL ORDER BY id FOR UPDATE`,
+  /** Inserts a connection and returns its id. */
+  async create(params: BankConnectionCreateParams): Promise<number> {
+    const [result] = await getPool().query<ResultSetHeader>(
+      `INSERT INTO hf_bank_connection
+         (${SETTINGS_SQL_COLUMNS.join(', ')}, pin_ciphertext, pin_iv, pin_tag)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [...settingsValues(params.settings), params.pin.ciphertext, params.pin.iv, params.pin.tag],
     );
-    for (const row of rows) {
-      const next: EncryptedSecret = params.reencrypt({
-        ciphertext: row.pin_ciphertext,
-        iv: row.pin_iv,
-        tag: row.pin_tag,
-      });
-      await connection.query(
-        'UPDATE hf_bank_connection SET pin_ciphertext = ?, pin_iv = ?, pin_tag = ? WHERE id = ?',
-        [next.ciphertext, next.iv, next.tag, row.id],
-      );
-    }
-    await params.beforeCommit();
-    await connection.commit();
-    return rows.length;
-  } catch (error: unknown) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
+    return result.insertId;
   }
-}
 
-/**
- * Deletes every stored PIN and disables the connections (after a key reset): a connection without
- * a PIN cannot sync until the user enters it again. Returns how many connections were affected.
- */
-export async function clearBankConnectionPins(): Promise<number> {
-  const [result] = await getPool().query<ResultSetHeader>(
-    `UPDATE hf_bank_connection SET pin_ciphertext = NULL, pin_iv = NULL, pin_tag = NULL,
-       enabled = 0`,
-  );
-  return result.affectedRows;
-}
+  /**
+   * Changes a connection's settings (and PIN, when given) if it still holds `expected`; the row is
+   * read `FOR UPDATE` and compared inside one transaction. A changed bank identity (BLZ, URL, login,
+   * customer ID) drops the stored bank parameter data.
+   */
+  async update(params: BankConnectionUpdateParams): Promise<BankConnectionWriteResult> {
+    const connection: PoolConnection = await getPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<ConnectionRow[]>(
+        `SELECT ${CONNECTION_COLUMNS} FROM hf_bank_connection WHERE id = ? FOR UPDATE`,
+        [params.id],
+      );
+      const row: ConnectionRow | undefined = rows[0];
+      let result: BankConnectionWriteResult = 'updated';
+      if (row === undefined) result = 'not-found';
+      else if (!sameSettings(toSettings(row), params.expected)) result = 'conflict';
+      else await writeUpdate(connection, params);
+      await connection.commit();
+      return result;
+    } catch (error: unknown) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
 
-/** Every konto's id, IBAN and account number, for matching discovered accounts. */
-export async function listKontoMatchKeys(): Promise<KontoMatchKey[]> {
-  const [rows] = await getPool().query<KontoKeyRow[]>(
-    'SELECT id, iban, kontonummer FROM konto ORDER BY id',
-  );
-  return rows.map((row: KontoKeyRow): KontoMatchKey => ({
-    id: row.id,
-    iban: row.iban,
-    kontonummer: row.kontonummer,
-  }));
+  /** Deletes a connection with its account mapping and runs; whether it existed. */
+  async delete(id: number): Promise<boolean> {
+    const [result] = await getPool().query<ResultSetHeader>(
+      'DELETE FROM hf_bank_connection WHERE id = ?',
+      [id],
+    );
+    return result.affectedRows === 1;
+  }
+
+  /**
+   * Replaces a connection's whole account mapping in one transaction. An unknown `kontoId` throws
+   * `MissingReferenceError` (`konto`).
+   */
+  async replaceAccounts(
+    id: number,
+    accounts: readonly BankConnectionAccount[],
+  ): Promise<'updated' | 'not-found'> {
+    const connection: PoolConnection = await getPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<IdRow[]>(
+        'SELECT id FROM hf_bank_connection WHERE id = ? FOR UPDATE',
+        [id],
+      );
+      if (rows.length === 0) {
+        await connection.commit();
+        return 'not-found';
+      }
+      await connection.query('DELETE FROM hf_bank_connection_account WHERE connection_id = ?', [
+        id,
+      ]);
+      if (accounts.length > 0) {
+        await connection.query(
+          `INSERT INTO hf_bank_connection_account
+             (connection_id, account_identifier, konto_id, enabled) VALUES ?`,
+          [
+            accounts.map((account: BankConnectionAccount) => [
+              id,
+              account.accountIdentifier,
+              account.kontoId,
+              account.enabled ? 1 : 0,
+            ]),
+          ],
+        );
+      }
+      await connection.commit();
+      return 'updated';
+    } catch (error: unknown) {
+      await connection.rollback();
+      throw translateAccountsError(error);
+    } finally {
+      connection.release();
+    }
+  }
+
+  /** Stores lib-fints's bank parameter data (JSON) after a dialog. */
+  async saveBankingInformation(id: number, json: string): Promise<void> {
+    await getPool().query('UPDATE hf_bank_connection SET banking_information = ? WHERE id = ?', [
+      json,
+      id,
+    ]);
+  }
+
+  /** Records a finished run: `last_sync_at` = now, whatever the outcome. */
+  async recordOutcome(id: number, outcome: BankConnectionOutcome): Promise<void> {
+    await getPool().query(
+      `UPDATE hf_bank_connection SET last_sync_at = NOW(), last_status = ?, last_error = ?
+       WHERE id = ?`,
+      [outcome.status, outcome.error, id],
+    );
+  }
+
+  /** Sets or clears (`null`) why the scheduler skips the connection. */
+  async setPaused(id: number, reason: SyncPausedReason | null): Promise<void> {
+    await getPool().query('UPDATE hf_bank_connection SET paused_reason = ? WHERE id = ?', [
+      reason,
+      id,
+    ]);
+  }
+
+  /**
+   * Ids of the connections the scheduler runs now, ordered by id: enabled, not paused, with a PIN,
+   * and never synced or last synced at least `sync_interval_hours` ago.
+   */
+  async listDueIds(): Promise<number[]> {
+    const [rows] = await getPool().query<IdRow[]>(
+      `SELECT id FROM hf_bank_connection
+       WHERE enabled = 1 AND paused_reason IS NULL AND pin_ciphertext IS NOT NULL
+         AND (last_sync_at IS NULL
+              OR last_sync_at + INTERVAL sync_interval_hours HOUR <= NOW())
+       ORDER BY id`,
+    );
+    return rows.map((row: IdRow) => row.id);
+  }
+
+  /**
+   * Re-encrypts every stored PIN under a new key in one transaction: the PINs are read `FOR UPDATE`,
+   * each is passed through `reencrypt` and written back, then `beforeCommit` runs. Any throw rolls
+   * all of them back, so the PINs are either all under the old key or all under the new one.
+   * Returns how many PINs were re-encrypted.
+   */
+  async reencryptPins(params: PinReencryption): Promise<number> {
+    const connection: PoolConnection = await getPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<PinRow[]>(
+        `SELECT id, pin_ciphertext, pin_iv, pin_tag FROM hf_bank_connection
+         WHERE pin_ciphertext IS NOT NULL ORDER BY id FOR UPDATE`,
+      );
+      for (const row of rows) {
+        const next: EncryptedSecret = params.reencrypt({
+          ciphertext: row.pin_ciphertext,
+          iv: row.pin_iv,
+          tag: row.pin_tag,
+        });
+        await connection.query(
+          'UPDATE hf_bank_connection SET pin_ciphertext = ?, pin_iv = ?, pin_tag = ? WHERE id = ?',
+          [next.ciphertext, next.iv, next.tag, row.id],
+        );
+      }
+      await params.beforeCommit();
+      await connection.commit();
+      return rows.length;
+    } catch (error: unknown) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * Deletes every stored PIN and disables the connections (after a key reset): a connection without
+   * a PIN cannot sync until the user enters it again. Returns how many connections were affected.
+   */
+  async clearPins(): Promise<number> {
+    const [result] = await getPool().query<ResultSetHeader>(
+      `UPDATE hf_bank_connection SET pin_ciphertext = NULL, pin_iv = NULL, pin_tag = NULL,
+         enabled = 0`,
+    );
+    return result.affectedRows;
+  }
+
+  /** Every konto's id, IBAN and account number, for matching discovered accounts. */
+  async listKontoMatchKeys(): Promise<KontoMatchKey[]> {
+    const [rows] = await getPool().query<KontoKeyRow[]>(
+      'SELECT id, iban, kontonummer FROM konto ORDER BY id',
+    );
+    return rows.map((row: KontoKeyRow): KontoMatchKey => ({
+      id: row.id,
+      iban: row.iban,
+      kontonummer: row.kontonummer,
+    }));
+  }
 }

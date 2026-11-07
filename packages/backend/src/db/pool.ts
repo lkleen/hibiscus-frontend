@@ -5,7 +5,7 @@ import type {
   UserDatabaseSettings,
   UserDatabaseTestResponse,
 } from '@hibiscus-frontend/shared/contracts/user';
-import type { Config } from '../config/config';
+import type { MariadbConfig } from '../config/config';
 
 /**
  * Every `mysql2` pool and connection of the process is created in this file; no other module
@@ -18,9 +18,12 @@ import type { Config } from '../config/config';
  *   `runWithUserContext` sets — so the repositories keep calling `getPool()` unchanged.
  */
 
-/** A user's database, as the context carries it. */
+/**
+ * A user's database, as the context carries it. `pool` is `null` for the demo data, which lives
+ * in memory; `settings` then only names it (e.g. for lock names).
+ */
 export interface UserDatabaseHandle {
-  readonly pool: Pool;
+  readonly pool: Pool | null;
   readonly settings: UserDatabaseSettings;
 }
 
@@ -69,7 +72,7 @@ function createPool(target: DatabaseTarget, connectionLimit: number): Pool {
 }
 
 /** Creates the app pool from `DB_*`; once, at startup. */
-export function initAppPool(config: Config): Pool {
+export function initAppPool(config: MariadbConfig): Pool {
   if (appPool !== undefined) throw new Error('The app DB pool is already initialized');
   appPool = createPool(
     {
@@ -118,9 +121,11 @@ export function currentDatabase(): UserDatabaseHandle {
   return context.database;
 }
 
-/** The current user's Hibiscus database pool. */
+/** The current user's Hibiscus database pool; throws for a database without one (demo data). */
 export function getPool(): Pool {
-  return currentDatabase().pool;
+  const pool: Pool | null = currentDatabase().pool;
+  if (pool === null) throw new Error('This user database has no MySQL pool (demo data)');
+  return pool;
 }
 
 interface TableNameRow extends RowDataPacket {

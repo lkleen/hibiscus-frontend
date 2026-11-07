@@ -2,30 +2,20 @@ import type { Pool } from 'mysql2/promise';
 import type { UserDatabaseSettings } from '@hibiscus-frontend/shared/contracts/user';
 import { isDbHostAllowed } from '../config/config';
 import type { AllowedDbHost } from '../config/config';
-import { getAppUserDatabase, listAppUsersWithDatabase } from '../repositories/app-user';
-import type { AppUserDatabaseRecord } from '../repositories/app-user';
+import type { AppUserDatabaseRecord, AppUserRepository } from '../repositories/app-user';
 import { ensureTaxTagTables } from '../repositories/tax-tag';
 import { ensureUserSettingTable } from '../repositories/user-setting';
 import type { CredentialCrypto } from '../sync/credential-crypto';
 import { ensureSyncTables } from '../sync/sync-tables';
 import { createUserDatabasePool, runWithUserContext } from './pool';
-import type { UserDatabaseHandle } from './pool';
-
-/**
- * What `UserPools.acquire` found for a user:
- * - `configured` — the pool, with the app's `hf_*` tables ensured on it;
- * - `unconfigured` — no database set up yet;
- * - `host-not-allowed` — the stored host is no longer on `ALLOWED_DB_HOSTS`.
- */
-export type UserDatabaseLookup =
-  | { readonly status: 'configured'; readonly database: UserDatabaseHandle }
-  | { readonly status: 'unconfigured' }
-  | { readonly status: 'host-not-allowed' };
+import type { UserDatabaseLookup, UserDatabases } from './user-databases';
 
 export interface UserPoolsOptions {
   /** The server key instance; decrypts the stored database passwords. */
   readonly crypto: CredentialCrypto;
   readonly allowedHosts: readonly AllowedDbHost[];
+  /** Where each user's database settings are stored. */
+  readonly appUsers: Pick<AppUserRepository, 'getDatabase' | 'listUsersWithDatabase'>;
 }
 
 interface PoolEntry {
@@ -51,14 +41,14 @@ async function ensureUserDatabaseTables(): Promise<void> {
  * stored synchronously after the row is read, so two concurrent first requests share one pool and
  * one table setup. A lookup that read an older row than the cached entry keeps the newer entry.
  */
-export class UserPools {
+export class UserPools implements UserDatabases {
   private readonly entries: Map<string, PoolEntry> = new Map<string, PoolEntry>();
 
   constructor(private readonly options: UserPoolsOptions) {}
 
   /** The user's database, ready to use; re-checks the allowlist before creating a pool. */
   async acquire(username: string): Promise<UserDatabaseLookup> {
-    const record: AppUserDatabaseRecord | null = await getAppUserDatabase(username);
+    const record: AppUserDatabaseRecord | null = await this.options.appUsers.getDatabase(username);
     if (record === null) return { status: 'unconfigured' };
     if (!isDbHostAllowed(this.options.allowedHosts, record.settings)) {
       console.warn(
@@ -74,7 +64,7 @@ export class UserPools {
 
   /** Whether the user has a usable database set up; opens no pool. */
   async databaseStatus(username: string): Promise<'configured' | 'unconfigured'> {
-    const record: AppUserDatabaseRecord | null = await getAppUserDatabase(username);
+    const record: AppUserDatabaseRecord | null = await this.options.appUsers.getDatabase(username);
     return record !== null && isDbHostAllowed(this.options.allowedHosts, record.settings)
       ? 'configured'
       : 'unconfigured';
@@ -82,7 +72,7 @@ export class UserPools {
 
   /** Every user with a database set up (allowlist not yet checked; `acquire` does that). */
   listUsersWithDatabase(): Promise<string[]> {
-    return listAppUsersWithDatabase();
+    return this.options.appUsers.listUsersWithDatabase();
   }
 
   /** Drops and ends the user's pool, after the settings were saved. */

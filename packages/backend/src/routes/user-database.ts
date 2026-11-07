@@ -9,30 +9,30 @@ import type {
   UserError,
 } from '@hibiscus-frontend/shared/contracts/user';
 import { formatAllowedDbHost, isDbHostAllowed } from '../config/config';
-import type { AllowedDbHost } from '../config/config';
+import type { AllowedDbHost, DataSource } from '../config/config';
 import { currentUser } from '../db/pool';
 import type { DatabaseTarget } from '../db/pool';
 import { UserBusyError, whileReconfiguring } from '../db/user-activity';
-import type { UserPools } from '../db/user-pools';
-import {
-  getAppUserDatabase,
-  isDatabaseUsedByOther,
-  saveAppUserDatabase,
-} from '../repositories/app-user';
-import type { AppUserDatabaseRecord } from '../repositories/app-user';
+import type { UserDatabases } from '../db/user-databases';
+import type { AppUserDatabaseRecord, AppUserRepository } from '../repositories/app-user';
+import { DuplicateKeyError } from '../repositories/repository-errors';
 import type { CredentialCrypto } from '../sync/credential-crypto';
 import { respondWithValidationError } from './zod-validation';
 
 export interface UserDatabaseRouterDeps {
-  readonly pools: Pick<UserPools, 'invalidate'>;
+  readonly databases: Pick<UserDatabases, 'invalidate'>;
+  readonly appUsers: Pick<
+    AppUserRepository,
+    'getDatabase' | 'isDatabaseUsedByOther' | 'saveDatabase'
+  >;
   /** The server key instance; encrypts the database password. */
   readonly crypto: CredentialCrypto;
   readonly allowedHosts: readonly AllowedDbHost[];
   /** `testDatabaseConnection` from `db/pool.ts`; injected so specs need no database. */
   readonly test: (target: DatabaseTarget) => Promise<UserDatabaseTestResponse>;
+  /** With the demo data the settings cannot be tested or saved (`409 demo-mode`). */
+  readonly dataSource: DataSource;
 }
-
-const DUPLICATE_ENTRY_CODE = 'ER_DUP_ENTRY';
 
 const UserDatabaseUpdateSchema = z
   .object({
@@ -43,15 +43,6 @@ const UserDatabaseUpdateSchema = z
     password: z.string().min(1).max(512).optional(),
   })
   .strict();
-
-function isDuplicateEntry(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === DUPLICATE_ENTRY_CODE
-  );
-}
 
 function sendUserError(res: Response, status: number, error: UserError['error']): void {
   const body: UserError = { error };
@@ -71,14 +62,15 @@ async function resolveTarget(
     user: request.user,
   };
   if (request.password !== undefined) return { ...settings, password: request.password };
-  const stored: AppUserDatabaseRecord | null = await getAppUserDatabase(username);
+  const stored: AppUserDatabaseRecord | null = await deps.appUsers.getDatabase(username);
   if (stored === null) return null;
   return { ...settings, password: deps.crypto.decrypt(stored.password) };
 }
 
 /**
  * `/api/user/database` — the signed-in user's Hibiscus database connection. Runs without the
- * user's database (see `middleware/user-db.ts`). The password is write-only: it is never in a
+ * user's database (see `middleware/user-db.ts`). With the demo data only `GET` works; testing and
+ * saving answer `409 demo-mode`. The password is write-only: it is never in a
  * response, and the test's error text has it masked.
  */
 export function createUserDatabaseRouter(deps: UserDatabaseRouterDeps): Router {
@@ -112,7 +104,8 @@ export function createUserDatabaseRouter(deps: UserDatabaseRouterDeps): Router {
   }
 
   router.get('/', (_req: Request, res: Response, next: NextFunction): void => {
-    getAppUserDatabase(currentUser().user)
+    deps.appUsers
+      .getDatabase(currentUser().user)
       .then((record: AppUserDatabaseRecord | null): void => {
         const body: UserDatabaseResponse = {
           database: record === null ? null : { ...record.settings, passwordSet: true },
@@ -124,6 +117,10 @@ export function createUserDatabaseRouter(deps: UserDatabaseRouterDeps): Router {
   });
 
   router.post('/test', (req: Request, res: Response, next: NextFunction): void => {
+    if (deps.dataSource === 'demo') {
+      sendUserError(res, 409, 'demo-mode');
+      return;
+    }
     const run = async (): Promise<void> => {
       const target: DatabaseTarget | null = await prepare(req, res);
       if (target === null) return;
@@ -139,6 +136,10 @@ export function createUserDatabaseRouter(deps: UserDatabaseRouterDeps): Router {
    * `db_version`; the old pool is ended.
    */
   router.put('/', (req: Request, res: Response, next: NextFunction): void => {
+    if (deps.dataSource === 'demo') {
+      sendUserError(res, 409, 'demo-mode');
+      return;
+    }
     const username: string = currentUser().user;
     const run = async (): Promise<void> => {
       const target: DatabaseTarget | null = await prepare(req, res);
@@ -150,25 +151,25 @@ export function createUserDatabaseRouter(deps: UserDatabaseRouterDeps): Router {
           return;
         }
         const { password, ...settings } = target;
-        if (await isDatabaseUsedByOther(username, settings)) {
+        if (await deps.appUsers.isDatabaseUsedByOther(username, settings)) {
           sendUserError(res, 409, 'database-in-use');
           return;
         }
         try {
-          await saveAppUserDatabase({
+          await deps.appUsers.saveDatabase({
             username,
             settings,
             password: deps.crypto.encrypt(password),
           });
         } catch (error: unknown) {
           // The unique key decides when two users save the same database at once.
-          if (isDuplicateEntry(error)) {
+          if (error instanceof DuplicateKeyError) {
             sendUserError(res, 409, 'database-in-use');
             return;
           }
           throw error;
         }
-        deps.pools.invalidate(username);
+        deps.databases.invalidate(username);
         res.status(204).send();
       });
     };

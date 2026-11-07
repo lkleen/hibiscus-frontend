@@ -10,22 +10,8 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/sync';
 import { createBankConnectionsRouter } from './bank-connections';
 
-vi.mock('../repositories/bank-connection', () => ({
-  createBankConnection: vi.fn(),
-  getBankConnection: vi.fn(),
-  listBankConnections: vi.fn(),
-  replaceBankConnectionAccounts: vi.fn(),
-  updateBankConnection: vi.fn(),
-}));
-
-import {
-  createBankConnection,
-  getBankConnection,
-  listBankConnections,
-  replaceBankConnectionAccounts,
-  updateBankConnection,
-} from '../repositories/bank-connection';
 import type { BankConnectionCreateParams } from '../repositories/bank-connection';
+import { MissingReferenceError } from '../repositories/repository-errors';
 import { runWithUserContext } from '../db/pool';
 import type { UserDatabaseHandle } from '../db/pool';
 import {
@@ -88,6 +74,13 @@ const service = {
   describeDiscovery: vi.fn(),
   startSync: vi.fn(),
 };
+const bankConnections = {
+  list: vi.fn(),
+  get: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  replaceAccounts: vi.fn(),
+};
 const loggedErrors: unknown[][] = [];
 
 let server: ReturnType<Express['listen']>;
@@ -113,7 +106,7 @@ beforeAll(
       app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) => {
         runWithUserContext({ user: USER, database: {} as UserDatabaseHandle }, next);
       });
-      app.use('/bank-connections', createBankConnectionsRouter({ service, keys }));
+      app.use('/bank-connections', createBankConnectionsRouter({ service, keys, bankConnections }));
       /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
       app.use(
         (
@@ -162,7 +155,7 @@ function zeroed(key: Buffer | undefined): boolean {
 
 describe('bank-connections router GET /', () => {
   it('returns the connections', async () => {
-    vi.mocked(listBankConnections).mockResolvedValueOnce([connection]);
+    bankConnections.list.mockResolvedValueOnce([connection]);
 
     const response: HttpResponse = await send('GET', '/bank-connections');
 
@@ -175,15 +168,15 @@ describe('bank-connections router POST /', () => {
   const createBody: BankConnectionCreateRequest = { ...settings, pin: PIN };
 
   it('stores the PIN encrypted and returns 201 without it', async () => {
-    vi.mocked(createBankConnection).mockResolvedValueOnce(3);
-    vi.mocked(getBankConnection).mockResolvedValueOnce(connection);
+    bankConnections.create.mockResolvedValueOnce(3);
+    bankConnections.get.mockResolvedValueOnce(connection);
 
     const response: HttpResponse = await send('POST', '/bank-connections', createBody);
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual(connection);
     expect(response.text).not.toContain(PIN);
-    const params: BankConnectionCreateParams = vi.mocked(createBankConnection).mock.calls[0]![0];
+    const params: BankConnectionCreateParams = bankConnections.create.mock.calls[0]![0];
     expect(params.settings).toEqual(settings);
     expect(crypto.decrypt(params.pin)).toBe(PIN);
     expect(params.pin.ciphertext.toString('utf8')).not.toContain(PIN);
@@ -201,11 +194,11 @@ describe('bank-connections router POST /', () => {
 
     expect(response.status).toBe(400);
     expect(response.text).not.toContain(PIN);
-    expect(createBankConnection).not.toHaveBeenCalled();
+    expect(bankConnections.create).not.toHaveBeenCalled();
   });
 
   it('never logs the PIN when storing fails', async () => {
-    vi.mocked(createBankConnection).mockRejectedValueOnce(new Error('db down'));
+    bankConnections.create.mockRejectedValueOnce(new Error('db down'));
 
     const response: HttpResponse = await send('POST', '/bank-connections', createBody);
 
@@ -222,12 +215,12 @@ describe('bank-connections router PUT /:id', () => {
   };
 
   it('returns 204 and keeps the PIN when none is given', async () => {
-    vi.mocked(updateBankConnection).mockResolvedValueOnce('updated');
+    bankConnections.update.mockResolvedValueOnce('updated');
 
     const response: HttpResponse = await send('PUT', '/bank-connections/3', updateBody);
 
     expect(response.status).toBe(204);
-    expect(updateBankConnection).toHaveBeenCalledWith({
+    expect(bankConnections.update).toHaveBeenCalledWith({
       id: 3,
       expected: settings,
       next: updateBody.next,
@@ -235,19 +228,19 @@ describe('bank-connections router PUT /:id', () => {
   });
 
   it('replaces the PIN encrypted when given', async () => {
-    vi.mocked(updateBankConnection).mockResolvedValueOnce('updated');
+    bankConnections.update.mockResolvedValueOnce('updated');
 
     await send('PUT', '/bank-connections/3', { ...updateBody, pin: PIN });
 
-    const params = vi.mocked(updateBankConnection).mock.calls[0]![0];
+    const params = bankConnections.update.mock.calls[0]![0];
     expect(params.pin).toBeDefined();
     expect(crypto.decrypt(params.pin!)).toBe(PIN);
   });
 
   it('returns 409 conflict and 404 not-found', async () => {
-    vi.mocked(updateBankConnection).mockResolvedValueOnce('conflict');
+    bankConnections.update.mockResolvedValueOnce('conflict');
     const conflict: HttpResponse = await send('PUT', '/bank-connections/3', updateBody);
-    vi.mocked(updateBankConnection).mockResolvedValueOnce('not-found');
+    bankConnections.update.mockResolvedValueOnce('not-found');
     const missing: HttpResponse = await send('PUT', '/bank-connections/3', updateBody);
 
     expect(conflict.status).toBe(409);
@@ -259,7 +252,7 @@ describe('bank-connections router PUT /:id', () => {
   it('returns 400 for an invalid id or body', async () => {
     expect((await send('PUT', '/bank-connections/abc', updateBody)).status).toBe(400);
     expect((await send('PUT', '/bank-connections/3', { next: settings })).status).toBe(400);
-    expect(updateBankConnection).not.toHaveBeenCalled();
+    expect(bankConnections.update).not.toHaveBeenCalled();
   });
 });
 
@@ -321,21 +314,19 @@ describe('bank-connections router PUT /:id/accounts', () => {
   const accounts = [{ accountIdentifier: 'DE111', kontoId: 11, enabled: true }];
 
   it('replaces the mapping', async () => {
-    vi.mocked(replaceBankConnectionAccounts).mockResolvedValueOnce('updated');
+    bankConnections.replaceAccounts.mockResolvedValueOnce('updated');
 
     expect((await send('PUT', '/bank-connections/3/accounts', { accounts })).status).toBe(204);
-    expect(replaceBankConnectionAccounts).toHaveBeenCalledWith(3, accounts);
+    expect(bankConnections.replaceAccounts).toHaveBeenCalledWith(3, accounts);
   });
 
   it('returns 400 for duplicate identifiers and for an unknown konto, 404 for no connection', async () => {
     const duplicate: HttpResponse = await send('PUT', '/bank-connections/3/accounts', {
       accounts: [...accounts, ...accounts],
     });
-    vi.mocked(replaceBankConnectionAccounts).mockRejectedValueOnce(
-      Object.assign(new Error('fk'), { code: 'ER_NO_REFERENCED_ROW_2' }),
-    );
+    bankConnections.replaceAccounts.mockRejectedValueOnce(new MissingReferenceError('konto'));
     const unknown: HttpResponse = await send('PUT', '/bank-connections/3/accounts', { accounts });
-    vi.mocked(replaceBankConnectionAccounts).mockResolvedValueOnce('not-found');
+    bankConnections.replaceAccounts.mockResolvedValueOnce('not-found');
     const missing: HttpResponse = await send('PUT', '/bank-connections/3/accounts', { accounts });
 
     expect(duplicate.status).toBe(400);
@@ -378,8 +369,8 @@ describe('bank-connections router and the user key', () => {
   const createBody: BankConnectionCreateRequest = { ...settings, pin: PIN, key: KEY_TEXT };
 
   it('encrypts a new PIN with the user key from the request and zeroes it', async () => {
-    vi.mocked(createBankConnection).mockResolvedValueOnce(3);
-    vi.mocked(getBankConnection).mockResolvedValueOnce(connection);
+    bankConnections.create.mockResolvedValueOnce(3);
+    bankConnections.get.mockResolvedValueOnce(connection);
 
     const response: HttpResponse = await send('POST', '/bank-connections', {
       ...createBody,
@@ -393,7 +384,7 @@ describe('bank-connections router and the user key', () => {
       key: KEY_TEXT,
       keepUnlocked: true,
     });
-    const params: BankConnectionCreateParams = vi.mocked(createBankConnection).mock.calls[0]![0];
+    const params: BankConnectionCreateParams = bankConnections.create.mock.calls[0]![0];
     expect(crypto.decrypt(params.pin)).toBe(PIN);
     expect(zeroed(resolvedKeys[0])).toBe(true);
     expect(isUserBusy(USER)).toBe(false);
@@ -422,8 +413,8 @@ describe('bank-connections router and the user key', () => {
         expect(response.text).not.toContain(PIN);
         expect(response.text).not.toContain(KEY_TEXT);
       }
-      expect(createBankConnection).not.toHaveBeenCalled();
-      expect(updateBankConnection).not.toHaveBeenCalled();
+      expect(bankConnections.create).not.toHaveBeenCalled();
+      expect(bankConnections.update).not.toHaveBeenCalled();
       expect(isUserBusy(USER)).toBe(false);
     },
   );
@@ -437,11 +428,11 @@ describe('bank-connections router and the user key', () => {
       endReconfiguring(USER);
     }
     expect(keys.resolve).not.toHaveBeenCalled();
-    expect(createBankConnection).not.toHaveBeenCalled();
+    expect(bankConnections.create).not.toHaveBeenCalled();
   });
 
   it('needs no key for an update without a PIN', async () => {
-    vi.mocked(updateBankConnection).mockResolvedValueOnce('updated');
+    bankConnections.update.mockResolvedValueOnce('updated');
 
     const response: HttpResponse = await send('PUT', '/bank-connections/3', {
       expected: settings,

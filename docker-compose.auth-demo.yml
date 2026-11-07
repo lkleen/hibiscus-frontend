@@ -17,6 +17,8 @@ services:
     build: .
     restart: unless-stopped
     environment:
+      # Real MariaDB data, not the bundled demo data (DATA_SOURCE has no default).
+      - DATA_SOURCE=mariadb
       # The app database (holds hf_app_user); the backend creates its table at startup, so it
       # must be reachable. The same server is the only allowed host for users' Hibiscus databases.
       - DB_HOST=demo-db

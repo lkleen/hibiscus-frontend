@@ -5,13 +5,16 @@ import { DEFAULT_DATE_PRESETS } from '../settings/date-presets';
 import { DEFAULT_TABLE_DENSITIES } from '../settings/table-density';
 import { createSettingsRouter } from './settings';
 
-vi.mock('../repositories/user-setting', () => ({
-  getUserSetting: vi.fn(),
-  putUserSetting: vi.fn(),
-  deleteUserSetting: vi.fn(),
-}));
+import type { UserSettingRepository } from '../repositories/user-setting';
 
-import { deleteUserSetting, getUserSetting, putUserSetting } from '../repositories/user-setting';
+const getUserSetting = vi.fn<UserSettingRepository['get']>();
+const putUserSetting = vi.fn<UserSettingRepository['put']>();
+const deleteUserSetting = vi.fn<UserSettingRepository['delete']>();
+const userSettings: UserSettingRepository = {
+  get: getUserSetting,
+  put: putUserSetting,
+  delete: deleteUserSetting,
+};
 
 interface FetchResponse {
   status: number;
@@ -75,7 +78,7 @@ describe('settings router', () => {
           next();
         });
 
-        app.use('/settings', createSettingsRouter());
+        app.use('/settings', createSettingsRouter({ userSettings }));
 
         /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
         const errorHandler = (

@@ -23,6 +23,15 @@ export interface TaxTagUpdateParams {
   readonly update: TaxTagUpdate;
 }
 
+/**
+ * The public part of the category tax tags (`hf_category_tax_tag`). Tags are written only through
+ * `CategoryRepository`; `applyTaxTagUpdate` and `ensureTaxTagTables` are MySQL internals.
+ */
+export interface TaxTagRepository {
+  /** Every tagged category, ordered by category id. */
+  list(): Promise<TaxTag[]>;
+}
+
 /** MySQL error code: the category got tagged by someone else in the meantime. */
 const DUPLICATE_ENTRY_CODE = 'ER_DUP_ENTRY';
 
@@ -115,14 +124,6 @@ export async function ensureTaxTagTables(): Promise<void> {
   `);
 }
 
-/** Every tagged category, ordered by category id. */
-export async function listTaxTags(): Promise<TaxTag[]> {
-  const [rows] = await getPool().query<TaxTagRow[]>(
-    'SELECT category_id, code FROM hf_category_tax_tag ORDER BY category_id',
-  );
-  return rows.map((row: TaxTagRow): TaxTag => ({ category_id: row.category_id, code: row.code }));
-}
-
 /** Runs the INSERT / UPDATE / DELETE that turns `expected` into `next`; they differ. */
 async function writeChange(connection: PoolConnection, params: TaxTagUpdateParams): Promise<void> {
   const { categoryId, update } = params;
@@ -154,8 +155,8 @@ async function writeChange(connection: PoolConnection, params: TaxTagUpdateParam
  * Changes one category's tag inside the caller's transaction, guarded by `update.expected`
  * (null = untagged). The stored tag is read with `FOR UPDATE` and compared, so `expected === next`
  * is verified too; writes happen only when the two differ. Returns whether the stored tag matched
- * `expected`. An unknown section code throws the foreign key error (`fk_hf_tax_tag_section`) for the
- * caller to answer as a 400.
+ * `expected`. An unknown section code throws the driver's foreign key error (`fk_hf_tax_tag_section`),
+ * which `MysqlCategoryRepository` translates.
  */
 export async function applyTaxTagUpdate(
   connection: PoolConnection,
@@ -177,4 +178,15 @@ export async function applyTaxTagUpdate(
     throw error;
   }
   return true;
+}
+
+/** `TaxTagRepository` on the user's Hibiscus MariaDB. */
+export class MysqlTaxTagRepository implements TaxTagRepository {
+  /** Every tagged category, ordered by category id. */
+  async list(): Promise<TaxTag[]> {
+    const [rows] = await getPool().query<TaxTagRow[]>(
+      'SELECT category_id, code FROM hf_category_tax_tag ORDER BY category_id',
+    );
+    return rows.map((row: TaxTagRow): TaxTag => ({ category_id: row.category_id, code: row.code }));
+  }
 }

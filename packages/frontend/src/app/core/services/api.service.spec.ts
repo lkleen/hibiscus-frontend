@@ -49,7 +49,12 @@ describe('ApiService', () => {
 
     const req = httpMock.expectOne('/api/me');
     expect(req.request.method).toBe('GET');
-    req.flush({ user: 'lars@kleen.email', database: 'configured', key: 'configured' });
+    req.flush({
+      user: 'lars@kleen.email',
+      database: 'configured',
+      key: 'configured',
+      dataSource: 'mariadb',
+    });
   });
 
   it('requests /api/accounts', () => {

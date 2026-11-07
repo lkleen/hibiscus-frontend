@@ -2,6 +2,7 @@ import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { KeyMode, UserDatabaseSettings } from '@hibiscus-frontend/shared/contracts/user';
 import { getAppPool } from '../db/pool';
 import type { EncryptedSecret } from '../sync/credential-crypto';
+import { DuplicateKeyError } from './repository-errors';
 
 /** A user's stored database settings; the password stays encrypted with the server key. */
 export interface AppUserDatabaseRecord {
@@ -44,6 +45,29 @@ export interface AppUserKeyUpdate {
   readonly next: AppUserKeyRecord;
 }
 
+/** The app users (`hf_app_user` in the app database): each user's database settings and key. */
+export interface AppUserRepository {
+  /** The user's database settings; `null` while the user has none. */
+  getDatabase(username: string): Promise<AppUserDatabaseRecord | null>;
+  /** Whether another user has the same database; only the friendly pre-check. */
+  isDatabaseUsedByOther(username: string, settings: UserDatabaseSettings): Promise<boolean>;
+  /**
+   * Saves the settings and raises the version; another user's database throws
+   * `DuplicateKeyError`, and never overwrites that user's row.
+   */
+  saveDatabase(write: AppUserDatabaseWrite): Promise<void>;
+  /** Every user with a database set up, for the scheduler. */
+  listUsersWithDatabase(): Promise<string[]>;
+  /** The user's key record; `null` while no key is configured. */
+  getKey(username: string): Promise<AppUserKeyRecord | null>;
+  /** Sets the first key; `false` when one is configured already (check and write are atomic). */
+  createKey(username: string, record: AppUserKeyRecord): Promise<boolean>;
+  /** Replaces the key record if it still holds `expectedCheck`; throws when it does not. */
+  updateKey(username: string, update: AppUserKeyUpdate): Promise<void>;
+  /** Removes the user's key: mode, check value and wrapped copy. */
+  deleteKey(username: string): Promise<void>;
+}
+
 interface AppUserKeyRow extends RowDataPacket {
   key_mode: KeyMode | null;
   key_check: Buffer | null;
@@ -54,6 +78,7 @@ interface AppUserKeyRow extends RowDataPacket {
 
 /** One Hibiscus database (host, port, name) belongs to one user: their stored key must fit its PINs. */
 const DATABASE_UNIQUE_KEY = 'uq_hf_app_user_database';
+const DUPLICATE_ENTRY_CODE = 'ER_DUP_ENTRY';
 
 interface UsernameRow extends RowDataPacket {
   username: string;
@@ -112,102 +137,6 @@ async function ensureDatabaseUniqueKey(): Promise<void> {
   );
 }
 
-/** The user's database settings; `null` while the user has none. */
-export async function getAppUserDatabase(username: string): Promise<AppUserDatabaseRecord | null> {
-  const [rows] = await getAppPool().query<AppUserDatabaseRow[]>(
-    `SELECT db_host, db_port, db_name, db_user, db_password_ciphertext, db_password_iv,
-            db_password_tag, db_version
-       FROM hf_app_user WHERE username = ? AND db_host IS NOT NULL`,
-    [username],
-  );
-  const row: AppUserDatabaseRow | undefined = rows[0];
-  if (row === undefined) return null;
-  return {
-    settings: { host: row.db_host, port: row.db_port, name: row.db_name, user: row.db_user },
-    password: {
-      ciphertext: row.db_password_ciphertext,
-      iv: row.db_password_iv,
-      tag: row.db_password_tag,
-    },
-    version: row.db_version,
-  };
-}
-
-/**
- * Whether another user than `username` has the same database (host compared case-insensitively,
- * port, name). Only the friendly pre-check; the unique key decides under concurrency.
- */
-export async function isDatabaseUsedByOther(
-  username: string,
-  settings: UserDatabaseSettings,
-): Promise<boolean> {
-  const [rows] = await getAppPool().query<UsernameRow[]>(
-    `SELECT username FROM hf_app_user
-      WHERE username <> ? AND LOWER(db_host) = ? AND db_port = ? AND db_name = ? LIMIT 1`,
-    [username, settings.host.toLowerCase(), settings.port, settings.name],
-  );
-  return rows.length > 0;
-}
-
-/**
- * Saves the user's database settings (creating the row) and raises `db_version`. Throws the
- * `ER_DUP_ENTRY` error when another user has the same database (see `isDatabaseUsedByOther`). The
- * row is created first and then updated, so a clash with another user's database can never
- * overwrite that user's row (as `ON DUPLICATE KEY UPDATE` would).
- */
-export async function saveAppUserDatabase(write: AppUserDatabaseWrite): Promise<void> {
-  const { settings, password } = write;
-  const pool: Pool = getAppPool();
-  await pool.query('INSERT IGNORE INTO hf_app_user (username) VALUES (?)', [write.username]);
-  await pool.query(
-    `UPDATE hf_app_user SET db_host = ?, db_port = ?, db_name = ?, db_user = ?,
-       db_password_ciphertext = ?, db_password_iv = ?, db_password_tag = ?,
-       db_version = db_version + 1
-     WHERE username = ?`,
-    [
-      settings.host,
-      settings.port,
-      settings.name,
-      settings.user,
-      password.ciphertext,
-      password.iv,
-      password.tag,
-      write.username,
-    ],
-  );
-}
-
-/** Every user with a database set up, for the scheduler. */
-export async function listAppUsersWithDatabase(): Promise<string[]> {
-  const [rows] = await getAppPool().query<UsernameRow[]>(
-    'SELECT username FROM hf_app_user WHERE db_host IS NOT NULL ORDER BY username',
-  );
-  return rows.map((row: UsernameRow): string => row.username);
-}
-
-/** The user's key record; `null` while no key is configured. */
-export async function getAppUserKey(username: string): Promise<AppUserKeyRecord | null> {
-  const [rows] = await getAppPool().query<AppUserKeyRow[]>(
-    `SELECT key_mode, key_check, key_wrapped_ciphertext, key_wrapped_iv, key_wrapped_tag
-       FROM hf_app_user WHERE username = ?`,
-    [username],
-  );
-  const row: AppUserKeyRow | undefined = rows[0];
-  if (row === undefined || row.key_mode === null) return null;
-  if (row.key_check === null) throw new Error(`The key of ${username} has no check value`);
-  const wrapped: EncryptedSecret | null =
-    row.key_wrapped_ciphertext === null ||
-    row.key_wrapped_iv === null ||
-    row.key_wrapped_tag === null
-      ? null
-      : {
-          ciphertext: row.key_wrapped_ciphertext,
-          iv: row.key_wrapped_iv,
-          tag: row.key_wrapped_tag,
-        };
-  return { mode: row.key_mode, check: row.key_check, wrapped };
-}
-
 /** The `SET` list and values that write a key record. */
 function keyAssignments(record: AppUserKeyRecord): {
   sql: string;
@@ -226,45 +155,154 @@ function keyAssignments(record: AppUserKeyRecord): {
   };
 }
 
-/**
- * Sets the user's first key (creating the row when the user has none yet). `false` when a key is
- * configured already; the check and the write are one statement, so two creates cannot both win.
- */
-export async function createAppUserKey(
-  username: string,
-  record: AppUserKeyRecord,
-): Promise<boolean> {
-  const pool: Pool = getAppPool();
-  await pool.query('INSERT IGNORE INTO hf_app_user (username) VALUES (?)', [username]);
-  const { sql, values } = keyAssignments(record);
-  const [result] = await pool.query<ResultSetHeader>(
-    `UPDATE hf_app_user SET ${sql} WHERE username = ? AND key_mode IS NULL`,
-    [...values, username],
+function isDuplicateEntry(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === DUPLICATE_ENTRY_CODE
   );
-  return result.affectedRows === 1;
 }
 
-/**
- * Replaces the user's key record if it still holds `expectedCheck`; throws when it does not (the
- * key was changed or reset meanwhile).
- */
-export async function updateAppUserKey(username: string, update: AppUserKeyUpdate): Promise<void> {
-  const { sql, values } = keyAssignments(update.next);
-  const [result] = await getAppPool().query<ResultSetHeader>(
-    `UPDATE hf_app_user SET ${sql} WHERE username = ? AND key_check = ?`,
-    [...values, username, update.expectedCheck],
-  );
-  if (result.affectedRows !== 1) {
-    throw new Error(`The key of ${username} changed while it was being updated`);
+/** `hf_app_user` in the app database (`getAppPool()`). */
+export class MysqlAppUserRepository implements AppUserRepository {
+  /** The user's database settings; `null` while the user has none. */
+  async getDatabase(username: string): Promise<AppUserDatabaseRecord | null> {
+    const [rows] = await getAppPool().query<AppUserDatabaseRow[]>(
+      `SELECT db_host, db_port, db_name, db_user, db_password_ciphertext, db_password_iv,
+              db_password_tag, db_version
+         FROM hf_app_user WHERE username = ? AND db_host IS NOT NULL`,
+      [username],
+    );
+    const row: AppUserDatabaseRow | undefined = rows[0];
+    if (row === undefined) return null;
+    return {
+      settings: { host: row.db_host, port: row.db_port, name: row.db_name, user: row.db_user },
+      password: {
+        ciphertext: row.db_password_ciphertext,
+        iv: row.db_password_iv,
+        tag: row.db_password_tag,
+      },
+      version: row.db_version,
+    };
   }
-}
 
-/** Removes the user's key: mode, check value and wrapped copy. */
-export async function deleteAppUserKey(username: string): Promise<void> {
-  await getAppPool().query(
-    `UPDATE hf_app_user SET key_mode = NULL, key_check = NULL, key_wrapped_ciphertext = NULL,
-       key_wrapped_iv = NULL, key_wrapped_tag = NULL
-     WHERE username = ?`,
-    [username],
-  );
+  /**
+   * Whether another user than `username` has the same database (host compared case-insensitively,
+   * port, name). Only the friendly pre-check; the unique key decides under concurrency.
+   */
+  async isDatabaseUsedByOther(username: string, settings: UserDatabaseSettings): Promise<boolean> {
+    const [rows] = await getAppPool().query<UsernameRow[]>(
+      `SELECT username FROM hf_app_user
+        WHERE username <> ? AND LOWER(db_host) = ? AND db_port = ? AND db_name = ? LIMIT 1`,
+      [username, settings.host.toLowerCase(), settings.port, settings.name],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Saves the user's database settings (creating the row) and raises `db_version`. Throws
+   * `DuplicateKeyError` when another user has the same database (see `isDatabaseUsedByOther`). The
+   * row is created first and then updated, so a clash with another user's database can never
+   * overwrite that user's row (as `ON DUPLICATE KEY UPDATE` would).
+   */
+  async saveDatabase(write: AppUserDatabaseWrite): Promise<void> {
+    const { settings, password } = write;
+    const pool: Pool = getAppPool();
+    await pool.query('INSERT IGNORE INTO hf_app_user (username) VALUES (?)', [write.username]);
+    try {
+      await pool.query(
+        `UPDATE hf_app_user SET db_host = ?, db_port = ?, db_name = ?, db_user = ?,
+           db_password_ciphertext = ?, db_password_iv = ?, db_password_tag = ?,
+           db_version = db_version + 1
+         WHERE username = ?`,
+        [
+          settings.host,
+          settings.port,
+          settings.name,
+          settings.user,
+          password.ciphertext,
+          password.iv,
+          password.tag,
+          write.username,
+        ],
+      );
+    } catch (error: unknown) {
+      if (isDuplicateEntry(error)) {
+        throw new DuplicateKeyError('The database of another user', { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  /** Every user with a database set up, for the scheduler. */
+  async listUsersWithDatabase(): Promise<string[]> {
+    const [rows] = await getAppPool().query<UsernameRow[]>(
+      'SELECT username FROM hf_app_user WHERE db_host IS NOT NULL ORDER BY username',
+    );
+    return rows.map((row: UsernameRow): string => row.username);
+  }
+
+  /** The user's key record; `null` while no key is configured. */
+  async getKey(username: string): Promise<AppUserKeyRecord | null> {
+    const [rows] = await getAppPool().query<AppUserKeyRow[]>(
+      `SELECT key_mode, key_check, key_wrapped_ciphertext, key_wrapped_iv, key_wrapped_tag
+         FROM hf_app_user WHERE username = ?`,
+      [username],
+    );
+    const row: AppUserKeyRow | undefined = rows[0];
+    if (row === undefined || row.key_mode === null) return null;
+    if (row.key_check === null) throw new Error(`The key of ${username} has no check value`);
+    const wrapped: EncryptedSecret | null =
+      row.key_wrapped_ciphertext === null ||
+      row.key_wrapped_iv === null ||
+      row.key_wrapped_tag === null
+        ? null
+        : {
+            ciphertext: row.key_wrapped_ciphertext,
+            iv: row.key_wrapped_iv,
+            tag: row.key_wrapped_tag,
+          };
+    return { mode: row.key_mode, check: row.key_check, wrapped };
+  }
+
+  /**
+   * Sets the user's first key (creating the row when the user has none yet). `false` when a key is
+   * configured already; the check and the write are one statement, so two creates cannot both win.
+   */
+  async createKey(username: string, record: AppUserKeyRecord): Promise<boolean> {
+    const pool: Pool = getAppPool();
+    await pool.query('INSERT IGNORE INTO hf_app_user (username) VALUES (?)', [username]);
+    const { sql, values } = keyAssignments(record);
+    const [result] = await pool.query<ResultSetHeader>(
+      `UPDATE hf_app_user SET ${sql} WHERE username = ? AND key_mode IS NULL`,
+      [...values, username],
+    );
+    return result.affectedRows === 1;
+  }
+
+  /**
+   * Replaces the user's key record if it still holds `expectedCheck`; throws when it does not (the
+   * key was changed or reset meanwhile).
+   */
+  async updateKey(username: string, update: AppUserKeyUpdate): Promise<void> {
+    const { sql, values } = keyAssignments(update.next);
+    const [result] = await getAppPool().query<ResultSetHeader>(
+      `UPDATE hf_app_user SET ${sql} WHERE username = ? AND key_check = ?`,
+      [...values, username, update.expectedCheck],
+    );
+    if (result.affectedRows !== 1) {
+      throw new Error(`The key of ${username} changed while it was being updated`);
+    }
+  }
+
+  /** Removes the user's key: mode, check value and wrapped copy. */
+  async deleteKey(username: string): Promise<void> {
+    await getAppPool().query(
+      `UPDATE hf_app_user SET key_mode = NULL, key_check = NULL, key_wrapped_ciphertext = NULL,
+         key_wrapped_iv = NULL, key_wrapped_tag = NULL
+       WHERE username = ?`,
+      [username],
+    );
+  }
 }

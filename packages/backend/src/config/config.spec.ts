@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { formatAllowedDbHost, isDbHostAllowed, loadConfig } from './config';
-import type { AllowedDbHost, Config } from './config';
+import type { AllowedDbHost, Config, MariadbConfig } from './config';
 
 const BASE_ENV: Record<string, string> = {
   DB_HOST: 'localhost',
@@ -14,6 +14,7 @@ const BASE_ENV: Record<string, string> = {
   INTERNAL_PROXY_SECRET: 'secret',
   BANK_CREDENTIALS_KEY: Buffer.alloc(32, 7).toString('base64'),
   ALLOWED_DB_HOSTS: 'hibiscus-db',
+  DATA_SOURCE: 'mariadb',
 };
 
 const originalEnv: NodeJS.ProcessEnv = process.env;
@@ -25,8 +26,62 @@ function withEnv(overrides: Record<string, string | undefined>): void {
   );
 }
 
+function loadMariadbConfig(): MariadbConfig {
+  const config: Config = loadConfig();
+  if (config.DATA_SOURCE !== 'mariadb') throw new Error(`Loaded ${config.DATA_SOURCE} config`);
+  return config;
+}
+
 afterEach(() => {
   process.env = originalEnv;
+});
+
+describe('loadConfig DATA_SOURCE', () => {
+  it('requires the database values for mariadb', () => {
+    withEnv({});
+
+    const config: MariadbConfig = loadMariadbConfig();
+
+    expect(config.DB_HOST).toBe('localhost');
+    expect(config.DB_PORT).toBe(3306);
+  });
+
+  it.each(['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'ALLOWED_DB_HOSTS'])(
+    'fails startup for mariadb without %s',
+    (name: string) => {
+      withEnv({ [name]: undefined });
+
+      expect(() => loadConfig()).toThrow('Invalid environment variables');
+    },
+  );
+
+  it('needs no database values for demo and drops them', () => {
+    withEnv({
+      DATA_SOURCE: 'demo',
+      DB_HOST: undefined,
+      DB_PORT: undefined,
+      DB_NAME: undefined,
+      DB_USER: undefined,
+      DB_PASSWORD: 'leftover',
+      ALLOWED_DB_HOSTS: undefined,
+    });
+
+    const config: Config = loadConfig();
+
+    expect(config.DATA_SOURCE).toBe('demo');
+    expect(config).not.toHaveProperty('DB_PASSWORD');
+    expect(config.PORT).toBe(3000);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['unknown', 'postgres'],
+  ])('fails startup with a clear message when it is %s', (_label: string, value?: string) => {
+    withEnv({ DATA_SOURCE: value });
+
+    expect(() => loadConfig()).toThrow('DATA_SOURCE is required and must be one of: mariadb, demo');
+  });
 });
 
 describe('loadConfig bank sync values', () => {
@@ -56,7 +111,7 @@ describe('loadConfig ALLOWED_DB_HOSTS', () => {
   it('parses `host` and `host:port` entries, lower-cased and trimmed', () => {
     withEnv({ ALLOWED_DB_HOSTS: ' Hibiscus-DB , 10.0.0.5:3307,' });
 
-    const config: Config = loadConfig();
+    const config: MariadbConfig = loadMariadbConfig();
 
     expect(config.ALLOWED_DB_HOSTS).toEqual([
       { host: 'hibiscus-db', port: null },

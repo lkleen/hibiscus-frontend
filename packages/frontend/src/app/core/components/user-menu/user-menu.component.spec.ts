@@ -25,9 +25,12 @@ describe('UserMenuComponent', () => {
     httpMock = TestBed.inject(HttpTestingController);
 
     fixture.detectChanges();
-    httpMock
-      .expectOne('/api/me')
-      .flush({ user: 'lars@kleen.email', database: 'configured', key: 'configured' });
+    httpMock.expectOne('/api/me').flush({
+      user: 'lars@kleen.email',
+      database: 'configured',
+      key: 'configured',
+      dataSource: 'mariadb',
+    });
     fixture.detectChanges();
   });
 

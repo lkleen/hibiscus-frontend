@@ -8,13 +8,17 @@ import type {
 } from '@hibiscus-frontend/shared/contracts/categories';
 import { createCategoriesRouter } from './categories';
 
-vi.mock('../repositories/umsatztyp', () => ({
-  listCategories: vi.fn(),
-  createCategory: vi.fn(),
-  updateCategory: vi.fn(),
-}));
+import { MissingReferenceError } from '../repositories/repository-errors';
+import type { MissingReference } from '../repositories/repository-errors';
+import type { CategoryRepository } from '../repositories/umsatztyp';
 
-import { createCategory, updateCategory } from '../repositories/umsatztyp';
+const createCategory = vi.fn<CategoryRepository['create']>();
+const updateCategory = vi.fn<CategoryRepository['update']>();
+const categories: CategoryRepository = {
+  list: vi.fn<CategoryRepository['list']>(),
+  create: createCategory,
+  update: updateCategory,
+};
 
 interface HttpResponse {
   status: number;
@@ -63,7 +67,7 @@ beforeAll(
     new Promise<void>((resolve) => {
       const app: Express = express();
       app.use(express.json({ limit: '5mb' }));
-      app.use('/categories', createCategoriesRouter());
+      app.use('/categories', createCategoriesRouter({ categories }));
       /* eslint-disable @typescript-eslint/no-unused-vars,@typescript-eslint/max-params */
       app.use(
         (
@@ -94,13 +98,8 @@ afterAll(
     }),
 );
 
-function fkError(constraint: string): Error {
-  return Object.assign(
-    new Error(`Cannot add or update a child row: CONSTRAINT \`${constraint}\``),
-    {
-      code: 'ER_NO_REFERENCED_ROW_2',
-    },
-  );
+function missing(reference: MissingReference): Error {
+  return new MissingReferenceError(reference);
 }
 
 describe('categories router POST /', () => {
@@ -142,12 +141,12 @@ describe('categories router POST /', () => {
   });
 
   it('returns 400 for an unknown parent or account', async () => {
-    vi.mocked(createCategory).mockRejectedValueOnce(fkError('fk_umsatztyp_umsatztyp'));
+    vi.mocked(createCategory).mockRejectedValueOnce(missing('parent'));
     expect((await send('POST', '/categories', createBody)).body).toEqual({
       error: 'Unknown parent',
     });
 
-    vi.mocked(createCategory).mockRejectedValueOnce(fkError('fk_umsatztyp_konto'));
+    vi.mocked(createCategory).mockRejectedValueOnce(missing('account'));
     expect((await send('POST', '/categories', createBody)).body).toEqual({
       error: 'Unknown account',
     });
@@ -163,7 +162,7 @@ describe('categories router POST /', () => {
   });
 
   it('returns 400 for an unknown tax section', async () => {
-    vi.mocked(createCategory).mockRejectedValueOnce(fkError('fk_hf_tax_tag_section'));
+    vi.mocked(createCategory).mockRejectedValueOnce(missing('tax-section'));
     expect((await send('POST', '/categories', createBody)).body).toEqual({
       error: 'Unknown tax section',
     });
@@ -223,7 +222,7 @@ describe('categories router PUT /:id', () => {
   });
 
   it('returns 400 for an unknown tax section', async () => {
-    vi.mocked(updateCategory).mockRejectedValueOnce(fkError('fk_hf_tax_tag_section'));
+    vi.mocked(updateCategory).mockRejectedValueOnce(missing('tax-section'));
     expect((await send('PUT', '/categories/42', validBody)).body).toEqual({
       error: 'Unknown tax section',
     });
@@ -238,7 +237,7 @@ describe('categories router PUT /:id', () => {
   });
 
   it('returns 400 for an unknown parent or account', async () => {
-    vi.mocked(updateCategory).mockRejectedValueOnce(fkError('fk_umsatztyp_umsatztyp'));
+    vi.mocked(updateCategory).mockRejectedValueOnce(missing('parent'));
     const response: HttpResponse = await send('PUT', '/categories/42', validBody);
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: 'Unknown parent' });

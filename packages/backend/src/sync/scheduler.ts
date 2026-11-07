@@ -1,7 +1,7 @@
 import { runWithUserContext } from '../db/pool';
 import { UserBusyError } from '../db/user-activity';
-import type { UserDatabaseLookup, UserPools } from '../db/user-pools';
-import { listDueBankConnectionIds } from '../repositories/bank-connection';
+import type { UserDatabaseLookup, UserDatabases } from '../db/user-databases';
+import type { BankConnectionRepository } from '../repositories/bank-connection';
 import { ConflictError } from './sync-service';
 import type { SyncService } from './sync-service';
 import type { UnattendedKeyState, UserKeys } from './user-keys';
@@ -11,8 +11,10 @@ export const SCHEDULER_TICK_MS: number = 60 * 1000;
 
 export interface SyncSchedulerDeps {
   readonly service: Pick<SyncService, 'runSync'>;
-  readonly users: Pick<UserPools, 'listUsersWithDatabase' | 'acquire'>;
+  readonly users: Pick<UserDatabases, 'listUsersWithDatabase' | 'acquire'>;
   readonly keys: Pick<UserKeys, 'unattendedState' | 'resolveUnattended'>;
+  /** The due connections, read in each user's context from that user's database. */
+  readonly bankConnections: Pick<BankConnectionRepository, 'listDueIds'>;
 }
 
 /** Why a user's scheduled syncs are skipped; logged once per change, not on every tick. */
@@ -20,7 +22,7 @@ type SkipReason =
   Exclude<UnattendedKeyState, 'ready'> | Exclude<UserDatabaseLookup['status'], 'configured'>;
 
 /**
- * Runs the due connections (see `listDueBankConnectionIds`) of every user with a database, every
+ * Runs the due connections (see `BankConnectionRepository.listDueIds`) of every user with a database, every
  * tick, one user and one connection after the other; each user's work runs in that user's
  * context, on their own database, with the key the scheduler can get without the user (`stored`,
  * or `memory` while unlocked). Users in `manual` mode, locked `memory` users and users without a
@@ -113,7 +115,7 @@ export class SyncScheduler {
   private async runDueOfCurrentUser(user: string): Promise<void> {
     let ids: number[];
     try {
-      ids = await listDueBankConnectionIds();
+      ids = await this.deps.bankConnections.listDueIds();
     } catch (error: unknown) {
       console.error('[hibiscus-backend] Listing the due bank connections failed:', error);
       return;

@@ -8,7 +8,9 @@ vi.mock('../db/pool', () => ({
 
 import { getPool } from '../db/pool';
 import { DEFAULT_TAX_SECTIONS, TAX_NOT_RELEVANT_SECTION } from '../tax/tax-section-defaults';
-import { applyTaxTagUpdate, ensureTaxTagTables, listTaxTags } from './tax-tag';
+import { MysqlTaxTagRepository, applyTaxTagUpdate, ensureTaxTagTables } from './tax-tag';
+
+const repository: MysqlTaxTagRepository = new MysqlTaxTagRepository();
 
 function normalize(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim();
@@ -86,7 +88,7 @@ describe('listTaxTags', () => {
     };
     vi.mocked(getPool).mockReturnValue(pool as unknown as Pool);
 
-    expect(await listTaxTags()).toEqual([{ category_id: 1, code: 'St-WK' }]);
+    expect(await repository.list()).toEqual([{ category_id: 1, code: 'St-WK' }]);
     expect((pool.query.mock.calls[0] as [string])[0]).toContain('ORDER BY category_id');
   });
 });

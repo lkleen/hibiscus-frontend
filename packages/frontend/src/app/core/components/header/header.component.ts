@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { TranslationKey } from '../../models/translation.model';
+import { MeService } from '../../services/me.service';
 import { LocaleService } from '../../services/locale.service';
 import { TranslationService } from '../../services/translation.service';
 import { DarkModeToggleComponent } from '../dark-mode-toggle/dark-mode-toggle.component';
@@ -20,6 +21,7 @@ interface NavLink {
 })
 export class HeaderComponent {
   protected readonly i18n = inject(TranslationService);
+  protected readonly me = inject(MeService);
   protected readonly locale = inject(LocaleService).locale;
 
   protected readonly navLinks: readonly NavLink[] = [

@@ -12,13 +12,10 @@ vi.mock('../db/pool', () => ({
 }));
 
 import { getPool } from '../db/pool';
-import {
-  CATEGORY_COLUMNS,
-  CATEGORY_EDITABLE_COLUMNS,
-  createCategory,
-  listCategories,
-  updateCategory,
-} from './umsatztyp';
+import { MissingReferenceError } from './repository-errors';
+import { CATEGORY_COLUMNS, CATEGORY_EDITABLE_COLUMNS, MysqlCategoryRepository } from './umsatztyp';
+
+const repository: MysqlCategoryRepository = new MysqlCategoryRepository();
 
 interface FakePool {
   query: ReturnType<typeof vi.fn>;
@@ -39,7 +36,7 @@ describe('listCategories', () => {
   it('selects every row unfiltered and unpaged, ordered by name and id', async () => {
     pool.query.mockResolvedValueOnce([[]]);
 
-    await listCategories();
+    await repository.list();
 
     expect(pool.query).toHaveBeenCalledTimes(1);
     const [sql] = pool.query.mock.calls[0] as [string];
@@ -52,7 +49,7 @@ describe('listCategories', () => {
   it('selects exactly the response columns, in response order', async () => {
     pool.query.mockResolvedValueOnce([[]]);
 
-    await listCategories();
+    await repository.list();
 
     const [sql] = pool.query.mock.calls[0] as [string];
     expect(sql).toContain(`SELECT ${CATEGORY_COLUMNS.join(', ')} FROM umsatztyp`);
@@ -93,7 +90,7 @@ describe('listCategories', () => {
     ];
     pool.query.mockResolvedValueOnce([rows]);
 
-    const result = await listCategories();
+    const result = await repository.list();
 
     expect(result).toBe(rows);
   });
@@ -154,7 +151,7 @@ describe('createCategory', () => {
     const stored: CategoryRow = { id: 9, ...fields };
     connection.query.mockResolvedValueOnce([{ insertId: 9 }]).mockResolvedValueOnce([[stored]]);
 
-    const result: CategoryRow = await createCategory(untagged);
+    const result: CategoryRow = await repository.create(untagged);
 
     const [insertSql, values] = connection.query.mock.calls[0] as [string, unknown[]];
     expect(insertSql).toContain(`INSERT INTO umsatztyp (${CATEGORY_EDITABLE_COLUMNS.join(', ')})`);
@@ -174,7 +171,7 @@ describe('createCategory', () => {
       .mockResolvedValueOnce([{ affectedRows: 1 }])
       .mockResolvedValueOnce([[stored]]);
 
-    await createCategory({ ...untagged, taxTag: 'St-WK' });
+    await repository.create({ ...untagged, taxTag: 'St-WK' });
 
     expect(connection.query.mock.calls[2]).toEqual([
       'INSERT INTO hf_category_tax_tag (category_id, code) VALUES (?, ?)',
@@ -183,7 +180,7 @@ describe('createCategory', () => {
     expect(connection.commit).toHaveBeenCalledTimes(1);
   });
 
-  it('rolls back and rethrows when the tag insert fails (unknown section)', async () => {
+  it('rolls back and throws MissingReferenceError when the tag insert fails (unknown section)', async () => {
     const error: Error = Object.assign(new Error('fk_hf_tax_tag_section'), {
       code: 'ER_NO_REFERENCED_ROW_2',
     });
@@ -192,7 +189,11 @@ describe('createCategory', () => {
       .mockResolvedValueOnce([[]])
       .mockRejectedValueOnce(error);
 
-    await expect(createCategory({ ...untagged, taxTag: 'St-X' })).rejects.toBe(error);
+    await expect(repository.create({ ...untagged, taxTag: 'St-X' })).rejects.toMatchObject({
+      name: 'MissingReferenceError',
+      reference: 'tax-section',
+      cause: error,
+    });
     expect(connection.rollback).toHaveBeenCalled();
     expect(connection.commit).not.toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalled();
@@ -201,7 +202,7 @@ describe('createCategory', () => {
   it('throws and rolls back when the row cannot be read back', async () => {
     connection.query.mockResolvedValueOnce([{ insertId: 9 }]).mockResolvedValueOnce([[]]);
 
-    await expect(createCategory(untagged)).rejects.toThrow('could not be read back');
+    await expect(repository.create(untagged)).rejects.toThrow('could not be read back');
     expect(connection.rollback).toHaveBeenCalled();
     expect(connection.commit).not.toHaveBeenCalled();
   });
@@ -235,7 +236,7 @@ describe('updateCategory', () => {
     ]);
     connection.query.mockResolvedValueOnce([{ affectedRows: 1 }]).mockResolvedValueOnce([[]]); // tag SELECT: untagged, expected untagged
 
-    expect(await updateCategory(2, request)).toBe('updated');
+    expect(await repository.update(2, request)).toBe('updated');
 
     expect(connection.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
     const [sql, values] = connection.query.mock.calls[1] as [string, unknown[]];
@@ -252,7 +253,7 @@ describe('updateCategory', () => {
   it('returns not-found when the id is missing', async () => {
     mockTree([{ id: 1, parent_id: null }]);
 
-    expect(await updateCategory(2, request)).toBe('not-found');
+    expect(await repository.update(2, request)).toBe('not-found');
     expect(connection.rollback).toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalled();
   });
@@ -260,7 +261,7 @@ describe('updateCategory', () => {
   it('returns cycle when the new parent is the row itself', async () => {
     mockTree([{ id: 2, parent_id: null }]);
 
-    const result = await updateCategory(2, { ...request, next: { ...fields, parent_id: 2 } });
+    const result = await repository.update(2, { ...request, next: { ...fields, parent_id: 2 } });
 
     expect(result).toBe('cycle');
     expect(connection.query).toHaveBeenCalledTimes(1);
@@ -273,7 +274,7 @@ describe('updateCategory', () => {
       { id: 4, parent_id: 3 },
     ]);
 
-    const result = await updateCategory(2, { ...request, next: { ...fields, parent_id: 4 } });
+    const result = await repository.update(2, { ...request, next: { ...fields, parent_id: 4 } });
 
     expect(result).toBe('cycle');
     expect(connection.rollback).toHaveBeenCalled();
@@ -286,7 +287,7 @@ describe('updateCategory', () => {
       .mockResolvedValueOnce([[{ category_id: 2, code: 'St-WK' }]])
       .mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-    const result = await updateCategory(2, {
+    const result = await repository.update(2, {
       ...request,
       next: { ...fields, parent_id: null },
       taxTag: { expected: 'St-WK', next: 'St-SA' },
@@ -306,7 +307,7 @@ describe('updateCategory', () => {
       .mockResolvedValueOnce([{ affectedRows: 1 }])
       .mockResolvedValueOnce([[{ category_id: 2, code: 'St-V' }]]);
 
-    const result = await updateCategory(2, {
+    const result = await repository.update(2, {
       ...request,
       next: { ...fields, parent_id: null },
       taxTag: { expected: 'St-WK', next: 'St-SA' },
@@ -321,7 +322,7 @@ describe('updateCategory', () => {
     mockTree([{ id: 2, parent_id: null }]);
     connection.query.mockResolvedValueOnce([{ affectedRows: 0 }]);
 
-    expect(await updateCategory(2, { ...request, next: { ...fields, parent_id: null } })).toBe(
+    expect(await repository.update(2, { ...request, next: { ...fields, parent_id: null } })).toBe(
       'conflict',
     );
     expect(connection.rollback).toHaveBeenCalled();
@@ -332,9 +333,41 @@ describe('updateCategory', () => {
     connection.query.mockRejectedValueOnce(new Error('boom'));
 
     await expect(
-      updateCategory(2, { ...request, next: { ...fields, parent_id: null } }),
+      repository.update(2, { ...request, next: { ...fields, parent_id: null } }),
     ).rejects.toThrow('boom');
     expect(connection.rollback).toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalled();
+  });
+});
+
+describe('foreign key translation', () => {
+  it.each([
+    ['fk_umsatztyp_umsatztyp', 'parent'],
+    ['fk_umsatztyp_konto', 'account'],
+    ['fk_hf_tax_tag_section', 'tax-section'],
+  ])('maps %s to MissingReferenceError(%s)', async (constraint: string, reference: string) => {
+    const cause: Error = Object.assign(
+      new Error(`Cannot add or update a child row: CONSTRAINT \`${constraint}\``),
+      { code: 'ER_NO_REFERENCED_ROW_2' },
+    );
+    const connection = {
+      beginTransaction: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockRejectedValueOnce(cause),
+      commit: vi.fn(),
+      rollback: vi.fn().mockResolvedValue(undefined),
+      release: vi.fn(),
+    };
+    vi.mocked(getPool).mockReturnValue({
+      getConnection: vi.fn().mockResolvedValue(connection),
+    } as unknown as Pool);
+
+    const failure: unknown = await repository
+      .create({ ...fields, taxTag: null })
+      .catch((e: unknown) => e);
+
+    expect(failure).toBeInstanceOf(MissingReferenceError);
+    expect((failure as MissingReferenceError).reference).toBe(reference);
+    expect((failure as MissingReferenceError).cause).toBe(cause);
+    expect(connection.rollback).toHaveBeenCalled();
   });
 });

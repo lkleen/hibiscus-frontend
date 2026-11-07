@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { Mock } from 'vitest';
 import { currentUser, getPool } from '../db/pool';
 import type { UserDatabaseHandle } from '../db/pool';
-import type { UserDatabaseLookup, UserPools } from '../db/user-pools';
+import type { UserDatabaseLookup, UserDatabases } from '../db/user-databases';
 import { createUserDbMiddleware } from './user-db';
 
 interface HttpResponse {
@@ -13,7 +13,7 @@ interface HttpResponse {
   body: unknown;
 }
 
-let acquire: Mock<UserPools['acquire']>;
+let acquire: Mock<UserDatabases['acquire']>;
 let server: ReturnType<Express['listen']>;
 let baseUrl: string;
 

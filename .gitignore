@@ -5,6 +5,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Generated demo data (built by packages/backend `build`)
+packages/backend/demo-data/
+
 # Turborepo
 .turbo/
 
@@ -29,3 +32,6 @@ dist/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Release archives
+release/

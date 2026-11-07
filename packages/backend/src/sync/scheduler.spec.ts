@@ -1,13 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
-
-vi.mock('../repositories/bank-connection', () => ({ listDueBankConnectionIds: vi.fn() }));
-
 import type { Pool } from 'mysql2/promise';
 import { currentUser } from '../db/pool';
 import type { UserContext, UserDatabaseHandle } from '../db/pool';
-import type { UserDatabaseLookup } from '../db/user-pools';
-import { listDueBankConnectionIds } from '../repositories/bank-connection';
+import type { UserDatabaseLookup } from '../db/user-databases';
 import { SyncScheduler } from './scheduler';
 import type { SyncSchedulerDeps } from './scheduler';
 import { UserBusyError } from '../db/user-activity';
@@ -24,6 +20,7 @@ let keys: {
   unattendedState: Mock<SyncSchedulerDeps['keys']['unattendedState']>;
   resolveUnattended: Mock<SyncSchedulerDeps['keys']['resolveUnattended']>;
 };
+let listDueIds: Mock<SyncSchedulerDeps['bankConnections']['listDueIds']>;
 let scheduler: SyncScheduler;
 
 function calls(): [number, string][] {
@@ -60,7 +57,11 @@ beforeEach(() => {
     unattendedState: vi.fn().mockResolvedValue('ready'),
     resolveUnattended: vi.fn(async (): Promise<Buffer> => Buffer.alloc(32, 7)),
   };
-  scheduler = new SyncScheduler({ service: { runSync }, users, keys }, 60_000);
+  listDueIds = vi.fn<SyncSchedulerDeps['bankConnections']['listDueIds']>();
+  scheduler = new SyncScheduler(
+    { service: { runSync }, users, keys, bankConnections: { listDueIds } },
+    60_000,
+  );
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   vi.spyOn(console, 'log').mockImplementation(() => undefined);
 });
@@ -73,7 +74,7 @@ afterEach(() => {
 
 describe('SyncScheduler.tick', () => {
   it('runs the due connections one after the other as scheduled runs', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1, 2]);
+    listDueIds.mockResolvedValue([1, 2]);
     const order: string[] = [];
     runSync.mockImplementation(async ({ connectionId }: SyncStartParams) => {
       order.push(`start ${connectionId}`);
@@ -91,7 +92,7 @@ describe('SyncScheduler.tick', () => {
   });
 
   it('never runs two ticks at once', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1]);
+    listDueIds.mockResolvedValue([1]);
     let release: () => void = (): void => undefined;
     runSync.mockReturnValueOnce(
       new Promise<void>((resolve: () => void) => {
@@ -106,11 +107,11 @@ describe('SyncScheduler.tick', () => {
     await first;
 
     expect(runSync).toHaveBeenCalledTimes(1);
-    expect(listDueBankConnectionIds).toHaveBeenCalledTimes(1);
+    expect(listDueIds).toHaveBeenCalledTimes(1);
   });
 
   it('logs a failed run and goes on with the next connection', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1, 2]);
+    listDueIds.mockResolvedValue([1, 2]);
     runSync.mockRejectedValueOnce(new Error('bank down'));
 
     await scheduler.tick();
@@ -123,7 +124,7 @@ describe('SyncScheduler.tick', () => {
   });
 
   it('skips a locked connection without an error', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1]);
+    listDueIds.mockResolvedValue([1]);
     runSync.mockRejectedValueOnce(new ConflictError(1));
 
     await scheduler.tick();
@@ -133,18 +134,18 @@ describe('SyncScheduler.tick', () => {
   });
 
   it('logs a failed due-list query and keeps ticking', async () => {
-    vi.mocked(listDueBankConnectionIds).mockRejectedValueOnce(new Error('db down'));
+    listDueIds.mockRejectedValueOnce(new Error('db down'));
 
     await scheduler.tick();
-    vi.mocked(listDueBankConnectionIds).mockResolvedValueOnce([]);
+    listDueIds.mockResolvedValueOnce([]);
     await scheduler.tick();
 
     expect(console.error).toHaveBeenCalledTimes(1);
-    expect(listDueBankConnectionIds).toHaveBeenCalledTimes(2);
+    expect(listDueIds).toHaveBeenCalledTimes(2);
   });
 
   it('starts no further connection after stop', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1, 2]);
+    listDueIds.mockResolvedValue([1, 2]);
     runSync.mockImplementationOnce(async () => scheduler.stop());
 
     await scheduler.tick();
@@ -156,7 +157,7 @@ describe('SyncScheduler.tick', () => {
 describe('SyncScheduler timer', () => {
   it('ticks every interval with an unref timer until stopped', async () => {
     vi.useFakeTimers();
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([]);
+    listDueIds.mockResolvedValue([]);
 
     scheduler.start();
     expect(() => scheduler.start()).toThrow('already running');
@@ -164,16 +165,14 @@ describe('SyncScheduler timer', () => {
     scheduler.stop();
     await vi.advanceTimersByTimeAsync(120_000);
 
-    expect(listDueBankConnectionIds).toHaveBeenCalledTimes(2);
+    expect(listDueIds).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('SyncScheduler across users', () => {
   it('runs each user’s due connections in that user’s own context', async () => {
     users.listUsersWithDatabase.mockResolvedValue(['alice', 'bob']);
-    vi.mocked(listDueBankConnectionIds).mockImplementation(async () =>
-      currentUser().user === 'alice' ? [1] : [1, 2],
-    );
+    listDueIds.mockImplementation(async () => (currentUser().user === 'alice' ? [1] : [1, 2]));
     const seen: string[] = [];
     runSync.mockImplementation(async ({ connectionId }: SyncStartParams) => {
       const context: UserContext = currentUser();
@@ -188,7 +187,7 @@ describe('SyncScheduler across users', () => {
   it('skips a user whose database is not usable and goes on with the next', async () => {
     users.listUsersWithDatabase.mockResolvedValue(['alice', 'bob']);
     users.acquire.mockResolvedValueOnce({ status: 'host-not-allowed' });
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([7]);
+    listDueIds.mockResolvedValue([7]);
 
     await scheduler.tick();
 
@@ -199,7 +198,7 @@ describe('SyncScheduler across users', () => {
   it('logs a failing user database and goes on with the next user', async () => {
     users.listUsersWithDatabase.mockResolvedValue(['alice', 'bob']);
     users.acquire.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([7]);
+    listDueIds.mockResolvedValue([7]);
 
     await scheduler.tick();
 
@@ -212,20 +211,20 @@ describe('SyncScheduler across users', () => {
 
   it('logs a failed user listing and keeps ticking', async () => {
     users.listUsersWithDatabase.mockRejectedValueOnce(new Error('app db down'));
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([]);
+    listDueIds.mockResolvedValue([]);
 
     await scheduler.tick();
     await scheduler.tick();
 
     expect(console.error).toHaveBeenCalledTimes(1);
-    expect(listDueBankConnectionIds).toHaveBeenCalledTimes(1);
+    expect(listDueIds).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('SyncScheduler user keys', () => {
   it('gets each run’s key unattended for that run’s user', async () => {
     users.listUsersWithDatabase.mockResolvedValue(['alice', 'bob']);
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1]);
+    listDueIds.mockResolvedValue([1]);
     runSync.mockImplementation(async ({ key }: SyncStartParams) => {
       await key();
     });
@@ -242,7 +241,7 @@ describe('SyncScheduler user keys', () => {
       keys.unattendedState.mockImplementation(async (user: string) =>
         user === 'alice' ? state : 'ready',
       );
-      vi.mocked(listDueBankConnectionIds).mockResolvedValue([7]);
+      listDueIds.mockResolvedValue([7]);
 
       await scheduler.tick();
 
@@ -253,7 +252,7 @@ describe('SyncScheduler user keys', () => {
   );
 
   it('logs a skip once per change, not on every tick', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([]);
+    listDueIds.mockResolvedValue([]);
     keys.unattendedState.mockResolvedValue('locked');
 
     await scheduler.tick();
@@ -275,7 +274,7 @@ describe('SyncScheduler user keys', () => {
   });
 
   it('skips a run refused as busy without an error', async () => {
-    vi.mocked(listDueBankConnectionIds).mockResolvedValue([1, 2]);
+    listDueIds.mockResolvedValue([1, 2]);
     runSync.mockRejectedValueOnce(new UserBusyError('alice'));
 
     await scheduler.tick();

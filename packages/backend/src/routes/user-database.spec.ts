@@ -8,23 +8,14 @@ import type {
   UserDatabaseUpdateRequest,
 } from '@hibiscus-frontend/shared/contracts/user';
 
-vi.mock('../repositories/app-user', () => ({
-  getAppUserDatabase: vi.fn(),
-  isDatabaseUsedByOther: vi.fn(),
-  saveAppUserDatabase: vi.fn(),
-}));
-
 import { runWithUserContext } from '../db/pool';
 import type { DatabaseTarget } from '../db/pool';
 import { isReconfiguring, markUserBusy, unmarkUserBusy, UserBusyError } from '../db/user-activity';
-import {
-  getAppUserDatabase,
-  isDatabaseUsedByOther,
-  saveAppUserDatabase,
-} from '../repositories/app-user';
-import type { AppUserDatabaseWrite } from '../repositories/app-user';
+import type { AppUserDatabaseWrite, AppUserRepository } from '../repositories/app-user';
+import { DuplicateKeyError } from '../repositories/repository-errors';
 import { CredentialCrypto } from '../sync/credential-crypto';
 import { createUserDatabaseRouter } from './user-database';
+import type { UserDatabaseRouterDeps } from './user-database';
 
 interface HttpResponse {
   status: number;
@@ -38,6 +29,11 @@ const USER = 'alice';
 
 const crypto: CredentialCrypto = new CredentialCrypto(randomBytes(32));
 const invalidate: Mock<(username: string) => void> = vi.fn();
+const appUsers: {
+  getDatabase: Mock<AppUserRepository['getDatabase']>;
+  isDatabaseUsedByOther: Mock<AppUserRepository['isDatabaseUsedByOther']>;
+  saveDatabase: Mock<AppUserRepository['saveDatabase']>;
+} = { getDatabase: vi.fn(), isDatabaseUsedByOther: vi.fn(), saveDatabase: vi.fn() };
 let test: Mock<(target: DatabaseTarget) => Promise<UserDatabaseTestResponse>>;
 let server: ReturnType<Express['listen']>;
 let baseUrl: string;
@@ -61,7 +57,7 @@ async function send(method: string, path: string, body?: unknown): Promise<HttpR
 }
 
 function storePassword(): void {
-  vi.mocked(getAppUserDatabase).mockResolvedValue({
+  appUsers.getDatabase.mockResolvedValue({
     settings: { host: 'hibiscus-db', port: 3306, name: 'alice', user: 'alice' },
     password: crypto.encrypt(STORED_PASSWORD),
     version: 3,
@@ -76,18 +72,19 @@ beforeAll(
       app.use((_req: Request, _res: Response, next: NextFunction): void => {
         runWithUserContext({ user: USER, database: null }, next);
       });
-      app.use(
-        '/user/database',
-        createUserDatabaseRouter({
-          pools: { invalidate },
-          crypto,
-          allowedHosts: [
-            { host: 'hibiscus-db', port: null },
-            { host: '10.0.0.5', port: 3307 },
-          ],
-          test: (target: DatabaseTarget) => test(target),
-        }),
-      );
+      const deps: UserDatabaseRouterDeps = {
+        databases: { invalidate },
+        appUsers,
+        crypto,
+        allowedHosts: [
+          { host: 'hibiscus-db', port: null },
+          { host: '10.0.0.5', port: 3307 },
+        ],
+        test: (target: DatabaseTarget) => test(target),
+        dataSource: 'mariadb',
+      };
+      app.use('/user/database', createUserDatabaseRouter(deps));
+      app.use('/demo/user/database', createUserDatabaseRouter({ ...deps, dataSource: 'demo' }));
       // eslint-disable-next-line @typescript-eslint/max-params, @typescript-eslint/no-unused-vars
       app.use((err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
         res.status(500).json({ error: 'Internal Server Error' });
@@ -112,7 +109,7 @@ afterAll(
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(getAppUserDatabase).mockResolvedValue(null);
+  appUsers.getDatabase.mockResolvedValue(null);
   test = vi.fn().mockResolvedValue({ ok: true, hibiscusSchema: true, error: null });
 });
 
@@ -201,18 +198,16 @@ describe('POST /user/database/test', () => {
 
 describe('PUT /user/database', () => {
   it('answers 409 database-in-use when another user has the database', async () => {
-    vi.mocked(isDatabaseUsedByOther).mockResolvedValue(true);
+    appUsers.isDatabaseUsedByOther.mockResolvedValue(true);
 
     const response: HttpResponse = await send('PUT', '/user/database', request);
 
     expect(response).toMatchObject({ status: 409, body: { error: 'database-in-use' } });
-    expect(saveAppUserDatabase).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
   });
 
   it('answers 409 database-in-use when the unique key rejects a concurrent save', async () => {
-    vi.mocked(saveAppUserDatabase).mockRejectedValue(
-      Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY' }),
-    );
+    appUsers.saveDatabase.mockRejectedValue(new DuplicateKeyError('The database of another user'));
 
     const response: HttpResponse = await send('PUT', '/user/database', request);
 
@@ -225,8 +220,7 @@ describe('PUT /user/database', () => {
 
     expect(response.status).toBe(204);
     expect(response.text).toBe('');
-    const write: AppUserDatabaseWrite | undefined =
-      vi.mocked(saveAppUserDatabase).mock.calls[0]?.[0];
+    const write: AppUserDatabaseWrite | undefined = appUsers.saveDatabase.mock.calls[0]?.[0];
     expect(write?.username).toBe(USER);
     expect(write?.settings).toEqual({
       host: 'Hibiscus-DB',
@@ -243,8 +237,7 @@ describe('PUT /user/database', () => {
     storePassword();
     expect((await send('PUT', '/user/database', withoutPassword)).status).toBe(204);
 
-    const write: AppUserDatabaseWrite | undefined =
-      vi.mocked(saveAppUserDatabase).mock.calls[0]?.[0];
+    const write: AppUserDatabaseWrite | undefined = appUsers.saveDatabase.mock.calls[0]?.[0];
     expect(write === undefined ? null : crypto.decrypt(write.password)).toBe(STORED_PASSWORD);
   });
 
@@ -256,7 +249,7 @@ describe('PUT /user/database', () => {
       body: { error: 'Invalid request', details: { fieldErrors: { password: ['Required'] } } },
     });
     expect(test).not.toHaveBeenCalled();
-    expect(saveAppUserDatabase).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
   });
 
   it('refuses a host off the allowlist without testing or saving', async () => {
@@ -267,7 +260,7 @@ describe('PUT /user/database', () => {
 
     expect(response).toMatchObject({ status: 400, body: { error: 'host-not-allowed' } });
     expect(test).not.toHaveBeenCalled();
-    expect(saveAppUserDatabase).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
   });
 
   it('answers a failing test with 400 and the test result, without saving', async () => {
@@ -280,14 +273,14 @@ describe('PUT /user/database', () => {
       body: { ok: false, hibiscusSchema: false, error: 'Access denied' },
     });
     expect(response.text).not.toContain(PASSWORD);
-    expect(saveAppUserDatabase).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
   });
 
   it('refuses a database without the Hibiscus tables', async () => {
     test.mockResolvedValue({ ok: true, hibiscusSchema: false, error: null });
 
     expect((await send('PUT', '/user/database', request)).status).toBe(400);
-    expect(saveAppUserDatabase).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
   });
 
   it('answers 409 busy while a sync of the user runs', async () => {
@@ -296,7 +289,7 @@ describe('PUT /user/database', () => {
     const response: HttpResponse = await send('PUT', '/user/database', request);
 
     expect(response).toMatchObject({ status: 409, body: { error: 'busy' } });
-    expect(saveAppUserDatabase).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
     expect(invalidate).not.toHaveBeenCalled();
   });
 
@@ -337,13 +330,47 @@ describe('PUT /user/database', () => {
 
     expect(second).toMatchObject({ status: 409, body: { error: 'busy' } });
     expect((await first).status).toBe(204);
-    expect(saveAppUserDatabase).toHaveBeenCalledTimes(1);
+    expect(appUsers.saveDatabase).toHaveBeenCalledTimes(1);
   });
 
   it('ends the reconfiguration when saving fails', async () => {
-    vi.mocked(saveAppUserDatabase).mockRejectedValueOnce(new Error('app db down'));
+    appUsers.saveDatabase.mockRejectedValueOnce(new Error('app db down'));
 
     expect((await send('PUT', '/user/database', request)).status).toBe(500);
     expect(isReconfiguring(USER)).toBe(false);
+  });
+});
+
+describe('/user/database with the demo data', () => {
+  it('keeps answering GET', async () => {
+    storePassword();
+
+    const response: HttpResponse = await send('GET', '/demo/user/database');
+
+    expect(response).toMatchObject({ status: 200, body: { database: { passwordSet: true } } });
+  });
+
+  it('answers 409 demo-mode to a test and connects nowhere', async () => {
+    const response: HttpResponse = await send('POST', '/demo/user/database/test', request);
+
+    expect(response).toEqual({
+      status: 409,
+      body: { error: 'demo-mode' },
+      text: expect.any(String),
+    });
+    expect(test).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 demo-mode to a save and saves nothing', async () => {
+    const response: HttpResponse = await send('PUT', '/demo/user/database', request);
+
+    expect(response).toEqual({
+      status: 409,
+      body: { error: 'demo-mode' },
+      text: expect.any(String),
+    });
+    expect(test).not.toHaveBeenCalled();
+    expect(appUsers.saveDatabase).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

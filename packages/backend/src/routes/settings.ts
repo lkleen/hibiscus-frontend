@@ -10,10 +10,14 @@ import {
   TABLE_DENSITIES_SETTING_KEY,
   TableDensitiesSchema,
 } from '../settings/table-density';
-import { deleteUserSetting, getUserSetting, putUserSetting } from '../repositories/user-setting';
+import type { UserSettingRepository } from '../repositories/user-setting';
 import { respondWithValidationError } from './zod-validation';
 
-export function createSettingsRouter(): Router {
+export interface SettingsRouterDeps {
+  readonly userSettings: UserSettingRepository;
+}
+
+export function createSettingsRouter(deps: SettingsRouterDeps): Router {
   const router = Router();
 
   /**
@@ -22,7 +26,8 @@ export function createSettingsRouter(): Router {
    */
   router.get('/date-presets', (_req: Request, res: Response, next: NextFunction): void => {
     const user = res.locals['user'] as string;
-    getUserSetting(user, DATE_PRESETS_SETTING_KEY)
+    deps.userSettings
+      .get(user, DATE_PRESETS_SETTING_KEY)
       .then((value: unknown | undefined) => {
         const presets: unknown = value === undefined ? DEFAULT_DATE_PRESETS : value;
         // Re-validate the stored value. A corrupt row is a fatal error, not a fallback.
@@ -47,11 +52,12 @@ export function createSettingsRouter(): Router {
       return;
     }
 
-    putUserSetting({
-      user,
-      key: DATE_PRESETS_SETTING_KEY,
-      value: parseResult.data,
-    })
+    deps.userSettings
+      .put({
+        user,
+        key: DATE_PRESETS_SETTING_KEY,
+        value: parseResult.data,
+      })
       .then(() => res.status(204).send())
       .catch(next);
   });
@@ -61,7 +67,8 @@ export function createSettingsRouter(): Router {
    */
   router.delete('/date-presets', (_req: Request, res: Response, next: NextFunction): void => {
     const user = res.locals['user'] as string;
-    deleteUserSetting(user, DATE_PRESETS_SETTING_KEY)
+    deps.userSettings
+      .delete(user, DATE_PRESETS_SETTING_KEY)
       .then(() => res.status(204).send())
       .catch(next);
   });
@@ -72,7 +79,8 @@ export function createSettingsRouter(): Router {
    */
   router.get('/table-densities', (_req: Request, res: Response, next: NextFunction): void => {
     const user = res.locals['user'] as string;
-    getUserSetting(user, TABLE_DENSITIES_SETTING_KEY)
+    deps.userSettings
+      .get(user, TABLE_DENSITIES_SETTING_KEY)
       .then((value: unknown | undefined) => {
         const densities: unknown = value === undefined ? DEFAULT_TABLE_DENSITIES : value;
         const parseResult = TableDensitiesSchema.safeParse(densities);
@@ -96,11 +104,12 @@ export function createSettingsRouter(): Router {
       return;
     }
 
-    putUserSetting({
-      user,
-      key: TABLE_DENSITIES_SETTING_KEY,
-      value: parseResult.data,
-    })
+    deps.userSettings
+      .put({
+        user,
+        key: TABLE_DENSITIES_SETTING_KEY,
+        value: parseResult.data,
+      })
       .then(() => res.status(204).send())
       .catch(next);
   });
