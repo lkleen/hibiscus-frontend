@@ -1,17 +1,19 @@
 import type { UserDatabaseTestResponse } from '@hibiscus-frontend/shared/contracts/user';
-import type { AllowedDbHost, Config, MariadbConfig } from './config/config';
+import type { AllowedDbHost, Config, DemoConfig, MariadbConfig } from './config/config';
 import { initAppPool, testDatabaseConnection } from './db/pool';
 import type { DatabaseTarget } from './db/pool';
 import type { UserDatabases } from './db/user-databases';
 import { UserPools } from './db/user-pools';
 import { createDemoRepositories } from './demo/create-demo-repositories';
 import type { DemoRepositories } from './demo/create-demo-repositories';
+import { demoDatePresets } from './demo/demo-date-presets';
 import { loadDemoDataset } from './demo/demo-dataset';
 import type { DemoDataset } from './demo/demo-dataset';
 import { DemoSyncDatabase } from './demo/demo-sync-database';
 import { DemoUserDatabases } from './demo/demo-user-databases';
 import { ensureAppUserTable } from './repositories/app-user';
 import { createMysqlRepositories } from './repositories/create-mysql-repositories';
+import { DATE_PRESETS_SETTING_KEY } from './settings/date-presets';
 import type { Repositories } from './repositories/repositories';
 import type { CredentialCrypto } from './sync/credential-crypto';
 import { MysqlSyncDatabase } from './sync/mysql-sync-database';
@@ -61,8 +63,11 @@ async function createMariadbParts(
   };
 }
 
-/** The demo data in memory: no pool, no database reached, nothing written back to the file. */
-function createDemoParts(demoDataPath: string): DataSourceParts {
+/**
+ * The demo data in memory: no pool, no database reached, nothing written back to the file. Each
+ * allowed user starts on date presets whose first range holds data (see `demoDatePresets`).
+ */
+async function createDemoParts(config: DemoConfig, demoDataPath: string): Promise<DataSourceParts> {
   const dataset: DemoDataset = loadDemoDataset(demoDataPath);
   console.log(
     `${LOG_PREFIX} Demo data from ${demoDataPath} (up to ${dataset.generatedAt}): ` +
@@ -71,6 +76,13 @@ function createDemoParts(demoDataPath: string): DataSourceParts {
   );
   console.log(`${LOG_PREFIX} Demo data: changes stay in memory and are lost on restart`);
   const demo: DemoRepositories = createDemoRepositories(dataset);
+  for (const user of config.ALLOWED_USERS) {
+    await demo.repositories.userSettings.put({
+      user,
+      key: DATE_PRESETS_SETTING_KEY,
+      value: demoDatePresets(dataset.generatedAt),
+    });
+  }
   return {
     repositories: demo.repositories,
     databases: new DemoUserDatabases(demo.store),
@@ -89,7 +101,7 @@ export async function createDataSource(params: DataSourceParams): Promise<DataSo
     case 'mariadb':
       return createMariadbParts(config, params.crypto);
     case 'demo':
-      return createDemoParts(params.demoDataPath);
+      return createDemoParts(config, params.demoDataPath);
   }
 }
 

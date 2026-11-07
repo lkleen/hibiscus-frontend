@@ -12,6 +12,8 @@ import { DemoSyncDatabase } from './demo/demo-sync-database';
 import { DemoUserDatabases } from './demo/demo-user-databases';
 import { createTestDataset } from './demo/demo-test-dataset.fixture';
 import type { AppUserKeyRecord } from './repositories/app-user';
+import { demoDatePresets } from './demo/demo-date-presets';
+import { DATE_PRESETS_SETTING_KEY } from './settings/date-presets';
 import { CredentialCrypto } from './sync/credential-crypto';
 import { UserKeys, UserKeyStore } from './sync/user-keys';
 
@@ -54,6 +56,16 @@ describe('createDataSource with the demo data', () => {
     const response: TransactionsResponse = await parts.repositories.transactions.list();
     expect(response.rows).toHaveLength(3);
     expect(await parts.databases.databaseStatus('alice@example.com')).toBe('configured');
+  });
+
+  it('starts every allowed user on a date range that holds data', async () => {
+    const parts: DataSourceParts = await createDemo();
+
+    for (const user of config.ALLOWED_USERS) {
+      expect(await parts.repositories.userSettings.get(user, DATE_PRESETS_SETTING_KEY)).toEqual(
+        demoDatePresets(createTestDataset().generatedAt),
+      );
+    }
   });
 
   it('logs that changes stay in memory', async () => {

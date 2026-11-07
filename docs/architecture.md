@@ -58,8 +58,10 @@ shared.
 - **Demo mode.** `DB_*` and `ALLOWED_DB_HOSTS` are not used. The backend loads
   `demo-data/demo-data.json.gz` (gzip JSON) into in-memory repositories (`packages/backend/src/demo/`).
   Changes are lost on restart and bank sync is off. At startup every user in `ALLOWED_USERS` gets
-  a `stored` key, so the setup page is skipped. `/api/user/database` test and save answer `409`
-  `demo-mode`. The frontend shows a "Demo data" badge and a read-only database tab.
+  a `stored` key, so the setup page is skipped, and date presets whose first entry is a fixed
+  range over the last 12 months of data (`demo/demo-date-presets.ts`), so an older download still
+  opens on data. `/api/user/database` test and save answer `409` `demo-mode`. The frontend shows
+  a "Demo data" badge and a read-only database tab.
 - **Demo data file.** The backend build writes it from a deterministic story generator
   (`packages/backend/src/demo/generator/`): the invented Tobias Testmann from 2014 to the build
   date, about 25,000 transactions.

@@ -125,6 +125,9 @@ export type DataSource = Config['DATA_SOURCE'];
 /** The configuration of `DATA_SOURCE=mariadb`, with the `DB_*` values and `ALLOWED_DB_HOSTS`. */
 export type MariadbConfig = Extract<Config, { DATA_SOURCE: 'mariadb' }>;
 
+/** `Config` for `DATA_SOURCE=demo`: no database settings. */
+export type DemoConfig = Extract<Config, { DATA_SOURCE: 'demo' }>;
+
 /** Exact match on the host (case-insensitive), and on the port when the entry names one. */
 export function isDbHostAllowed(allowed: readonly AllowedDbHost[], target: DbHostTarget): boolean {
   const host: string = target.host.toLowerCase();
