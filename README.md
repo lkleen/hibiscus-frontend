@@ -3,6 +3,15 @@
 An open-source web frontend for a [Hibiscus](https://www.willuhn.de/products/hibiscus/)
 home-banking database (accounts, transactions, categories) backed by MariaDB.
 
+It runs as a service on a server and works on an **existing** Hibiscus database in MariaDB: you
+browse and categorise its accounts and transactions in the browser. It does not create a Hibiscus
+database or its accounts; it needs one that already holds them.
+
+> **Status: development stops before bank sync.** Fetching statements from the bank is built but
+> switched off. Turning it on needs a FinTS product ID, and the only one available is the original
+> Hibiscus registration, which this project will not borrow. See
+> [The FinTS product ID](#the-fints-product-id).
+
 > **This app is not safe to expose without an authenticating proxy in front of it.** It has no
 > login of its own — it trusts identity asserted by an upstream forward-auth proxy (Authentik,
 > Keycloak behind `oauth2-proxy`, Traefik forward-auth, …) and refuses every request without a
@@ -90,32 +99,43 @@ Caddy), see [below](#trying-the-auth-contract-with-a-real-idp).
 **Outbound HTTPS.** The app itself talks to the banks (FinTS over HTTPS), so the container needs
 outbound HTTPS to every bank endpoint your users add. It needs no inbound access besides the proxy.
 
-### 2. Preparing a Hibiscus database for a user
+### 2. Connecting an existing Hibiscus database
 
-Each person needs a MariaDB database the app can reach through a host on `ALLOWED_DB_HOSTS`:
+Each person brings their own existing Hibiscus database on MariaDB, with its accounts and
+transactions. Each database belongs to one user of the app.
 
-1. Create the database and a user that may use only that database:
+**What the app writes.** On the first connect the app creates its own tables (`hf_*`: settings,
+tax sections, bank connections, sync runs) in that database. In the Hibiscus tables it changes
+only what you edit in the UI: categories (`umsatztyp`) and a transaction's category and comment
+(`umsatz`). Bank sync, once enabled, would also insert and remove transactions, update account
+balances (`konto`) and write the log (`protokoll`). **Back up the database before the first
+connect**, and never commit the dump (`*.sql` is gitignored):
+
+```bash
+mysqldump -h <host> -u root -p hibiscus > hibiscus-backup.sql
+```
+
+1. **Create a database user for the app** that may use only this database. Besides reading
+   and writing rows it needs `CREATE`, `ALTER` and `REFERENCES` for the `hf_*` tables and their
+   foreign keys to `konto` and `umsatztyp`.
 
    ```sql
-   CREATE DATABASE hibiscus_anna CHARACTER SET utf8 COLLATE utf8_general_ci;
    CREATE USER 'anna'@'%' IDENTIFIED BY 'a-strong-password';
-   GRANT ALL PRIVILEGES ON hibiscus_anna.* TO 'anna'@'%';
+   GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, REFERENCES ON hibiscus.* TO 'anna'@'%';
    ```
 
-2. Fill it with the Hibiscus schema. Either import the schema script from the Hibiscus
-   distribution (`mysql-create.sql`) for a fresh start, or restore a dump of the existing
-   Hibiscus database:
+   Replace `%` with the app's address if your MariaDB setup allows it.
 
-   ```bash
-   mysql -h <host> -u anna -p hibiscus_anna < mysql-create.sql   # or: < your-dump.sql
-   ```
+2. **Make the database reachable from the app's container.** If MariaDB runs elsewhere (on the
+   Docker host, a NAS, another server), it has to listen on a network interface (`bind-address`
+   in the MariaDB config, often `127.0.0.1` by default) and the firewall must let the container
+   through on its port (default `3306`).
 
-   Never commit a dump (`*.sql` is gitignored).
+3. **Allow the host.** Add the host (or `host:port`) to `ALLOWED_DB_HOSTS` and restart the app.
+   Users can only pick hosts from that list.
 
-3. Tell the person host, port, database name, user and password. The app adds its own `hf_*`
-   tables (settings, tax sections, bank connections, sync runs) on the first connect; Hibiscus's
-   tables are not changed apart from the transaction category and comment, and imported bank
-   transactions.
+4. **Hand over the details.** Tell the person host, port, database name, user and password;
+   they enter them at their first login.
 
 ### 3. First login per user
 
@@ -145,7 +165,8 @@ mode, change the key, reset the key).
 
 ### 4. Adding a bank connection
 
-Settings → Bank connections → "Add connection": name, bank code (BLZ), FinTS URL (prefilled for
+Bank sync is currently off (see [The FinTS product ID](#the-fints-product-id)): connections can
+be set up, but no bank dialog runs. Settings → Bank connections → "Add connection": name, bank code (BLZ), FinTS URL (prefilled for
 known banks), login name, PIN, sync interval. Saving asks for your key unless your mode keeps it
 available. Then:
 
@@ -163,11 +184,14 @@ available. Then:
 ### The FinTS product ID
 
 FinTS banks only accept registered software (Deutsche Kreditwirtschaft,
-[fints.org](https://www.fints.org)). hibiscus-frontend's own registration has been requested;
-until the number arrives `FINTS_PRODUCT_ID` in `packages/backend/src/sync/fints-session.ts` is
-`null` and **bank sync is off** (no scheduled syncs, "Sync now" fails with a clear message). Once
-it is set, nothing is left to register when you run it. A fork that ships as a different
-application registers its own and replaces `FINTS_PRODUCT_ID`.
+[fints.org](https://www.fints.org)), identified by a product ID sent with every bank dialog.
+Using the original Hibiscus product ID would make this app pose as Hibiscus to every bank and
+hijack that project's registration, so it is not used. Development therefore stops at bank sync:
+the feature is built, but `FINTS_PRODUCT_ID` in `packages/backend/src/sync/fints-session.ts` is
+`null` and **bank sync is off** (no scheduled syncs, "Sync now" fails with a clear message). It
+can only be switched on with a registration of hibiscus-frontend's own. Once that ID is set,
+nothing is left to register when you run it. A fork that ships as a different application
+registers its own and replaces `FINTS_PRODUCT_ID`.
 
 ## Local development
 

@@ -378,7 +378,9 @@ is no longer needed for that. Everything is declared once in `packages/shared/sr
 - **Product registration.** FinTS banks only accept registered software. The app sends its own
   DK registration (`FINTS_PRODUCT_ID` in `sync/fints-session.ts`) with its version
   `FINTS_PRODUCT_VERSION` (major.minor, at most 5 characters). The ID is public, like every
-  distributed client's. Until the registration arrives it is `null`: the scheduler does not start
+  distributed client's. The original Hibiscus ID is deliberately not reused: the app would pose as
+  Hibiscus and hijack that project's registration. Until an own registration exists it is `null`,
+  so development stops at bank sync: the scheduler does not start
   and every bank dialog throws (`isBankSyncEnabled()`). A fork that ships as a different
   application registers its own.
 - **Frontend.** `features/sync` holds the polled status store, the global banner (in the app
